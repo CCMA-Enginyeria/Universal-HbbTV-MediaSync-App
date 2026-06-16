@@ -1,5 +1,7 @@
 # Universal HbbTV MediaSync App
 
+![Universal HbbTV MediaSync App preview](assets/preview.jpg)
+
 ## Vision
 
 Create a **universal HbbTV MediaSync application**, open source and maintained by the community of HbbTV members, enabling complementary content to be played on a second device such as a mobile phone or tablet, **perfectly synchronized** with the main TV content.
