@@ -35,7 +35,7 @@ ms.enableInterDeviceSync(function () {
 });
 ```
 
-Where `video` is the `HTMLVideoElement` currently playing the broadcast content.
+Where `video` is the `HTMLVideoElement` currently playing the tv content.
 Once this snippet runs, the HbbTV terminal advertises itself over **DIAL/SSDP** and
 serves the content ID over **CSS-CII**, allowing the mobile app to discover it and
 synchronize the complementary track automatically.
