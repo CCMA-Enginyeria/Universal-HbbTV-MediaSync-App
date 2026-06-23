@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html style="height:100%;margin:0;padding:0;background:#000;">
+<head>
+<meta charset="UTF-8">
+<title>DASH.js Media Sync Viewer</title>
+<script src="js/hbbtvlib.js"></script>
+<script src="js/hbbtv-manager-polyfill.js"></script>
+<script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
+<style>
+html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#000;}
+#v{position:fixed;top:0;left:0;width:100%;height:100%;object-fit:contain;background:#000;}
+#s{position:fixed;top:10px;left:10px;color:#0f0;font-family:monospace;font-size:12px;background:rgba(0,0,0,0.7);padding:6px 10px;border-radius:4px;z-index:10;white-space:pre-line;}
+</style>
+</head>
+<body>
+<div id="s">Loading DASH...</div>
+<video id="v" autoplay></video>
+<script>
+var DASH_URL='https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd';
+var v=document.getElementById('v');
+var s=document.getElementById('s');
+function log(m){console.log(m);s.textContent=m;}
+
+var dp=null, ms=null;
+
+window.onload=function(){
+  if(typeof hbbtvlib_initialize!=='undefined'){hbbtvlib_initialize();hbbtvlib_show();}
+  initPlayer();
+};
+
+function initPlayer(){
+  try{
+    dp=dashjs.MediaPlayer().create();
+    dp.initialize(v,DASH_URL,true);
+    dp.on(dashjs.MediaPlayer.events.ERROR,function(e){
+      log('DASH error: '+(e.error&&e.error.message||'unknown'));
+    });
+    dp.on(dashjs.MediaPlayer.events.STREAM_INITIALIZED,function(){
+      log('Stream ready. Initialising sync...');
+      initSync();
+    });
+    log('dash.js player created');
+  }catch(e){log('Player init error: '+e.message);}
+}
+
+function initSync(){
+  try{
+    if(typeof oipfObjectFactory==='undefined'){log('No oipfObjectFactory');return;}
+    ms=oipfObjectFactory.createMediaSynchroniser();
+    if(!ms){log('createMediaSynchroniser failed');return;}
+    ms.contentIdOverride=DASH_URL;
+    ms.onSyncNowAchievable=function(){log('Sync now achievable');};
+    ms.onSyncNowUnachievable=function(){log('Sync now unachievable');};
+    ms.onInterDevSyncStatus=function(st){
+      var map={0:'disconnected',1:'connecting',2:'connected'};
+      log('InterDev status: '+(map[st]||st));
+    };
+    ms.onError=function(err,src){log('Sync error: '+err);};
+    ms.initMediaSynchroniser(v,'urn:dvb:css:timeline:pts');
+    var en=(typeof ms.enableInterDeviceSync==='function')?ms.enableInterDeviceSync:
+           (typeof ms.enableInterDevSync==='function')?ms.enableInterDevSync:null;
+    if(en){
+      en.call(ms,function(){log('Inter-device sync enabled');});
+    }else{
+      log('No enable method found');
+    }
+    log('MediaSynchroniser ready');
+  }catch(e){log('Sync init error: '+e.message);}
+}
+</script>
+</body>
+</html>

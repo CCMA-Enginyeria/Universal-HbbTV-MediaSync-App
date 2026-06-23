@@ -1,0 +1,23 @@
+{
+  "ca": [
+    { "name": "Vestel", "description": "WebOS 2020 (v5.0) o superior", "logo": "../../assets/brands/vestel.png", "compatibility": "Compatible amb streaming en directe i sota demanda" }
+  ],
+  "es": [
+    { "name": "Vestel", "description": "WebOS 2020 (v5.0) o superior", "logo": "../../assets/brands/vestel.png", "compatibility": "Compatible con streaming en directo y bajo demanda" }
+  ],
+  "eu": [
+    { "name": "Vestel", "description": "WebOS 2020 (v5.0) edo berriagoa", "logo": "../../assets/brands/vestel.png", "compatibility": "Zuzenean eta eskariz zuzenean bateragarria" }
+  ],
+  "en": [
+    { "name": "Vestel", "description": "WebOS 2020 (v5.0) or later", "logo": "../../assets/brands/vestel.png", "compatibility": "Compatible with live streaming and on-demand" }
+  ],
+  "de": [
+    { "name": "Vestel", "description": "WebOS 2020 (v5.0) oder höher", "logo": "../../assets/brands/vestel.png", "compatibility": "Kompatibel mit Live-Streaming und On-Demand" }
+  ],
+  "it": [
+    { "name": "Vestel", "description": "WebOS 2020 (v5.0) o successivo", "logo": "../../assets/brands/vestel.png", "compatibility": "Compatibile con streaming in diretta e on-demand" }
+  ],
+  "fr": [
+    { "name": "Vestel", "description": "WebOS 2020 (v5.0) ou ultérieur", "logo": "../../assets/brands/vestel.png", "compatibility": "Compatible avec le streaming en direct et la vidéo à la demande" }
+  ]
+}

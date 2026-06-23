@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HbbTV MediaSync - Launcher</title>
+
+    <!-- ERROR SYSTEM - MUST BE FIRST to capture library loading errors -->
+    <script type="text/javascript">
+        var errorSystem = {
+            errors: [],
+            maxErrors: 20,
+            init: function() {
+                var self = this;
+                window.onerror = function(msg, url, line) {
+                    self.addError('ERROR', msg + ' at ' + (url || 'unknown') + ':' + (line || '?'));
+                    return false;
+                };
+                window.addEventListener('unhandledrejection', function(event) {
+                    self.addError('PROMISE', String(event.reason));
+                });
+            },
+            addError: function(type, message) {
+                this.errors.push({ time: new Date().toLocaleTimeString(), type: type, message: message });
+                if (this.errors.length > this.maxErrors) this.errors.shift();
+                this.updateDisplay();
+            },
+            updateDisplay: function() {
+                var panel = document.getElementById('errorPanelDebug');
+                if (!panel) return;
+                if (this.errors.length === 0) { panel.style.display = 'none'; return; }
+                panel.style.display = 'block';
+                var html = '<div style="font-weight:bold;margin-bottom:5px;">Errors (' + this.errors.length + '):</div>';
+                for (var i = this.errors.length - 1; i >= Math.max(0, this.errors.length - 5); i--) {
+                    var e = this.errors[i];
+                    var color = e.type === 'ERROR' ? '#ff6b6b' : '#ffa500';
+                    html += '<div style="color:' + color + ';font-size:10px;margin:2px 0;">[' + e.time + '] ' + e.type + ': ' + e.message.substring(0, 100) + '</div>';
+                }
+                panel.innerHTML = html;
+            }
+        };
+        errorSystem.init();
+    </script>
+
+    <script type="text/javascript" src="js/hbbtvlib.js"></script>
+    <script type="text/javascript" src="js/hbbtv-manager-polyfill.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            display: flex; justify-content: center; align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            color: #ffffff; padding: 20px;
+        }
+        .container { text-align: center; max-width: 800px; width: 100%; }
+        .header { margin-bottom: 50px; }
+        .header h1 {
+            font-size: 2.5em; margin-bottom: 10px;
+            background: linear-gradient(90deg, #ffaa00, #cc44ff);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+        .header p { font-size: 1.2em; color: #888; }
+        .apps-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px; margin-top: 30px;
+        }
+        .app-card {
+            background: linear-gradient(145deg, #2a2a2a, #1f1f1f);
+            border-radius: 20px; padding: 40px 30px;
+            text-decoration: none; color: #ffffff;
+            transition: all 0.3s ease; border: 2px solid transparent;
+            position: relative; overflow: hidden;
+        }
+        .app-card:hover { transform: translateY(-10px); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4); }
+        .app-card.basic-media { border-color: #ffaa00; }
+        .app-card.basic-media:hover { background: linear-gradient(145deg, #ffaa0022, #1f1f1f); box-shadow: 0 20px 40px rgba(255, 170, 0, 0.3); }
+        .app-card.basic-media .app-badge { background-color: #ffaa00; }
+        .app-card.dashjs-media { border-color: #cc44ff; }
+        .app-card.dashjs-media:hover { background: linear-gradient(145deg, #cc44ff22, #1f1f1f); box-shadow: 0 20px 40px rgba(204, 68, 255, 0.3); }
+        .app-card.dashjs-media .app-badge { background-color: #cc44ff; }
+        .app-icon { font-size: 4em; margin-bottom: 20px; display: block; }
+        .app-card h2 { font-size: 1.6em; margin-bottom: 15px; }
+        .app-card p { font-size: 1em; color: #aaa; line-height: 1.5; }
+        .app-badge {
+            position: absolute; top: 15px; right: 15px;
+            padding: 5px 12px; border-radius: 20px;
+            font-size: 0.75em; font-weight: bold; text-transform: uppercase;
+        }
+        .footer { margin-top: 50px; color: #666; font-size: 0.9em; }
+        .key-hints { display: flex; justify-content: center; gap: 30px; margin-top: 30px; }
+        .key-hint { display: flex; align-items: center; gap: 10px; font-size: 0.9em; color: #888; }
+        .key-color { width: 24px; height: 24px; border-radius: 4px; }
+        .key-color.yellow { background-color: #ffcc00; }
+        .key-color.purple { background-color: #cc44ff; }
+        .app-card:focus { outline: 3px solid #ffcc00; outline-offset: 2px; box-shadow: 0 0 15px #ffcc00; }
+        @media (max-width: 600px) {
+            .header h1 { font-size: 1.8em; }
+            .apps-grid { grid-template-columns: 1fr; }
+            .app-card { padding: 30px 20px; }
+        }
+        #errorPanelDebug {
+            position: fixed; bottom: 10px; right: 10px;
+            background: rgba(50, 0, 0, 0.95); border: 2px solid #ff0000;
+            border-radius: 10px; padding: 10px;
+            font-family: monospace; font-size: 11px; color: #ff6b6b;
+            z-index: 10001; max-width: 400px; max-height: 200px;
+            overflow-y: auto; display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="errorPanelDebug"></div>
+
+    <div class="container">
+        <div class="header">
+            <h1>HbbTV MediaSync</h1>
+            <p>Select the synchronized media viewer you want to use</p>
+        </div>
+
+        <div class="apps-grid">
+            <a href="basic-media-sync-viewer.html" class="app-card basic-media" id="basicMediaCard" tabindex="1">
+                <span class="app-badge">Basic</span>
+                <span class="app-icon">&#9654;&#128225;</span>
+                <h2>Basic Media Sync</h2>
+                <p>Lightweight media synchronization viewer using the native HTML5 video element with DVB-CSS wall-clock sync.</p>
+            </a>
+
+            <a href="dashjs-media-sync-viewer.html" class="app-card dashjs-media" id="dashjsMediaCard" tabindex="2">
+                <span class="app-badge">dash.js</span>
+                <span class="app-icon">&#128202;&#127909;</span>
+                <h2>Dash.js Media Sync</h2>
+                <p>Advanced MPEG-DASH media synchronization viewer powered by dash.js with adaptive bitrate and DVB-CSS sync.</p>
+            </a>
+        </div>
+
+        <div class="footer">
+            <div class="key-hints">
+                <div class="key-hint">
+                    <span class="key-color yellow"></span>
+                    <span>YELLOW - Basic Media</span>
+                </div>
+                <div class="key-hint">
+                    <span class="key-color purple"></span>
+                    <span>4 - Dash.js Media</span>
+                </div>
+            </div>
+            <p style="margin-top: 20px;">Universal HbbTV MediaSync App</p>
+        </div>
+    </div>
+
+    <script>
+        window.onload = function() {
+            if (typeof hbbtvlib_initialize !== 'undefined') {
+                hbbtvlib_initialize();
+                hbbtvlib_show();
+            }
+            registerKeys();
+            var basicCard = document.getElementById('basicMediaCard');
+            if (basicCard) basicCard.focus();
+        };
+
+        function registerKeys() {
+            try {
+                var app = document.getElementById('appmgr');
+                if (app && app.getOwnerApplication) app = app.getOwnerApplication(document);
+                if (!app && typeof oipfObjectFactory !== 'undefined') {
+                    app = oipfObjectFactory.createApplicationManager().getOwnerApplication(document);
+                }
+                if (app && app.privateData && app.privateData.keyset) {
+                    // NAVIGATION=0x1, COLOUR=0x10
+                    app.privateData.keyset.setValue(0x1 | 0x10);
+                }
+            } catch (e) {
+                errorSystem.addError('ERROR', 'Key registration error: ' + e.message);
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            var handled = false;
+            switch (e.keyCode) {
+                case 405: // YELLOW - Basic Media Sync
+                case 118: // F7 fallback
+                    window.location.href = 'basic-media-sync-viewer.html';
+                    handled = true;
+                    break;
+                case 52: // '4' key - Dash.js Media Sync
+                    window.location.href = 'dashjs-media-sync-viewer.html';
+                    handled = true;
+                    break;
+            }
+            if (handled) { e.preventDefault(); e.stopPropagation(); }
+        });
+    </script>
+</body>
+</html>

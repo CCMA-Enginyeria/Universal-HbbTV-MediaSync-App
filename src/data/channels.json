@@ -1,0 +1,23 @@
+{
+  "ca": [
+    { "name": "TV3", "region": "CATALUNYA", "status": "Disponible per vídeos sota demanda", "icon": "satellite" }
+  ],
+  "es": [
+    { "name": "TV3", "region": "CATALUÑA", "status": "Disponible para vídeos bajo demanda", "icon": "satellite" }
+  ],
+  "eu": [
+    { "name": "TV3", "region": "KATALUNIA", "status": "Bideo eskatzearen arabera eskuragarri", "icon": "satellite" }
+  ],
+  "en": [
+    { "name": "TV3", "region": "CATALONIA", "status": "Available for on-demand videos", "icon": "satellite" }
+  ],
+  "de": [
+    { "name": "TV3", "region": "KATALONIEN", "status": "Verfügbar für Videos auf Abruf", "icon": "satellite" }
+  ],
+  "it": [
+    { "name": "TV3", "region": "CATALOGNA", "status": "Disponibile per video on-demand", "icon": "satellite" }
+  ],
+  "fr": [
+    { "name": "TV3", "region": "CATALOGNE", "status": "Disponible pour les vidéos à la demande", "icon": "satellite" }
+  ]
+}
