@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+
+<html class="scroll-smooth dark" lang="en" style="">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Universal HbbTV MediaSync App | Second Screen Synchronisation</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&amp;family=Inter:wght@400;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "inverse-surface": "#e1e2ed",
+                        "background": "#10131b",
+                        "tertiary-container": "#e96c16",
+                        "on-tertiary-fixed-variant": "#773200",
+                        "on-primary": "#002d6d",
+                        "primary-container": "#528dff",
+                        "inverse-primary": "#0059c7",
+                        "on-secondary-fixed": "#23005c",
+                        "surface-container-highest": "#32353d",
+                        "primary": "#afc6ff",
+                        "on-tertiary": "#542100",
+                        "surface-container-low": "#191b23",
+                        "surface-bright": "#363941",
+                        "surface-container": "#1d1f27",
+                        "surface": "#10131b",
+                        "on-primary-container": "#00275f",
+                        "secondary-fixed-dim": "#d0bcff",
+                        "outline": "#8c90a0",
+                        "on-secondary-container": "#c4abff",
+                        "tertiary-fixed-dim": "#ffb68f",
+                        "tertiary-fixed": "#ffdbca",
+                        "on-error-container": "#ffdad6",
+                        "on-error": "#690005",
+                        "surface-container-high": "#272a32",
+                        "outline-variant": "#424754",
+                        "secondary": "#d0bcff",
+                        "on-secondary": "#3c0091",
+                        "on-surface-variant": "#c2c6d7",
+                        "secondary-fixed": "#e9ddff",
+                        "error": "#ffb4ab",
+                        "on-tertiary-fixed": "#331100",
+                        "on-surface": "#e1e2ed",
+                        "secondary-container": "#571bc1",
+                        "on-primary-fixed": "#001944",
+                        "on-secondary-fixed-variant": "#5516be",
+                        "primary-fixed-dim": "#afc6ff",
+                        "on-background": "#e1e2ed",
+                        "inverse-on-surface": "#2d3039",
+                        "on-tertiary-container": "#4a1c00",
+                        "on-primary-fixed-variant": "#004299",
+                        "primary-fixed": "#d9e2ff",
+                        "surface-container-lowest": "#0b0e15",
+                        "error-container": "#93000a",
+                        "surface-dim": "#10131b",
+                        "tertiary": "#ffb68f",
+                        "surface-variant": "#32353d",
+                        "surface-tint": "#afc6ff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "margin-mobile": "16px",
+                        "xl": "64px",
+                        "base": "4px",
+                        "sm": "16px",
+                        "lg": "40px",
+                        "margin-desktop": "48px",
+                        "xs": "8px",
+                        "md": "24px",
+                        "gutter": "24px"
+                    },
+                    "fontFamily": {
+                        "body-md": ["Inter"],
+                        "headline-lg": ["Plus Jakarta Sans"],
+                        "headline-lg-mobile": ["Plus Jakarta Sans"],
+                        "body-lg": ["Inter"],
+                        "label-sm": ["JetBrains Mono"],
+                        "display-lg": ["Plus Jakarta Sans"]
+                    },
+                    "fontSize": {
+                        "body-md": ["16px", { "lineHeight": "1.5", "fontWeight": "400" }],
+                        "headline-lg": ["32px", { "lineHeight": "1.2", "fontWeight": "600" }],
+                        "headline-lg-mobile": ["24px", { "lineHeight": "1.2", "fontWeight": "600" }],
+                        "body-lg": ["18px", { "lineHeight": "1.6", "fontWeight": "400" }],
+                        "label-sm": ["12px", { "lineHeight": "1.0", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "display-lg": ["48px", { "lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "700" }]
+                    }
+                },
+            },
+        }
+    </script>
+    <style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+
+        .code-accent-border {
+            border-left: 3px solid #7c3aed;
+        }
+
+        .bg-gradient-brand {
+            background: linear-gradient(135deg, #2e7dff 0%, #7c3aed 100%);
+        }
+
+        .text-gradient-brand {
+            background: linear-gradient(135deg, #2e7dff 0%, #7c3aed 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            background-color: #2e7dff;
+            border-radius: 50%;
+            display: inline-block;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(46, 125, 255, 0.7);
+            }
+
+            70% {
+                transform: scale(1);
+                box-shadow: 0 0 0 10px rgba(46, 125, 255, 0);
+            }
+
+            100% {
+                transform: scale(0.95);
+                box-shadow: 0 0 0 0 rgba(46, 125, 255, 0);
+            }
+        }
+    </style>
+</head>
+
+<body class="bg-background text-on-background font-body-md">
+    <!-- Header Navigation -->
+    <nav class="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-md border-b border-outline-variant">
+        <div class="flex justify-between items-center px-margin-desktop max-w-[1200px] mx-auto h-20">
+            <div class="flex items-center gap-xs">
+                <img alt="Universal MediaSync Logo" class="h-10 w-auto"
+                    src="favicon.png" />
+                <span class="font-headline-lg text-2xl font-bold tracking-tight text-on-surface">Universal <span
+                        class="text-gradient-brand">MediaSync</span></span>
+            </div>
+            <div class="hidden md:flex gap-md items-center">
+                <a class="text-on-surface-variant hover:text-primary transition-colors cursor-pointer"
+                    href="#for-users">For Users</a>
+                <a class="text-on-surface-variant hover:text-primary transition-colors cursor-pointer"
+                    href="#for-broadcasters">For Broadcasters</a>
+                <a class="text-on-surface-variant hover:text-primary transition-colors cursor-pointer"
+                    href="#potential">Capabilities</a>
+                <a class="text-on-surface-variant hover:text-primary transition-colors cursor-pointer"
+                    href="#how-it-works">Under the Hood</a>
+                <a class="text-on-surface-variant hover:text-primary transition-colors cursor-pointer"
+                    href="#get-involved">Get Involved</a>
+            </div>
+            <a href="https://github.com/CCMA-Enginyeria/Universal-HbbTV-MediaSync-App"
+                class="bg-gradient-brand text-white px-md py-sm rounded-lg font-bold transition-all active:scale-95 hover:opacity-90 inline-block">
+                View on GitHub
+            </a>
+        </div>
+    </nav>
+    <main class="pt-20">
+        <!-- Hero Section -->
+        <section
+            class="relative min-h-[700px] flex flex-col items-center justify-center text-center px-margin-mobile py-xl md:py-32 overflow-hidden">
+            <!-- Background Decoration -->
+            <div class="absolute inset-0 z-0 opacity-20 pointer-events-none">
+                <img alt="background" class="w-full h-full object-cover filter blur-3xl scale-110"
+                    src="https://lh3.googleusercontent.com/aida-public/AB6AXuArVhl6LOs5IM-Fa5h3v-48fUkXpddkRqIFZ2U7vYbnIFvyVyqwWXZtspnD0FCB5zR68HI_cq-KU418fuoewYFbp0IKQRSKBxT1G6HUXUi0o8FHHSkdh0x0i5RV8LYHZh1qNZwGgxqqfkmGZMvevC8-IXe_6Zt8EIWtEyCzxclRhKDQ5_TOOLJQo_qHaVqmIptiaPW4dmOIFwW-D-betFJQCyyzDm1xl8nj59RvzYSlR12lOs5bBUACnpGeVPGrmEqfohLNRfVzNsko" />
+            </div>
+            <div class="max-w-[900px] z-10">
+                <h1
+                    class="font-display-lg text-display-lg-mobile md:text-display-lg text-on-surface mb-md leading-tight">
+                    Universal HbbTV <span class="text-gradient-brand">MediaSync App</span>
+                </h1>
+                <p class="font-body-lg text-body-lg text-on-surface-variant mb-xl max-w-[650px] mx-auto">
+                    The single, open-source companion app for all broadcasters to enable perfectly synchronized
+                    second-screen experiences.
+                </p>
+                <div class="flex flex-col md:flex-row gap-md justify-center">
+                    <button
+                        class="bg-gradient-brand text-white px-xl py-md rounded-lg font-bold flex items-center justify-center gap-sm hover:shadow-[0_0_20px_rgba(46,125,255,0.4)] transition-all">
+                        <span class="material-symbols-outlined">code</span>
+                        View on GitHub
+                    </button>
+                </div>
+                <div class="mt-xl flex flex-col items-center gap-sm">
+                    <p class="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-widest">Coming Soon
+                        to</p>
+                    <div class="flex gap-md opacity-50 grayscale">
+                        <div
+                            class="flex items-center gap-xs px-md py-sm border border-outline-variant rounded-lg bg-surface-container">
+                            <span class="material-symbols-outlined text-2xl">phone_iphone</span>
+                            <div class="text-left">
+                                <p class="text-[10px] uppercase leading-none">Download on the</p>
+                                <p class="font-bold text-sm leading-none">App Store</p>
+                            </div>
+                        </div>
+                        <div
+                            class="flex items-center gap-xs px-md py-sm border border-outline-variant rounded-lg bg-surface-container">
+                            <span class="material-symbols-outlined text-2xl">play_arrow</span>
+                            <div class="text-left">
+                                <p class="text-[10px] uppercase leading-none">Get it on</p>
+                                <p class="font-bold text-sm leading-none">Google Play</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-lg flex flex-col items-center gap-md">
+                    <p class="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-widest">Supported
+                        by</p>
+                    <div class="flex flex-wrap items-center justify-center gap-md">
+                        <div
+                            class="flex h-16 min-w-[150px] items-center justify-center rounded-xl border border-outline-variant bg-surface/70 px-lg py-md shadow-lg shadow-black/10">
+                            <img alt="3Cat" class="h-8 w-auto object-contain" src="supporters/3Cat_POSITIU.png" />
+                        </div>
+                        <div
+                            class="flex h-16 min-w-[150px] items-center justify-center rounded-xl border border-outline-variant bg-surface/70 px-lg py-md shadow-lg shadow-black/10">
+                            <img alt="UHD Spain" class="h-8 w-auto object-contain" src="supporters/logo_uhd.png" />
+                        </div>
+                        <div
+                            class="flex h-16 min-w-[150px] items-center justify-center rounded-xl border border-outline-variant bg-surface/70 px-lg py-md shadow-lg shadow-black/10">
+                            <img alt="ZDF" class="h-8 w-auto object-contain" src="supporters/ZDF_logo.svg.png" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <!-- For Users Section -->
+        <section class="py-xl md:py-32 bg-surface-container-lowest" id="for-users">
+            <div class="max-w-[1200px] mx-auto px-margin-desktop">
+                <div class="text-center mb-xl">
+                    <h2 class="font-headline-lg text-headline-lg text-on-surface">Experience it in Seconds</h2>
+                    <p class="text-on-surface-variant mt-sm">Enjoy synchronized second-screen content effortlessly.</p>
+                </div>
+                <div class="mt-xl grid grid-cols-1 md:grid-cols-3 gap-lg">
+                    <div class="flex flex-col gap-sm">
+                        <p class="text-label-sm font-label-sm text-primary uppercase tracking-widest text-center">Step
+                            1: Discovery</p>
+                        <div
+                            class="rounded-xl overflow-hidden border border-outline-variant shadow-xl bg-surface-container-high aspect-[9/19.5] relative">
+                            <img alt="TVs on your network" class="w-full h-full object-cover"
+                                src="https://lh3.googleusercontent.com/aida-public/AB6AXuC1ul3ZGH87jfFp8eR1I5ZTEFVLsWcz7YC91_ZgqySLBNM7DJSCiRYRtmzi4p0lA7-Ysn4y1PA-o_k7TBSUpVPwRjG6yATp9sXVjD_cUDbdQDNZWyQ5_lmIA7FhFEqvUSt8xKvm9FPgTx9_4eExUqT7t1R6IzTAWXgDHZwKis_l6y58V-DedjsRK80L32dKIXgTcp2YmMbxJ09HYhf8CFSuSQpPaeReqpgxWNSSO8IBj6Yn0dPA1zBwsYfM3jKDRopDiPRuz5RL90dB" />
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-sm">
+                        <p class="text-label-sm font-label-sm text-primary uppercase tracking-widest text-center">Step
+                            2: Choose Track</p>
+                        <div
+                            class="rounded-xl overflow-hidden border border-outline-variant shadow-xl bg-surface-container-high aspect-[9/19.5] relative">
+                            <img alt="Audio and Video tracks" class="w-full h-full object-cover"
+                                src="https://lh3.googleusercontent.com/aida-public/AB6AXuADlSP1_eOpEjjavei1U7bglx4sOIFe_Rr6WqA8UyIK03uuk-JNNYmNe-8Nd391COYBdtjhZEKkZNuqBCtVgslAHxps_CTQH_0F6zTWqeLpuJKebFdWnHXLHUzY_LDS__J-WGdD-vH3WKK6D2ZUET8j4hO55nXov8K2nptmsB7DzH6i7DwlkTDqEprPN_AOxvFeIxuhIB0udhXtEz4Hwlxg-oJkxD0ijNxOnVhJ5bMoyNTsVkGkdY-CvDgUNawXjxY81ElYnyG6OfPK" />
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-sm">
+                        <p class="text-label-sm font-label-sm text-primary uppercase tracking-widest text-center">Step
+                            3: Playback</p>
+                        <div
+                            class="rounded-xl overflow-hidden border border-outline-variant shadow-xl bg-surface-container-high aspect-[9/19.5] relative">
+                            <img alt="Synchronized playing content" class="w-full h-full object-cover"
+                                src="https://lh3.googleusercontent.com/aida-public/AB6AXuB8nURTWdK3tF9fvq3ScYQPr9vHRj-ahVQxN_5C5RHUjQBkQg-Jm3A7jIY1MgZgmpQyb_KlETRtAB3IRvpJ5PyYeD3kI6OiQlE8e0LoRAtoh5QpAfBNdMsRyZJcp-AIIIBw5By_r62XIEheD3S6G8pLgwlDOhYn-pldo8ypxVs73xb5c3OvND7LAdErHe5obf2MBHarL5Xj5WoubvlgX7Hwaji-cYPjoqyVwN3AkDhK8XnFGR0ft_DWjkHFRdtDYwraM4CUvw_hbqM3" />
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-xl p-lg bg-surface-container rounded-xl border border-outline-variant text-center">
+                    <p class="text-on-surface-variant italic">
+                        The app can offer alternative audio, additional video, sign-language video, or other
+                        second-screen experiences, depending on what the broadcaster makes available.
+                    </p>
+                </div>
+            </div>
+        </section>
+        <!-- For Broadcasters Section -->
+        <section class="py-xl md:py-32 bg-surface" id="for-broadcasters">
+            <div class="max-w-[1200px] mx-auto px-margin-desktop">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-xl items-center">
+                    <div>
+                        <h2 class="font-headline-lg text-headline-lg text-on-surface mb-md">Zero-Friction Deployment
+                        </h2>
+                        <p class="text-on-surface-variant mb-lg font-body-lg text-primary font-bold">Zero custom apps to
+                            develop. Zero complex infrastructure to configure.</p>
+                        <p class="text-on-surface-variant mb-lg">
+                            Broadcasters only need to drop in a single, lightweight HbbTV code snippet to point to the companion DASH MPD. The app handles the rest: it automatically discovers the TV over the local network, loads the manifest, and instantly synchronizes with the TV content.
+                        </p>
+                        <div class="flex flex-wrap gap-md mb-xl">
+                            <div
+                                class="flex items-center gap-xs bg-surface-container-high px-md py-sm rounded-lg border border-outline-variant">
+                                <span class="material-symbols-outlined text-primary">bolt</span>
+                                <span class="font-bold text-on-surface">Zero Configuration</span>
+                            </div>
+                            <div
+                                class="flex items-center gap-xs bg-surface-container-high px-md py-sm rounded-lg border border-outline-variant">
+                                <span class="material-symbols-outlined text-primary">public</span>
+                                <span class="font-bold text-on-surface">Universal reach</span>
+                            </div>
+                            <div
+                                class="flex items-center gap-xs bg-surface-container-high px-md py-sm rounded-lg border border-outline-variant">
+                                <span class="material-symbols-outlined text-primary">devices_other</span>
+                                <span class="font-bold text-on-surface">No dedicated app required</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-surface-container-low p-xl rounded-xl border border-outline-variant">
+                        <h4 class="font-bold text-on-surface mb-lg uppercase tracking-widest text-xs">Initiative
+                            Supporters</h4>
+                        <div class="grid grid-cols-3 gap-md mb-xl opacity-70 items-center">
+                            <div class="h-12 flex items-center justify-center"><img alt="3Cat"
+                                    class="h-full w-auto object-contain" src="supporters/3Cat_POSITIU.png" />
+                            </div>
+                            <div class="h-12 flex items-center justify-center"><img alt="UHD Spain"
+                                    class="h-full w-auto object-contain" src="supporters/logo_uhd.png" />
+                            </div>
+                            <div class="h-12 flex items-center justify-center"><img alt="ZDF"
+                                    class="h-full w-auto object-contain" src="supporters/ZDF_logo.svg.png" />
+                            </div>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-on-surface-variant mb-md">Want to support the initiative?</p>
+                            <a class="inline-block bg-gradient-brand text-white px-xl py-md rounded-lg font-bold transition-all hover:scale-105 active:scale-95 shadow-lg"
+                                href="mailto:rbermudez.h@3cat.cat">
+                                Contact us
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <section class="py-xl md:py-32 bg-surface-container-lowest" id="use-cases">
+            <div class="max-w-[1200px] mx-auto px-margin-desktop">
+                <div class="text-center mb-xl">
+                    <h2 class="font-headline-lg text-headline-lg text-on-surface mb-md">Use Cases: Unlocking Next-Gen
+                        Multi-Device Experiences</h2>
+                    <p class="text-on-surface-variant max-w-[700px] mx-auto font-body-lg">Demonstrate the practical
+                        value of HbbTV MediaSync by delivering seamless, personalized, accessible, and immersive
+                        services without any friction for the viewer.</p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-lg mb-xl">
+                    <!-- Card 1: Audio -->
+                    <div
+                        class="bg-surface-container-high p-lg rounded-xl border border-outline-variant flex flex-col gap-md">
+                        <div class="flex items-center gap-sm">
+                            <span class="material-symbols-outlined text-primary text-3xl">headphones</span>
+                            <h3 class="font-bold text-on-surface">Personalized Audio Experiences</h3>
+                        </div>
+                        <ul class="space-y-sm text-sm text-on-surface-variant">
+                            <li class="flex items-center gap-xs"><span
+                                    class="w-1.5 h-1.5 rounded-full bg-primary"></span>Private Listening</li>
+                            <li class="flex items-center gap-xs"><span
+                                    class="w-1.5 h-1.5 rounded-full bg-primary"></span>Alternative Audio Languages</li>
+                            <li class="flex items-center gap-xs"><span
+                                    class="w-1.5 h-1.5 rounded-full bg-primary"></span>High-Fidelity Audio</li>
+                        </ul>
+                    </div>
+                    <!-- Card 2: Accessibility -->
+                    <div
+                        class="bg-surface-container-high p-lg rounded-xl border border-outline-variant flex flex-col gap-md">
+                        <div class="flex items-center gap-sm">
+                            <span class="material-symbols-outlined text-primary text-3xl">accessibility_new</span>
+                            <h3 class="font-bold text-on-surface">Universal Accessibility</h3>
+                        </div>
+                        <ul class="space-y-sm text-sm text-on-surface-variant">
+                            <li class="flex items-center gap-xs"><span
+                                    class="w-1.5 h-1.5 rounded-full bg-primary"></span>Alternative Audio Tracks</li>
+                            <li class="flex items-center gap-xs"><span
+                                    class="w-1.5 h-1.5 rounded-full bg-primary"></span>Audio Description on Smart
+                                Glasses</li>
+                            <li class="flex items-center gap-xs"><span
+                                    class="w-1.5 h-1.5 rounded-full bg-primary"></span>Sign Language on Second Screen</li>
+                        </ul>
+                    </div>
+                    <!-- Card 3: Mobility -->
+                    <div
+                        class="bg-surface-container-high p-lg rounded-xl border border-outline-variant flex flex-col gap-md">
+                        <div class="flex items-center gap-sm">
+                            <span class="material-symbols-outlined text-primary text-3xl">devices</span>
+                            <h3 class="font-bold text-on-surface">Home Mobility &amp; Enriched Content</h3>
+                        </div>
+                        <ul class="space-y-sm text-sm text-on-surface-variant">
+                            <li class="flex items-center gap-xs"><span
+                                    class="w-1.5 h-1.5 rounded-full bg-primary"></span>Private Views &amp; Continuity
+                            </li>
+                            <li class="flex items-center gap-xs"><span
+                                    class="w-1.5 h-1.5 rounded-full bg-primary"></span>Alternative Camera Views</li>
+                            <li class="flex items-center gap-xs"><span
+                                    class="w-1.5 h-1.5 rounded-full bg-primary"></span>XR &amp; Next-Gen Ecosystems</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="text-center">
+                    <a class="inline-block bg-gradient-brand text-white px-xl py-md rounded-lg font-bold transition-all hover:scale-105 active:scale-95 shadow-lg"
+                        href="mailto:rbermudez.h@3cat.cat">
+                        Another use case in mind?<br/>Contact us!
+                    </a>
+                </div>
+            </div>
+        </section>
+        <!-- Potential & Features -->
+        <section class="py-xl md:py-32 bg-surface" id="potential">
+            <div class="max-w-[1200px] mx-auto px-margin-desktop">
+                <div class="text-center mb-xl">
+                    <h2 class="font-headline-lg text-headline-lg text-on-surface">Application Capabilities</h2>
+                    <p class="text-on-surface-variant mt-sm">Key built-in features engineered for seamless companion screen experiences.</p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-lg">
+                    <!-- Card 1: Multi-language -->
+                    <div class="bg-surface-container-low rounded-xl p-lg border border-outline-variant hover:border-primary transition-colors flex flex-col gap-md group">
+                        <span class="material-symbols-outlined text-primary text-4xl group-hover:scale-110 transition-transform">language</span>
+                        <div>
+                            <h3 class="font-bold text-on-surface mb-xs">Multi-language Support</h3>
+                            <p class="text-on-surface-variant text-sm">Pre-localized for 7 languages out of the box: Catalan, Spanish, Basque, English, German, Italian, and French.</p>
+                        </div>
+                    </div>
+                    <!-- Card 2: Audio in Background -->
+                    <div class="bg-surface-container-low rounded-xl p-lg border border-outline-variant hover:border-primary transition-colors flex flex-col gap-md group">
+                        <span class="material-symbols-outlined text-primary text-4xl group-hover:scale-110 transition-transform">hearing</span>
+                        <div>
+                            <h3 class="font-bold text-on-surface mb-xs">Background Audio</h3>
+                            <p class="text-on-surface-variant text-sm">Minimize the application or lock your device while keeping the fully synchronized audio track playing in the background.</p>
+                        </div>
+                    </div>
+                    <!-- Card 3: Fullscreen Video -->
+                    <div class="bg-surface-container-low rounded-xl p-lg border border-outline-variant hover:border-primary transition-colors flex flex-col gap-md group">
+                        <span class="material-symbols-outlined text-primary text-4xl group-hover:scale-110 transition-transform">fullscreen</span>
+                        <div>
+                            <h3 class="font-bold text-on-surface mb-xs">Fullscreen Video</h3>
+                            <p class="text-on-surface-variant text-sm">Expand complementary video tracks, alternative angles, or sign-language feeds into a fully synchronized fullscreen view.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Under the Hood -->
+        <section class="py-xl md:py-32 bg-surface-container-lowest relative overflow-hidden" id="how-it-works">
+            <div class="max-w-[1200px] mx-auto px-margin-desktop">
+                <div class="text-center mb-xl">
+                    <h2 class="font-headline-lg text-headline-lg text-on-surface">What happens under the hood?</h2>
+                    <p class="text-on-surface-variant mt-sm">MediaSync keeps discovery, manifest parsing, user choice, and playback timing in one continuous
+                        flow, so the companion device can render the right component at the same programme time as the
+                        TV.</p>
+                </div>
+                <div class="grid grid-cols-1 gap-xl items-center">
+                    <div class="space-y-md relative">
+                        <div class="absolute left-6 top-8 bottom-8 w-px bg-outline-variant hidden sm:block"></div>
+                        <div
+                            class="flex gap-md relative bg-surface-container-low/70 border border-outline-variant rounded-xl p-md">
+                            <div
+                                class="w-12 h-12 rounded-full bg-gradient-brand text-white flex items-center justify-center font-bold z-10 shadow-lg flex-shrink-0">
+                                1</div>
+                            <div>
+                                <h4 class="font-bold text-on-surface">The mobile scans for MediaSync devices</h4>
+                                <p class="text-on-surface-variant">The app searches the local network for HbbTV
+                                    terminals
+                                    that advertise MediaSync capability.</p>
+                            </div>
+                        </div>
+                        <div
+                            class="flex gap-md relative bg-surface-container-low/70 border border-outline-variant rounded-xl p-md">
+                            <div
+                                class="w-12 h-12 rounded-full bg-gradient-brand text-white flex items-center justify-center font-bold z-10 shadow-lg flex-shrink-0">
+                                2</div>
+                            <div>
+                                <h4 class="font-bold text-on-surface">The TV publishes the target MPD</h4>
+                                <p class="text-on-surface-variant">The HbbTV app enables MediaSync and shares which DASH
+                                    MPD the second device should receive.</p>
+                            </div>
+                        </div>
+                        <div
+                            class="flex gap-md relative bg-surface-container-low/70 border border-outline-variant rounded-xl p-md">
+                            <div
+                                class="w-12 h-12 rounded-full bg-gradient-brand text-white flex items-center justify-center font-bold z-10 shadow-lg flex-shrink-0">
+                                3</div>
+                            <div>
+                                <h4 class="font-bold text-on-surface">The mobile reads the manifest components</h4>
+                                <p class="text-on-surface-variant">Once it receives the MPD, the app parses every
+                                    available component: audio, video, accessibility, language, and role metadata.</p>
+                            </div>
+                        </div>
+                        <div
+                            class="flex gap-md relative bg-surface-container-low/70 border border-outline-variant rounded-xl p-md">
+                            <div
+                                class="w-12 h-12 rounded-full bg-gradient-brand text-white flex items-center justify-center font-bold z-10 shadow-lg flex-shrink-0">
+                                4</div>
+                            <div>
+                                <h4 class="font-bold text-on-surface">The user chooses what to watch or hear</h4>
+                                <p class="text-on-surface-variant">Viewers select the component they need, from an
+                                    alternate audio track to a sign-language video or companion feed.</p>
+                            </div>
+                        </div>
+                        <div
+                            class="flex gap-md relative bg-surface-container-low/70 border border-outline-variant rounded-xl p-md">
+                            <div
+                                class="w-12 h-12 rounded-full bg-gradient-brand text-white flex items-center justify-center font-bold z-10 shadow-lg flex-shrink-0">
+                                5</div>
+                            <div>
+                                <h4 class="font-bold text-on-surface">DVB-CSS keeps playback within 20 ms</h4>
+                                <p class="text-on-surface-variant">CSS-CII, CSS-WC, and CSS-TS endpoints align the
+                                    second
+                                    device to the TV timeline with less than 20 ms of delay.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <!-- Get Involved -->
+        <section class="py-xl md:py-32 bg-surface text-on-surface border-y border-outline-variant" id="get-involved">
+            <div class="max-w-[1200px] mx-auto px-margin-desktop text-center">
+                <h2 class="font-headline-lg text-headline-lg mb-md">Community Driven Innovation</h2>
+                <p class="text-on-surface-variant max-w-[700px] mx-auto mb-xl font-body-lg">
+                    Maintenance is open and community-driven. Any HbbTV member is welcome to propose and contribute new
+                    features to the core repository.
+                </p>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-lg mb-xl">
+                    <div
+                        class="bg-surface-container-high p-lg rounded-xl border border-outline-variant group hover:border-primary transition-colors">
+                        <span
+                            class="material-symbols-outlined text-primary text-4xl mb-sm group-hover:scale-110 transition-transform">fork_left</span>
+                        <h4 class="font-bold mb-xs">Pull Requests</h4>
+                        <p class="text-sm text-on-surface-variant">Contribute bug fixes or new device discovery
+                            adapters.</p>
+                    </div>
+                    <div
+                        class="bg-surface-container-high p-lg rounded-xl border border-outline-variant group hover:border-primary transition-colors">
+                        <span
+                            class="material-symbols-outlined text-primary text-4xl mb-sm group-hover:scale-110 transition-transform">bug_report</span>
+                        <h4 class="font-bold mb-xs">Report Issues</h4>
+                        <p class="text-sm text-on-surface-variant">Help us identify interoperability challenges across
+                            terminals.</p>
+                    </div>
+                    <div
+                        class="bg-surface-container-high p-lg rounded-xl border border-outline-variant group hover:border-primary transition-colors">
+                        <span
+                            class="material-symbols-outlined text-primary text-4xl mb-sm group-hover:scale-110 transition-transform">groups</span>
+                        <h4 class="font-bold mb-xs">Discussion</h4>
+                        <p class="text-sm text-on-surface-variant">Join the HbbTV working groups to define the future of
+                            second-screen.</p>
+                    </div>
+                </div>
+                <div class="flex flex-col md:flex-row gap-md justify-center">
+                    <a href="https://github.com/CCMA-Enginyeria/Universal-HbbTV-MediaSync-App" class="bg-gradient-brand text-white px-xl py-md rounded-lg font-bold transition-all hover:scale-105 active:scale-95 shadow-lg"
+                        target="_blank" rel="noopener noreferrer">Contribute Now</a>
+                </div>
+            </div>
+        </section>
+    </main>
+    <!-- Footer -->
+    <footer class="bg-surface-container-lowest border-t border-outline-variant">
+        <div
+            class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-xl px-margin-desktop py-xl max-w-[1200px] mx-auto">
+            <div class="col-span-1 md:col-span-2">
+                <div class="flex items-center gap-xs mb-md">
+                    <img alt="Universal MediaSync Logo" class="h-8 w-auto"
+                        src="favicon.png" />
+                    <span class="font-headline-lg text-xl font-bold text-on-surface">Universal <span
+                            class="text-gradient-brand">MediaSync</span></span>
+                </div>
+                <p class="text-on-surface-variant max-w-sm mb-md text-sm">
+                    The common companion app for synchronized HbbTV experiences. Enabling broadcasters to deliver
+                    high-quality second-screen content without fragmented development.
+                </p>
+                <p class="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-widest text-[10px]">Â©
+                    2026 CCNA S,A. Released under MIT License.</p>
+            </div>
+            <!--div>
+                <h5 class="font-bold text-primary mb-md uppercase text-xs tracking-widest">Resources</h5>
+                <ul class="space-y-sm text-on-surface-variant text-sm">
+                    <li class=""><a class="hover:text-primary transition-colors" href="#">Documentation</a></li>
+                    <li class=""><a class="hover:text-primary transition-colors" href="#">HbbTV Standard</a></li>
+                    <li class=""><a class="hover:text-primary transition-colors" href="#">GitHub Issues</a></li>
+                    <li class=""><a class="hover:text-primary transition-colors" href="#">CCMA Engineering</a></li>
+                </ul>
+            </div>
+            <div>
+                <h5 class="font-bold text-primary mb-md uppercase text-xs tracking-widest">Legal</h5>
+                <ul class="space-y-sm text-on-surface-variant text-sm">
+                    <li class=""><a class="hover:text-primary transition-colors" href="#">Privacy Policy</a></li>
+                    <li class=""><a class="hover:text-primary transition-colors" href="#">MIT License</a></li>
+                    <li class=""><a class="hover:text-primary transition-colors" href="#">Terms of Use</a></li>
+                </ul>
+            </div-->
+        </div>
+    </footer>
+    <script>
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    window.scrollTo({
+                        top: target.offsetTop - 80,
+                        behavior: 'smooth'
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>
