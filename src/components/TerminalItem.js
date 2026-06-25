@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Animated,
+  AppState,
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import Video from 'react-native-video';
@@ -15,6 +16,7 @@ import MpdParserService from '../services/MpdParserService';
 import config from '../utils/config';
 import theme from '../theme';
 import { MaterialIcons } from '@expo/vector-icons';
+import { startForegroundSync, stopForegroundSync } from '../utils/ForegroundSync';
 
 export default function TerminalItem({ terminal, onPress, expanded, onToggleExpand }) {
   const { t } = useTranslation();
@@ -48,6 +50,18 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   const retryTimeoutRef = useRef(null);
   const setupAndConnectRef = useRef(null);
   const isActiveRef = useRef(false);
+
+  // Live mirrors of state used inside the AppState listener (avoids stale closures).
+  const positionRef = useRef(null);
+  const streamInfoRef = useRef(null);
+  const selectedAudioRef = useRef(null);
+  const selectedVideoRef = useRef(null);
+  positionRef.current = position;
+  streamInfoRef.current = streamInfo;
+  selectedAudioRef.current = selectedAudio;
+  selectedVideoRef.current = selectedVideo;
+  const syncStateRef = useRef(SyncState.DISCONNECTED);
+  syncStateRef.current = syncState;
 
   // Animation refs for wave bars
   const waveBarAnimsRef = useRef([...Array(4)].map(() => new Animated.Value(1)));
@@ -271,6 +285,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
 
     return () => {
       isActiveRef.current = false;
+      stopForegroundSync();
       if (connectTimeoutRef.current) {
         clearTimeout(connectTimeoutRef.current);
         connectTimeoutRef.current = null;
@@ -298,6 +313,54 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       lastContentIdRef.current = null;
     };
   }, [expanded, hasMediaSync, terminal]);
+
+  // Mantener la sincronización al volver de background. La reproducción y los
+  // timers de sync siguen vivos gracias al foreground service / background audio,
+  // pero al volver a primer plano forzamos un recálculo y reposicionamos el
+  // player activo a la posición actual de la TV para corregir cualquier deriva.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState !== 'active' || !isActiveRef.current) return;
+      // Si la sincronización se cayó mientras estábamos en background (p. ej. el
+      // SO cerró los WebSockets/UDP), forzamos una reconexión limpia.
+      if (syncStateRef.current !== SyncState.SYNCHRONIZED) {
+        if (retryTimeoutRef.current) {
+          clearTimeout(retryTimeoutRef.current);
+          retryTimeoutRef.current = null;
+        }
+        if (setupAndConnectRef.current) {
+          setupAndConnectRef.current();
+        }
+        return;
+      }
+      // Si seguía sincronizado, solo corregimos la posición y la deriva.
+      lastSyncTimeRef.current = 0;
+      lastVideoSyncTimeRef.current = 0;
+      const pos = positionRef.current;
+      if (!pos || pos.positionSeconds == null || streamInfoRef.current?.isLive) return;
+      if (selectedVideoRef.current && videoPlayerRef.current) {
+        videoPlayerRef.current.seek(pos.positionSeconds);
+      } else if (selectedAudioRef.current && audioPlayerRef.current) {
+        audioPlayerRef.current.seek(pos.positionSeconds);
+      }
+    });
+    return () => subscription.remove();
+  }, []);
+
+  // Mantener vivo el proceso en background con un foreground service propio (sin
+  // controles de media: todo el control se hace en la TV). Se arranca mientras
+  // la app está en primer plano (al iniciar la reproducción) para cumplir la
+  // restricción de Android, y se detiene al parar.
+  useEffect(() => {
+    if (audioPlaying || videoPlaying) {
+      startForegroundSync(
+        terminal.getFriendlyName(),
+        t('discovery.syncingWithTv', { defaultValue: 'Sincronizando con la TV' })
+      );
+    } else {
+      stopForegroundSync();
+    }
+  }, [audioPlaying, videoPlaying, terminal, t]);
 
   // Cargar MPD
   const loadMpd = useCallback(async (url) => {
@@ -638,34 +701,50 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
 
                 {isSelected && mpdUrl && (
                   <View style={styles.videoPlayerSection}>
-                    <Video
-                      ref={videoPlayerRef}
-                      source={{ uri: mpdUrl, type: 'mpd' }}
-                      paused={!videoPlaying || !position?.isPlaying}
-                      rate={videoPlaying && position?.isPlaying ? videoRate : 1.0}
-                      volume={volume}
-                      resizeMode="contain"
-                      selectedVideoTrack={
-                        selectedVideo.videoTrackIndex != null
-                          ? { type: 'index', value: selectedVideo.videoTrackIndex }
-                          : { type: 'auto' }
-                      }
-                      onLoad={() => {
-                        if (position?.positionSeconds && videoPlayerRef.current && !streamInfo?.isLive) {
-                          videoPlayerRef.current.seek(position.positionSeconds);
+                    <View style={styles.videoSurfaceWrapper}>
+                      <Video
+                        ref={videoPlayerRef}
+                        source={{ uri: mpdUrl, type: 'mpd' }}
+                        paused={!videoPlaying || !position?.isPlaying}
+                        rate={videoPlaying && position?.isPlaying ? videoRate : 1.0}
+                        volume={volume}
+                        resizeMode="contain"
+                        controls={false}
+                        playInBackground={true}
+                        playWhenInactive={true}
+                        showNotificationControls={false}
+                        ignoreSilentSwitch="ignore"
+                        fullscreenOrientation="landscape"
+                        fullscreenAutorotate={true}
+                        selectedVideoTrack={
+                          selectedVideo.videoTrackIndex != null
+                            ? { type: 'index', value: selectedVideo.videoTrackIndex }
+                            : { type: 'auto' }
                         }
-                      }}
-                      onProgress={({ currentTime, currentPlaybackTime }) => {
-                        videoCurrentTimeRef.current = currentTime;
-                        videoCurrentPlaybackTimeRef.current = currentPlaybackTime / 1000;
-                      }}
-                      onError={(err) => {
-                        console.error('Error reproduint vídeo:', err);
-                        setVideoPlaying(false);
-                      }}
-                      progressUpdateInterval={250}
-                      style={styles.videoSurface}
-                    />
+                        onLoad={() => {
+                          if (position?.positionSeconds && videoPlayerRef.current && !streamInfo?.isLive) {
+                            videoPlayerRef.current.seek(position.positionSeconds);
+                          }
+                        }}
+                        onProgress={({ currentTime, currentPlaybackTime }) => {
+                          videoCurrentTimeRef.current = currentTime;
+                          videoCurrentPlaybackTimeRef.current = currentPlaybackTime / 1000;
+                        }}
+                        onError={(err) => {
+                          console.error('Error reproduint vídeo:', err);
+                          setVideoPlaying(false);
+                        }}
+                        progressUpdateInterval={250}
+                        style={styles.videoSurface}
+                      />
+                      <TouchableOpacity
+                        style={styles.fullscreenButton}
+                        onPress={() => videoPlayerRef.current?.presentFullscreenPlayer()}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <MaterialIcons name="fullscreen" size={22} color="#fff" />
+                      </TouchableOpacity>
+                    </View>
                     <View style={styles.volumeRow}>
                       <MaterialIcons name="volume-down" size={14} color={theme.colors.onSurfaceVariant} />
                       <Slider
@@ -710,6 +789,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
               volume={volume}
               playInBackground={true}
               playWhenInactive={true}
+              showNotificationControls={false}
               ignoreSilentSwitch="ignore"
               selectedAudioTrack={
                 selectedAudio.audioTrackIndex != null
@@ -819,6 +899,21 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
     borderRadius: theme.radius.sm,
     marginBottom: theme.spacing.sm,
+  },
+  videoSurfaceWrapper: {
+    position: 'relative',
+    width: '100%',
+  },
+  fullscreenButton: {
+    position: 'absolute',
+    bottom: theme.spacing.sm + 8,
+    right: 8,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   audioRow: {
     flexDirection: 'row',

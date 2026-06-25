@@ -22,6 +22,17 @@ module.exports = {
       './plugins/withReleaseSigning',
       'expo-localization',
       [
+        'react-native-video',
+        {
+          // Register the Android foreground service (PlaybackService) and the
+          // media notification so companion audio/video keeps playing while the
+          // app is in the background, which in turn keeps the DVB-CSS sync
+          // timers and sockets alive.
+          enableBackgroundAudio: true,
+          enableNotificationControls: true,
+        },
+      ],
+      [
         'expo-splash-screen',
         {
           ios: {
@@ -72,6 +83,11 @@ module.exports = {
         // Keep companion audio playing while the app is in the background.
         'android.permission.FOREGROUND_SERVICE',
         'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK',
+        // Required on Android 13+ so the media foreground-service notification is
+        // shown; without it the OS may suspend the process (and the DVB-CSS
+        // WebSockets/UDP sockets) as soon as the app goes to the background.
+        'android.permission.POST_NOTIFICATIONS',
+        'android.permission.WAKE_LOCK',
       ],
       usesCleartextTraffic: true,
     },
