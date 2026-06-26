@@ -19,15 +19,52 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#000;}
 <script>
 var v=document.getElementById('v');
 var s=document.getElementById('s');
+var SEEK_STEP_SECONDS=10;
 function log(m){console.log(m);s.textContent=m;}
 
 window.onload=function(){
   if(typeof hbbtvlib_initialize!=='undefined'){hbbtvlib_initialize();hbbtvlib_show();}
+  registerSeekKeys();
   v.addEventListener('canplay',onReady,{once:true});
   v.addEventListener('error',function(){log('Video error');});
   v.load();
   v.play().catch(function(e){log('Autoplay blocked: '+e.message);});
 };
+
+function registerSeekKeys(){
+  document.addEventListener('keydown',function(e){
+    var key=e.key||'';
+    var code=e.keyCode||e.which;
+    if(key==='ArrowLeft'||code===37){
+      seekBy(-SEEK_STEP_SECONDS);
+      e.preventDefault();
+      e.stopPropagation();
+    }else if(key==='ArrowRight'||code===39){
+      seekBy(SEEK_STEP_SECONDS);
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  });
+}
+
+function seekBy(deltaSeconds){
+  if(!v||v.readyState===0){return;}
+  var target=v.currentTime+deltaSeconds;
+  var minTime=0;
+  var maxTime=(isFinite(v.duration)&&v.duration>0)?v.duration:null;
+  if(v.seekable&&v.seekable.length){
+    minTime=v.seekable.start(0);
+    if(maxTime===null){maxTime=v.seekable.end(v.seekable.length-1);}
+  }
+  if(maxTime!==null){target=Math.min(target,maxTime);}
+  target=Math.max(minTime,target);
+  try{
+    v.currentTime=target;
+    log('Seek '+(deltaSeconds>0?'+':'')+deltaSeconds+'s -> '+Math.floor(target)+'s');
+  }catch(e){
+    log('Seek error: '+e.message);
+  }
+}
 
 var ms=null;
 function onReady(){
