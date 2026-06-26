@@ -16,7 +16,7 @@ import MpdParserService from '../services/MpdParserService';
 import config from '../utils/config';
 import theme from '../theme';
 import { MaterialIcons } from '@expo/vector-icons';
-import { startForegroundSync, stopForegroundSync } from '../utils/ForegroundSync';
+import { startForegroundSync, stopForegroundSync, addHeartbeatListener } from '../utils/ForegroundSync';
 
 export default function TerminalItem({ terminal, onPress, expanded, onToggleExpand }) {
   const { t } = useTranslation();
@@ -57,6 +57,9 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   const retryTimeoutRef = useRef(null);
   const setupAndConnectRef = useRef(null);
   const isActiveRef = useRef(false);
+  // Momento del último intento de reconexión disparado por el heartbeat nativo
+  // (para no reintentar más a menudo que RETRY_DELAY en segundo plano).
+  const lastReconnectAttemptRef = useRef(0);
 
   // Live mirrors of state used inside the AppState listener (avoids stale closures).
   const positionRef = useRef(null);
@@ -225,10 +228,30 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     }
   }, []);
 
+  // Detiene de forma imperativa el player activo (audio o vídeo). Se usa cuando
+  // se cierra la conexión: en segundo plano el ciclo setState -> render no es
+  // fiable, así que `paused`/desmontaje declarativo puede no aplicarse y el
+  // audio seguiría sonando. Llamando a `pause()` sobre el ref nativo paramos el
+  // sonido inmediatamente aunque la app esté en background, mientras se espera
+  // una nueva conexión.
+  const stopActivePlayers = useCallback(() => {
+    try {
+      audioPlayerRef.current?.pause?.();
+    } catch (e) {
+      // ignore
+    }
+    try {
+      videoPlayerRef.current?.pause?.();
+    } catch (e) {
+      // ignore
+    }
+  }, []);
+
 
   // Funció de connexió amb timeout i reintents infinits
   setupAndConnectRef.current = () => {
     if (!isActiveRef.current) return;
+
 
     if (connectTimeoutRef.current) {
       clearTimeout(connectTimeoutRef.current);
@@ -273,6 +296,10 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     service.on('state-change', ({ newState }) => {
       if (!isActiveRef.current) return;
       if (syncServiceRef.current !== service) return;
+      // Actualizar también el ref de forma síncrona: en background el render
+      // puede no ejecutarse, y el driver de reconexión (heartbeat) necesita el
+      // estado actual sin depender del ciclo de render.
+      syncStateRef.current = newState;
       setSyncState(newState);
     });
 
@@ -305,6 +332,8 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       if (!isActiveRef.current) return;
       if (syncServiceRef.current !== service) return;
       console.error(`Error en ${svc}:`, err);
+      // Cortar el sonido al perder la conexión (robusto en background).
+      stopActivePlayers();
       setError(getErrorMessage(err));
       setIsLoading(false);
       if (connectTimeoutRef.current) {
@@ -321,6 +350,11 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     service.on('disconnected', () => {
       if (!isActiveRef.current) return;
       if (syncServiceRef.current !== service) return;
+      // Detener el audio/vídeo inmediatamente (también en background, donde el
+      // desmontaje declarativo del <Video> puede no aplicarse) y quedar a la
+      // espera de una nueva conexión.
+      stopActivePlayers();
+      syncStateRef.current = SyncState.DISCONNECTED;
       setSyncState(SyncState.DISCONNECTED);
       setIsLoading(false);
       setAudioPlaying(false);
@@ -443,6 +477,29 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     });
     return () => subscription.remove();
   }, [applyPositionToActivePlayer]);
+
+  // Reconexión en segundo plano dirigida por el heartbeat nativo del foreground
+  // service. React Native pausa los `setTimeout` cuando la app está en
+  // background, por lo que el reintento basado en timers no se ejecuta una vez
+  // que se cierran los sockets y se detiene el audio (no hay actividad nativa
+  // que despierte el hilo JS). El heartbeat nativo sí despierta el JS de forma
+  // periódica, así que lo usamos para reintentar la conexión mientras no
+  // estemos sincronizados (con throttle de RETRY_DELAY).
+  useEffect(() => {
+    if (!expanded || !hasMediaSync) return;
+    const sub = addHeartbeatListener(() => {
+      if (!isActiveRef.current) return;
+      const s = syncStateRef.current;
+      if (s !== SyncState.DISCONNECTED && s !== SyncState.ERROR) return;
+      const now = Date.now();
+      if (now - lastReconnectAttemptRef.current < RETRY_DELAY) return;
+      lastReconnectAttemptRef.current = now;
+      if (setupAndConnectRef.current) {
+        setupAndConnectRef.current();
+      }
+    });
+    return () => sub.remove();
+  }, [expanded, hasMediaSync]);
 
   // Mantener vivo el proceso en background con un foreground service propio (sin
   // controles de media: todo el control se hace en la TV). Se arranca mientras

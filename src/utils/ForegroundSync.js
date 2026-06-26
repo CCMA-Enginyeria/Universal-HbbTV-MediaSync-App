@@ -52,4 +52,21 @@ export function stopForegroundSync() {
   }
 }
 
-export default { startForegroundSync, stopForegroundSync, isAvailable };
+/**
+ * Subscribe to the native heartbeat emitted by the foreground service. The
+ * heartbeat wakes the JS thread in the background (where React Native pauses
+ * `setTimeout`), allowing reconnection logic to run while backgrounded.
+ * @param {() => void} callback
+ * @returns {{ remove: () => void }}
+ */
+export function addHeartbeatListener(callback) {
+  if (!isAvailable) return { remove: () => {} };
+  try {
+    return nativeModule.addListener('onHeartbeat', callback);
+  } catch (e) {
+    console.warn('addHeartbeatListener error:', e?.message);
+    return { remove: () => {} };
+  }
+}
+
+export default { startForegroundSync, stopForegroundSync, addHeartbeatListener, isAvailable };
