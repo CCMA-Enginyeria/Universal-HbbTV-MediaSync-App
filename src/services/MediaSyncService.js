@@ -306,6 +306,25 @@ export class MediaSyncService extends EventEmitter {
 
     this.tsService.on('control-timestamp', (ct) => {
       this.emit('control-timestamp', ct);
+
+      // IMPORTANT (background sync): els missatges TS arriben per WebSocket
+      // entrant, que desperta el callback JS encara que l'app estigui en segon
+      // pla. En canvi, el `setInterval` de `startUpdateTimer()` (i el del WC-UDP)
+      // queda congelat per Android en background. Per això emetem `position-update`
+      // directament aquí, de forma orientada a events, perquè el reposicionament
+      // del player funcioni també amb l'app minimitzada.
+      //
+      // No depenem d'`isSynchronized()` (que requereix WC fresc, congelat en
+      // background): n'hi ha prou que el timeline TS estigui disponible per
+      // calcular una posició. El wall clock local continua avançant, i cada
+      // control timestamp porta el seu propi contentTime/wallClockTime.
+      if (this.tsService?.isTimelineAvailable()) {
+        this.syncQuality.lastUpdate = Date.now();
+        const position = this.getCurrentPosition();
+        if (position) {
+          this.emit('position-update', position);
+        }
+      }
     });
 
     this.tsService.connect();

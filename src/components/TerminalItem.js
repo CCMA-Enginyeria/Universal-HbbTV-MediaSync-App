@@ -35,6 +35,13 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   const [mpdUrl, setMpdUrl] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  // Intención de reproducción activa: recuerda el componente (audio/vídeo) que
+  // el usuario está reproduciendo para poder reanudarlo automáticamente cuando
+  // se carga un nuevo MPD (reconexión o cambio de contenido). Se identifica por
+  // idioma (iso) + role, ya que el índice de pista puede variar entre MPDs.
+  // También mantiene vivo el foreground service durante la ventana de
+  // reconexión para que la reanudación funcione con la app en segundo plano.
+  const [playbackIntent, setPlaybackIntent] = useState(null);
 
   const syncServiceRef = useRef(null);
   const audioPlayerRef = useRef(null);
@@ -62,6 +69,23 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   selectedVideoRef.current = selectedVideo;
   const syncStateRef = useRef(SyncState.DISCONNECTED);
   syncStateRef.current = syncState;
+  // Espejo de la intención de reproducción para poder leerla desde `loadMpd`
+  // (useCallback con deps vacías) sin closures obsoletos.
+  const playbackIntentRef = useRef(null);
+  playbackIntentRef.current = playbackIntent;
+
+  // Mirrors adicionales usados por el corrector imperativo (sincronización en
+  // background): permiten aplicar la corrección al player desde el handler del
+  // evento `position-update`, sin depender del ciclo setState/useEffect que en
+  // segundo plano puede no ejecutarse con la cadencia esperada.
+  const audioPlayingRef = useRef(false);
+  const videoPlayingRef = useRef(false);
+  const audioRateRef = useRef(1.0);
+  const videoRateRef = useRef(1.0);
+  audioPlayingRef.current = audioPlaying;
+  videoPlayingRef.current = videoPlaying;
+  audioRateRef.current = audioRate;
+  videoRateRef.current = videoRate;
 
   // Animation refs for wave bars
   const waveBarAnimsRef = useRef([...Array(4)].map(() => new Animated.Value(1)));
@@ -131,6 +155,77 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     return t('discovery.connectionError');
   }, [t]);
 
+  // Corrector imperativo de posición. Se invoca desde el handler del evento
+  // `position-update` para que la sincronización funcione también con la app en
+  // segundo plano: los control timestamps de CSS-TS siguen llegando (WebSocket
+  // entrante) aunque Android congele los timers JS, pero el ciclo
+  // setState -> useEffect no es fiable en background. Aquí aplicamos el ajuste
+  // (seek o cambio de rate) directamente al player activo usando refs, con el
+  // mismo algoritmo de drift que los efectos de primer plano.
+  const applyPositionToActivePlayer = useCallback((pos) => {
+    if (!pos || pos.positionSeconds == null) return;
+
+    const now = Date.now();
+    const isLive = !!streamInfoRef.current?.isLive;
+    const tvTime = (isLive && pos.exoPlayerPositionSeconds != null)
+      ? pos.exoPlayerPositionSeconds
+      : pos.positionSeconds;
+
+    const seekThreshold = isLive ? 5 : 2;
+    const okThreshold = 0.02;
+    const maxCorrection = 0.05;
+    const maxRate = 0.93;
+    const minRate = 1.07;
+
+    // Audio activo
+    if (selectedAudioRef.current && audioPlayingRef.current && audioPlayerRef.current) {
+      // Throttle compartido con el useEffect de audio para no corregir dos veces.
+      if (now - lastSyncTimeRef.current < 500) return;
+      if (isLive && audioCurrentPlaybackTimeRef.current === 0) return;
+      lastSyncTimeRef.current = now;
+      const audioTime = isLive ? audioCurrentPlaybackTimeRef.current : audioCurrentTimeRef.current;
+      const drift = audioTime - tvTime;
+      const absDrift = Math.abs(drift);
+      if (absDrift > seekThreshold) {
+        const seekTarget = isLive ? audioCurrentTimeRef.current - drift : tvTime;
+        audioPlayerRef.current.seek(seekTarget);
+        if (audioRateRef.current !== 1.0) setAudioRate(1.0);
+      } else if (absDrift > okThreshold) {
+        const correction = Math.min(absDrift * 0.1, maxCorrection);
+        const newRate = drift > 0 ? 1.0 - correction : 1.0 + correction;
+        const clampedRate = Math.max(maxRate, Math.min(minRate, newRate));
+        if (clampedRate !== audioRateRef.current) setAudioRate(clampedRate);
+      } else if (audioRateRef.current !== 1.0) {
+        setAudioRate(1.0);
+      }
+      return;
+    }
+
+    // Vídeo activo
+    if (selectedVideoRef.current && videoPlayingRef.current && videoPlayerRef.current) {
+      // Throttle compartido con el useEffect de vídeo para no corregir dos veces.
+      if (now - lastVideoSyncTimeRef.current < 500) return;
+      if (isLive && videoCurrentPlaybackTimeRef.current === 0) return;
+      lastVideoSyncTimeRef.current = now;
+      const videoTime = isLive ? videoCurrentPlaybackTimeRef.current : videoCurrentTimeRef.current;
+      const drift = videoTime - tvTime;
+      const absDrift = Math.abs(drift);
+      if (absDrift > seekThreshold) {
+        const seekTarget = isLive ? videoCurrentTimeRef.current - drift : tvTime;
+        videoPlayerRef.current.seek(seekTarget);
+        if (videoRateRef.current !== 1.0) setVideoRate(1.0);
+      } else if (absDrift > okThreshold) {
+        const correction = Math.min(absDrift * 0.1, maxCorrection);
+        const newRate = drift > 0 ? 1.0 - correction : 1.0 + correction;
+        const clampedRate = Math.max(maxRate, Math.min(minRate, newRate));
+        if (clampedRate !== videoRateRef.current) setVideoRate(clampedRate);
+      } else if (videoRateRef.current !== 1.0) {
+        setVideoRate(1.0);
+      }
+    }
+  }, []);
+
+
   // Funció de connexió amb timeout i reintents infinits
   setupAndConnectRef.current = () => {
     if (!isActiveRef.current) return;
@@ -199,6 +294,11 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       if (!isActiveRef.current) return;
       if (syncServiceRef.current !== service) return;
       setPosition(pos);
+      // Aplicar la corrección al player de forma imperativa además de actualizar
+      // el estado: garantiza que el reposicionamiento llegue al player aunque la
+      // app esté en segundo plano (donde el ciclo setState/useEffect puede no
+      // ejecutarse con la cadencia esperada).
+      applyPositionToActivePlayer(pos);
     });
 
     service.on('error', ({ service: svc, error: err }) => {
@@ -310,6 +410,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       setMpdUrl(null);
       setStreamInfo(null);
       setError(null);
+      setPlaybackIntent(null);
       lastContentIdRef.current = null;
     };
   }, [expanded, hasMediaSync, terminal]);
@@ -334,25 +435,29 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
         return;
       }
       // Si seguía sincronizado, solo corregimos la posición y la deriva.
+      // Reseteamos el throttle para forzar una corrección inmediata y delegamos
+      // en el mismo corrector imperativo que usa el evento `position-update`.
       lastSyncTimeRef.current = 0;
       lastVideoSyncTimeRef.current = 0;
-      const pos = positionRef.current;
-      if (!pos || pos.positionSeconds == null || streamInfoRef.current?.isLive) return;
-      if (selectedVideoRef.current && videoPlayerRef.current) {
-        videoPlayerRef.current.seek(pos.positionSeconds);
-      } else if (selectedAudioRef.current && audioPlayerRef.current) {
-        audioPlayerRef.current.seek(pos.positionSeconds);
-      }
+      applyPositionToActivePlayer(positionRef.current);
     });
     return () => subscription.remove();
-  }, []);
+  }, [applyPositionToActivePlayer]);
 
   // Mantener vivo el proceso en background con un foreground service propio (sin
   // controles de media: todo el control se hace en la TV). Se arranca mientras
   // la app está en primer plano (al iniciar la reproducción) para cumplir la
   // restricción de Android, y se detiene al parar.
+  //
+  // Se mantiene vivo también mientras haya `playbackIntent` (un componente que
+  // el usuario está reproduciendo), aunque la reproducción esté momentáneamente
+  // pausada por una desconexión. Así el hilo JS sigue activo en segundo plano
+  // para recibir el nuevo MPD y reanudar automáticamente sin volver a primer
+  // plano. Como Android exige arrancar el servicio en foreground, se inició al
+  // seleccionar el componente (estando en primer plano) y aquí solo evitamos
+  // detenerlo durante la ventana de reconexión.
   useEffect(() => {
-    if (audioPlaying || videoPlaying) {
+    if (audioPlaying || videoPlaying || playbackIntent) {
       startForegroundSync(
         terminal.getFriendlyName(),
         t('discovery.syncingWithTv', { defaultValue: 'Sincronizando con la TV' })
@@ -360,15 +465,17 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     } else {
       stopForegroundSync();
     }
-  }, [audioPlaying, videoPlaying, terminal, t]);
+  }, [audioPlaying, videoPlaying, playbackIntent, terminal, t]);
 
   // Cargar MPD
   const loadMpd = useCallback(async (url) => {
     try {
       const data = await MpdParserService.parseMpd(url);
       if (!isActiveRef.current) return;
-      setAudios(data.audios || []);
-      setVideos(data.videos || []);
+      const audiosData = data.audios || [];
+      const videosData = data.videos || [];
+      setAudios(audiosData);
+      setVideos(videosData);
       setStreamInfo({
         isLive: data.isLive || false,
         mpdType: data.mpdType || 'static',
@@ -376,6 +483,38 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
         timeShiftBufferDepthSeconds: data.timeShiftBufferDepthSeconds,
       });
       setMpdUrl(url);
+
+      // Reanudar automáticamente el componente que se estaba reproduciendo si el
+      // nuevo MPD contiene el mismo (mismo idioma + role). Esto cubre tanto la
+      // reconexión como un cambio de contenido en la TV, y funciona también con
+      // la app en segundo plano (el foreground service la mantiene viva).
+      const intent = playbackIntentRef.current;
+      if (intent) {
+        const sameRole = (a, b) => (a || '') === (b || '');
+        if (intent.kind === 'audio') {
+          const match = audiosData.find(
+            (a) => a.iso === intent.iso && sameRole(a.role, intent.role)
+          );
+          if (match) {
+            setSelectedVideo(null);
+            setVideoPlaying(false);
+            setSelectedAudio(match);
+            setAudioPlaying(true);
+            lastSyncTimeRef.current = 0;
+          }
+        } else if (intent.kind === 'video') {
+          const match = videosData.find(
+            (v) => v.iso === intent.iso && sameRole(v.role, intent.role)
+          );
+          if (match) {
+            setSelectedAudio(null);
+            setAudioPlaying(false);
+            setSelectedVideo(match);
+            setVideoPlaying(true);
+            lastVideoSyncTimeRef.current = 0;
+          }
+        }
+      }
     } catch (err) {
       console.error('❌ Error carregant MPD:', err);
     } finally {
@@ -493,6 +632,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     if (selectedAudio?.representationId === audio.representationId && selectedAudio?.role === audio.role) {
       setSelectedAudio(null);
       setAudioPlaying(false);
+      setPlaybackIntent(null);
       return;
     }
     // Reproducir áudio i vídeo són mútuament excloents.
@@ -500,18 +640,21 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     setVideoPlaying(false);
     setSelectedAudio(audio);
     setAudioPlaying(true);
+    setPlaybackIntent({ kind: 'audio', iso: audio.iso, role: audio.role || '' });
     lastSyncTimeRef.current = 0;
   }, [selectedAudio]);
 
   const handleStopAudio = useCallback(() => {
     setSelectedAudio(null);
     setAudioPlaying(false);
+    setPlaybackIntent(null);
   }, []);
 
   const handleSelectVideo = useCallback((video) => {
     if (selectedVideo?.representationId === video.representationId && selectedVideo?.role === video.role) {
       setSelectedVideo(null);
       setVideoPlaying(false);
+      setPlaybackIntent(null);
       return;
     }
     // Reproducir áudio i vídeo són mútuament excloents.
@@ -519,12 +662,14 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     setAudioPlaying(false);
     setSelectedVideo(video);
     setVideoPlaying(true);
+    setPlaybackIntent({ kind: 'video', iso: video.iso, role: video.role || '' });
     lastVideoSyncTimeRef.current = 0;
   }, [selectedVideo]);
 
   const handleStopVideo = useCallback(() => {
     setSelectedVideo(null);
     setVideoPlaying(false);
+    setPlaybackIntent(null);
   }, []);
 
   const toggleExpand = () => {
