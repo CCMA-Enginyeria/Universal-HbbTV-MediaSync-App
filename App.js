@@ -1,6 +1,8 @@
+import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Text } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -59,6 +61,13 @@ function TabLabel({ focused, label }) {
 
 export default function App() {
   const { t } = useTranslation();
+
+  // Keep the whole app in portrait; the video player temporarily switches to
+  // landscape while it is in fullscreen (see TerminalItem.js).
+  useEffect(() => {
+    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+  }, []);
+
   return (
     <NavigationContainer>
       <StatusBar style="light" />

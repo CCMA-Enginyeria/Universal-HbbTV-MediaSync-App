@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import Video from 'react-native-video';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { useTranslation } from 'react-i18next';
 import { MediaSyncService, SyncState } from '../services/MediaSyncService';
 import MpdParserService from '../services/MpdParserService';
@@ -89,6 +90,13 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   videoPlayingRef.current = videoPlaying;
   audioRateRef.current = audioRate;
   videoRateRef.current = videoRate;
+
+  // Marca que el player fue pausado de forma imperativa (al cerrarse la
+  // conexión). Sirve para reanudarlo también de forma imperativa cuando vuelve
+  // a haber posición en reproducción, ya que en background el cambio
+  // declarativo del prop `paused` puede no aplicarse de forma fiable.
+  const audioPausedImperativelyRef = useRef(false);
+  const videoPausedImperativelyRef = useRef(false);
 
   // Animation refs for wave bars
   const waveBarAnimsRef = useRef([...Array(4)].map(() => new Animated.Value(1)));
@@ -182,6 +190,13 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
 
     // Audio activo
     if (selectedAudioRef.current && audioPlayingRef.current && audioPlayerRef.current) {
+      // Reanudar de forma imperativa tras una pausa por desconexión: en
+      // background el cambio declarativo de `paused` puede no aplicarse, así que
+      // forzamos el resume cuando vuelve a haber posición en reproducción.
+      if (audioPausedImperativelyRef.current && pos.isPlaying) {
+        try { audioPlayerRef.current.resume?.(); } catch (e) { /* ignore */ }
+        audioPausedImperativelyRef.current = false;
+      }
       // Throttle compartido con el useEffect de audio para no corregir dos veces.
       if (now - lastSyncTimeRef.current < 500) return;
       if (isLive && audioCurrentPlaybackTimeRef.current === 0) return;
@@ -206,6 +221,11 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
 
     // Vídeo activo
     if (selectedVideoRef.current && videoPlayingRef.current && videoPlayerRef.current) {
+      // Reanudar de forma imperativa tras una pausa por desconexión (ver audio).
+      if (videoPausedImperativelyRef.current && pos.isPlaying) {
+        try { videoPlayerRef.current.resume?.(); } catch (e) { /* ignore */ }
+        videoPausedImperativelyRef.current = false;
+      }
       // Throttle compartido con el useEffect de vídeo para no corregir dos veces.
       if (now - lastVideoSyncTimeRef.current < 500) return;
       if (isLive && videoCurrentPlaybackTimeRef.current === 0) return;
@@ -237,11 +257,13 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   const stopActivePlayers = useCallback(() => {
     try {
       audioPlayerRef.current?.pause?.();
+      audioPausedImperativelyRef.current = true;
     } catch (e) {
       // ignore
     }
     try {
       videoPlayerRef.current?.pause?.();
+      videoPausedImperativelyRef.current = true;
     } catch (e) {
       // ignore
     }
@@ -918,6 +940,16 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
                         ignoreSilentSwitch="ignore"
                         fullscreenOrientation="landscape"
                         fullscreenAutorotate={true}
+                        onFullscreenPlayerWillPresent={() => {
+                          ScreenOrientation.lockAsync(
+                            ScreenOrientation.OrientationLock.LANDSCAPE
+                          ).catch(() => {});
+                        }}
+                        onFullscreenPlayerWillDismiss={() => {
+                          ScreenOrientation.lockAsync(
+                            ScreenOrientation.OrientationLock.PORTRAIT_UP
+                          ).catch(() => {});
+                        }}
                         selectedVideoTrack={
                           selectedVideo.videoTrackIndex != null
                             ? { type: 'index', value: selectedVideo.videoTrackIndex }

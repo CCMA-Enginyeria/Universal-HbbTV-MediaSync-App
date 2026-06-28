@@ -13,7 +13,10 @@ module.exports = {
     slug: brand.slug,
     scheme: brand.scheme,
     version: brand.version,
-    orientation: 'portrait',
+    // The app is locked to portrait at runtime (see App.js). We declare
+    // 'default' here so the OS *allows* landscape, which is required for the
+    // video player to rotate into fullscreen landscape via expo-screen-orientation.
+    orientation: 'default',
     icon: brand.assets.icon,
     userInterfaceStyle: 'dark',
     newArchEnabled: true,
