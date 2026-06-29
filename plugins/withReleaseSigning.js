@@ -61,12 +61,36 @@ function withReleaseSigning(config) {
       }
     }
 
-    // 2) Fer que la build de release usi la signingConfig de release quan
-    //    hi ha keystore d'entorn; en cas contrari, fallback a debug.
-    contents = contents.replace(
-      /(release\s*\{[\s\S]*?)signingConfig signingConfigs\.debug/,
-      '$1signingConfig System.getenv("ANDROID_KEYSTORE_FILE") ? signingConfigs.release : signingConfigs.debug'
-    );
+    // 2) Fer que NOMÉS el buildType "release" usi la signingConfig de release
+    //    quan hi ha keystore d'entorn; en cas contrari, fallback a debug.
+    //
+    //    IMPORTANT: cal ancorar a `buildTypes { ... release {`. El bloc
+    //    `signingConfigs { ... release { ... } }` apareix ABANS al fitxer, així
+    //    que un patró massa genèric (només `release {`) acabaria modificant el
+    //    buildType `debug` en comptes del `release`, deixant l'APK/AAB de
+    //    release signat amb la keystore de DEBUG (que Google Play rebutja).
+    //    Amb `prebuild --clean` (com a CI) el plugin s'executa una sola vegada,
+    //    on aquest bug es manifestava.
+    const releaseAlreadyPatched =
+      /buildTypes\s*\{[\s\S]*?release\s*\{[\s\S]*?signingConfig System\.getenv\("ANDROID_KEYSTORE_FILE"\)/.test(
+        contents
+      );
+
+    if (!releaseAlreadyPatched) {
+      const patched = contents.replace(
+        /(buildTypes\s*\{[\s\S]*?release\s*\{[\s\S]*?)signingConfig signingConfigs\.debug/,
+        '$1signingConfig System.getenv("ANDROID_KEYSTORE_FILE") ? signingConfigs.release : signingConfigs.debug'
+      );
+
+      if (patched === contents) {
+        throw new Error(
+          "[withReleaseSigning] No s'ha pogut localitzar el buildType 'release' " +
+            'per aplicar la signingConfig. Revisa android/app/build.gradle després del prebuild.'
+        );
+      }
+
+      contents = patched;
+    }
 
     config.modResults.contents = contents;
     return config;
