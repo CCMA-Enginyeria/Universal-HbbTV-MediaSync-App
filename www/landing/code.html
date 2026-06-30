@@ -170,6 +170,8 @@
                 <a class="text-on-surface-variant hover:text-primary transition-colors cursor-pointer"
                     href="#how-it-works">Under the Hood</a>
                 <a class="text-on-surface-variant hover:text-primary transition-colors cursor-pointer"
+                    href="#faqs">FAQs</a>
+                <a class="text-on-surface-variant hover:text-primary transition-colors cursor-pointer"
                     href="#get-involved">Get Involved</a>
             </div>
             <a href="https://github.com/CCMA-Enginyeria/Universal-HbbTV-MediaSync-App"
@@ -574,6 +576,155 @@
                     <a href="https://github.com/CCMA-Enginyeria/Universal-HbbTV-MediaSync-App"
                         class="bg-gradient-brand text-white px-xl py-md rounded-lg font-bold transition-all hover:scale-105 active:scale-95 shadow-lg"
                         target="_blank" rel="noopener noreferrer">Contribute Now</a>
+                </div>
+            </div>
+        </section>
+        <!-- FAQs Section -->
+        <section class="py-xl md:py-32 bg-surface-container-lowest" id="faqs">
+            <div class="max-w-[1000px] mx-auto px-margin-desktop">
+                <div class="text-center mb-xl">
+                    <h2 class="font-headline-lg text-headline-lg text-on-surface">Frequently Asked Questions</h2>
+                    <p class="text-on-surface-variant mt-sm">Everything you need to know, whether you watch or you
+                        broadcast.</p>
+                </div>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-xl items-start">
+                    <!-- For Users FAQs -->
+                    <div>
+                        <div class="flex items-center gap-sm mb-lg">
+                            <span class="material-symbols-outlined text-primary text-3xl">person</span>
+                            <h3 class="font-headline-lg text-2xl font-bold text-on-surface">For Users</h3>
+                        </div>
+                        <div class="flex flex-col gap-sm">
+                            <details
+                                class="group bg-surface-container rounded-xl border border-outline-variant overflow-hidden">
+                                <summary
+                                    class="flex items-center justify-between gap-sm p-lg cursor-pointer list-none font-bold text-on-surface hover:text-primary transition-colors">
+                                    How do I use the app?
+                                    <span
+                                        class="material-symbols-outlined text-on-surface-variant transition-transform group-open:rotate-180">expand_more</span>
+                                </summary>
+                                <div class="px-lg pb-lg text-on-surface-variant">
+                                    Just download it from your app store (App Store or Google Play). Open the app while
+                                    on the same Wi-Fi network as your TV: it automatically discovers the television,
+                                    loads the companion content and synchronizes with what is playing on screen. No
+                                    setup, accounts or pairing codes required.
+                                </div>
+                            </details>
+                            <details
+                                class="group bg-surface-container rounded-xl border border-outline-variant overflow-hidden">
+                                <summary
+                                    class="flex items-center justify-between gap-sm p-lg cursor-pointer list-none font-bold text-on-surface hover:text-primary transition-colors">
+                                    Which TVs are compatible?
+                                    <span
+                                        class="material-symbols-outlined text-on-surface-variant transition-transform group-open:rotate-180">expand_more</span>
+                                </summary>
+                                <div class="px-lg pb-lg text-on-surface-variant">
+                                    In theory, any TV supporting HbbTV 2.0.1 or later (from 2016 onwards) should work.
+                                    In practice, some devices still have interoperability issues. We are building a list
+                                    of verified compatible devices &mdash; if your TV works well, let us know so we can
+                                    add it.
+                                </div>
+                            </details>
+                            <details
+                                class="group bg-surface-container rounded-xl border border-outline-variant overflow-hidden">
+                                <summary
+                                    class="flex items-center justify-between gap-sm p-lg cursor-pointer list-none font-bold text-on-surface hover:text-primary transition-colors">
+                                    My TV is not working &mdash; what can I do?
+                                    <span
+                                        class="material-symbols-outlined text-on-surface-variant transition-transform group-open:rotate-180">expand_more</span>
+                                </summary>
+                                <div class="px-lg pb-lg text-on-surface-variant">
+                                    If you run into a problem, please
+                                    <a class="text-primary hover:underline"
+                                        href="https://github.com/CCMA-Enginyeria/Universal-HbbTV-MediaSync-App/issues"
+                                        target="_blank" rel="noopener noreferrer">open an issue on GitHub</a>
+                                    describing your device and the behaviour you see. It helps us track interoperability
+                                    problems across terminals and improve support.
+                                </div>
+                            </details>
+                            <details
+                                class="group bg-surface-container rounded-xl border border-outline-variant overflow-hidden">
+                                <summary
+                                    class="flex items-center justify-between gap-sm p-lg cursor-pointer list-none font-bold text-on-surface hover:text-primary transition-colors">
+                                    Which channels and services can I watch?
+                                    <span
+                                        class="material-symbols-outlined text-on-surface-variant transition-transform group-open:rotate-180">expand_more</span>
+                                </summary>
+                                <div class="px-lg pb-lg text-on-surface-variant">
+                                    The app works with services that broadcasters have enabled for second-screen sync.
+                                    We will publish a list of compatible services soon so you know where to look.
+                                </div>
+                            </details>
+                        </div>
+                    </div>
+                    <!-- For Broadcasters FAQs -->
+                    <div>
+                        <div class="flex items-center gap-sm mb-lg">
+                            <span class="material-symbols-outlined text-primary text-3xl">cell_tower</span>
+                            <h3 class="font-headline-lg text-2xl font-bold text-on-surface">For Broadcasters</h3>
+                        </div>
+                        <div class="flex flex-col gap-sm">
+                            <details
+                                class="group bg-surface-container rounded-xl border border-outline-variant overflow-hidden">
+                                <summary
+                                    class="flex items-center justify-between gap-sm p-lg cursor-pointer list-none font-bold text-on-surface hover:text-primary transition-colors">
+                                    How do I activate the service?
+                                    <span
+                                        class="material-symbols-outlined text-on-surface-variant transition-transform group-open:rotate-180">expand_more</span>
+                                </summary>
+                                <div class="px-lg pb-lg text-on-surface-variant">
+                                    Add a lightweight HbbTV snippet to your service that points to the companion DASH
+                                    MPD. There is no backend to run and no media-file changes required &mdash; the app
+                                    discovers the TV, loads the manifest and synchronizes in real time. Need help
+                                    getting started?
+                                    <a class="text-primary hover:underline" href="mailto:rbermudez.h@3cat.cat">Contact
+                                        us</a>.
+                                </div>
+                            </details>
+                            <details
+                                class="group bg-surface-container rounded-xl border border-outline-variant overflow-hidden">
+                                <summary
+                                    class="flex items-center justify-between gap-sm p-lg cursor-pointer list-none font-bold text-on-surface hover:text-primary transition-colors">
+                                    What is supported right now?
+                                    <span
+                                        class="material-symbols-outlined text-on-surface-variant transition-transform group-open:rotate-180">expand_more</span>
+                                </summary>
+                                <div class="px-lg pb-lg text-on-surface-variant">
+                                    Over broadband, any service that uses an MPD manifest is supported: live streams
+                                    (with and without DVR), VOD, and audio on demand.
+                                </div>
+                            </details>
+                            <details
+                                class="group bg-surface-container rounded-xl border border-outline-variant overflow-hidden">
+                                <summary
+                                    class="flex items-center justify-between gap-sm p-lg cursor-pointer list-none font-bold text-on-surface hover:text-primary transition-colors">
+                                    Do I need to maintain a custom app?
+                                    <span
+                                        class="material-symbols-outlined text-on-surface-variant transition-transform group-open:rotate-180">expand_more</span>
+                                </summary>
+                                <div class="px-lg pb-lg text-on-surface-variant">
+                                    No. The Universal MediaSync app is shared across all broadcasters, so there are no
+                                    custom apps to build or maintain, no backend to run, and near-zero configuration.
+                                </div>
+                            </details>
+                            <details
+                                class="group bg-surface-container rounded-xl border border-outline-variant overflow-hidden">
+                                <summary
+                                    class="flex items-center justify-between gap-sm p-lg cursor-pointer list-none font-bold text-on-surface hover:text-primary transition-colors">
+                                    Can I fork it and ship my own branded version?
+                                    <span
+                                        class="material-symbols-outlined text-on-surface-variant transition-transform group-open:rotate-180">expand_more</span>
+                                </summary>
+                                <div class="px-lg pb-lg text-on-surface-variant">
+                                    The project is open source (MIT), so technically you can fork it and build your own
+                                    branded version. However, we believe a single, shared app across all broadcasters is
+                                    far more valuable for users &mdash; one app to discover and sync with any service,
+                                    instead of a separate app per broadcaster. We encourage joining the common effort
+                                    rather than fragmenting the experience.
+                                </div>
+                            </details>
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>
