@@ -446,6 +446,7 @@ export class CSSWCServiceUDP extends EventEmitter {
           this.pendingRequests.delete(requestId);
         } else {
           this.stats.requestsSent++;
+          console.log(`✅ WC-UDP: request #${requestId} enviat OK (natiu) -> ${host}:${port}`);
         }
       });
     } else {

@@ -11,15 +11,15 @@
 
 const brand = {
   // ---- Identity -----------------------------------------------------------
-  appName: 'HbbTV MediaSync',
+  appName: 'Universal MediaSync',
   shortName: 'MediaSync',
-  slug: 'hbbtv-mediasync',
-  scheme: 'hbbtvmediasync',
+  slug: 'universal-mediasync',
+  scheme: 'universalmediasync',
   version: '1.0.0',
 
   // Native identifiers (must be unique per published fork)
-  bundleIdentifier: 'org.hbbtv.mediasync', // iOS
-  androidPackage: 'org.hbbtv.mediasync', // Android
+  bundleIdentifier: 'cat.ccma.universalmediasync', // iOS
+  androidPackage: 'cat.ccma.universalmediasync', // Android
 
   // ---- Localization -------------------------------------------------------
   // Default / fallback UI language. Supported: ca, es, eu, en, de, it, fr.

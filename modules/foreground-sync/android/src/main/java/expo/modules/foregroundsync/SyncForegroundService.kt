@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.drawable.Icon
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
@@ -28,8 +29,14 @@ class SyncForegroundService : Service() {
         const val NOTIFICATION_ID = 47231
         const val EXTRA_TITLE = "title"
         const val EXTRA_TEXT = "text"
+        const val EXTRA_STOP_LABEL = "stopLabel"
         const val ACTION_START = "expo.modules.foregroundsync.action.START"
         const val ACTION_STOP = "expo.modules.foregroundsync.action.STOP"
+        // Broadcast emitted when the user taps the notification's stop action.
+        // The Expo module registers a receiver for it and forwards it to JS so
+        // the React layer can tear down the player and the DVB-CSS sync.
+        const val ACTION_STOP_REQUESTED = "expo.modules.foregroundsync.action.STOP_REQUESTED"
+        private const val DEFAULT_STOP_LABEL = "Detener"
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -41,11 +48,12 @@ class SyncForegroundService : Service() {
             return START_NOT_STICKY
         }
 
-        val title = intent?.getStringExtra(EXTRA_TITLE) ?: "HbbTV MediaSync"
+        val title = intent?.getStringExtra(EXTRA_TITLE) ?: "Universal MediaSync"
         val text = intent?.getStringExtra(EXTRA_TEXT) ?: "Sincronizando con la TV"
+        val stopLabel = intent?.getStringExtra(EXTRA_STOP_LABEL) ?: DEFAULT_STOP_LABEL
 
         createChannel()
-        val notification = buildNotification(title, text)
+        val notification = buildNotification(title, text, stopLabel)
 
         try {
             startForegroundCompat(notification)
@@ -58,7 +66,7 @@ class SyncForegroundService : Service() {
         return START_STICKY
     }
 
-    private fun buildNotification(title: String, text: String): Notification {
+    private fun buildNotification(title: String, text: String, stopLabel: String): Notification {
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
@@ -70,6 +78,19 @@ class SyncForegroundService : Service() {
         val contentIntent = launchIntent?.let {
             PendingIntent.getActivity(this, 0, it, pendingFlags)
         }
+
+        // Action that asks the React layer to stop the player and the sync. It
+        // is delivered as an explicit broadcast (package set) so it reaches the
+        // receiver registered by ForegroundSyncModule even on Android 8+.
+        val stopBroadcast = Intent(ACTION_STOP_REQUESTED).apply {
+            setPackage(packageName)
+        }
+        val stopPendingIntent = PendingIntent.getBroadcast(
+            this,
+            1,
+            stopBroadcast,
+            pendingFlags
+        )
 
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Notification.Builder(this, CHANNEL_ID)
@@ -89,6 +110,14 @@ class SyncForegroundService : Service() {
         if (contentIntent != null) {
             builder.setContentIntent(contentIntent)
         }
+
+        builder.addAction(
+            Notification.Action.Builder(
+                Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel),
+                stopLabel,
+                stopPendingIntent
+            ).build()
+        )
 
         return builder.build()
     }

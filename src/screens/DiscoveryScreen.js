@@ -21,6 +21,7 @@ import theme from '../theme';
 import { getDIALDiscoveryService } from '../services/DIALDiscoveryService';
 import TerminalItem from '../components/TerminalItem';
 import AppHeader from '../components/AppHeader';
+import StatusSlot from '../components/StatusSlot';
 
 export default function DiscoveryScreen({ navigation }) {
   const { t } = useTranslation();
@@ -182,20 +183,23 @@ export default function DiscoveryScreen({ navigation }) {
           styles.listContainer,
           terminals.length === 0 && styles.listContainerEmpty,
         ]}
-        ListHeaderComponent={
-          <>
-            {isSearching && (
-              <View style={styles.searchingBar}>
-                <ActivityIndicator size="small" color={theme.colors.primary} />
-                <Text style={styles.searchingText}>{t('discovery.searching')}</Text>
-              </View>
-            )}
-            {!isSearching && withMediaSync.length === 0 && terminals.length > 0 ? (
-              <View style={styles.noMediaSyncContainer}>
-                <MaterialIcons name="info-outline" size={32} color={theme.colors.onSurfaceVariant} />
-                <Text style={styles.noMediaSyncText}>{t('discovery.noMediaSyncDevices')}</Text>
-              </View>
-            ) : null}
+        ListFooterComponent={
+          terminals.length > 0 && <>
+            <StatusSlot
+              visible={isSearching}
+              minHeight={48}
+              style={styles.searchingBar}
+            >
+              <ActivityIndicator size="small" color={theme.colors.primary} />
+              <Text style={styles.searchingText}>{t('discovery.searching')}</Text>
+            </StatusSlot>
+            <StatusSlot
+              visible={!isSearching && withMediaSync.length === 0 && terminals.length > 0}
+              style={styles.noMediaSyncContainer}
+            >
+              <MaterialIcons name="info-outline" size={32} color={theme.colors.onSurfaceVariant} />
+              <Text style={styles.noMediaSyncText}>{t('discovery.noMediaSyncDevices')}</Text>
+            </StatusSlot>
           </>
         }
         ListEmptyComponent={
@@ -244,9 +248,9 @@ const styles = StyleSheet.create({
   searchingBar: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
     paddingVertical: theme.spacing.md,
-    marginBottom: theme.spacing.sm,
   },
   searchingText: {
     fontSize: 14,
@@ -264,7 +268,9 @@ const styles = StyleSheet.create({
   },
   emptyContainer: {
     padding: 40,
+    minHeight: 220,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   emptyIcon: {
     fontSize: 48,

@@ -8,6 +8,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import theme from '../theme';
 import brand from '../brand/brand.config';
+import StatusSlot from './StatusSlot';
 
 export default function AppHeader({
   headerTitle = brand.appName,
@@ -31,12 +32,10 @@ export default function AppHeader({
         <>
           <View style={styles.titleRow}>
             {title && <Text style={styles.title}>{title}</Text>}
-            {showSearching && (
-              <View style={styles.searchingBadge}>
-                <MaterialIcons name="autorenew" size={12} color={theme.colors.primary} />
-                <Text style={styles.searchingText}>{searchingText}</Text>
-              </View>
-            )}
+            <StatusSlot visible={showSearching} style={styles.searchingBadge}>
+              <MaterialIcons name="autorenew" size={12} color={theme.colors.primary} />
+              <Text style={styles.searchingText}>{searchingText}</Text>
+            </StatusSlot>
           </View>
           {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
         </>

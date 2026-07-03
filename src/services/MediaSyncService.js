@@ -358,6 +358,24 @@ export class MediaSyncService extends EventEmitter {
   }
 
   /**
+   * Força l'enviament d'una petició Wall Clock (UDP) immediata.
+   *
+   * El servei WC envia peticions periòdiques amb `setInterval`, però React
+   * Native congela els timers JS quan l'app està en segon pla. Aquest mètode
+   * permet que el heartbeat natiu del foreground service dispari peticions WC
+   * en background (I/O), de manera que el Wall Clock pugui sincronitzar-se i
+   * mantenir-se sincronitzat sense dependre del timer congelat.
+   */
+  pokeWallClock() {
+    if (this.wcService && typeof this.wcService.sendRequest === 'function') {
+      console.log('🫀 MediaSync: pokeWallClock -> wcService.sendRequest()');
+      this.wcService.sendRequest();
+    } else {
+      console.log(`🫀 MediaSync: pokeWallClock SKIP (wcService=${!!this.wcService})`);
+    }
+  }
+
+  /**
    * Inicia el timer d'actualitzacions periòdiques
    */
   startUpdateTimer() {
