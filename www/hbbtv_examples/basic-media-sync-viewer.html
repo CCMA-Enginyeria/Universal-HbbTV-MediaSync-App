@@ -20,6 +20,12 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#000;}
 var v=document.getElementById('v');
 var s=document.getElementById('s');
 var SEEK_STEP_SECONDS=10;
+var CONTENTS=[
+  {name:'Big Buck Bunny',url:'https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd'},
+  {name:'Envivio',url:'https://dash.akamaized.net/envivio/EnvivioDash3/manifest.mpd'},
+  {name:'Tears of Steel',url:'https://dash.akamaized.net/dash264/TestCases/2c/qualcomm/1/MultiResMPEG2.mpd'}
+];
+var contentIndex=0;
 function log(m){console.log(m);s.textContent=m;}
 
 window.onload=function(){
@@ -43,8 +49,31 @@ function registerSeekKeys(){
       seekBy(SEEK_STEP_SECONDS);
       e.preventDefault();
       e.stopPropagation();
+    }else if(key==='ArrowUp'||code===38){
+      changeContent(1);
+      e.preventDefault();
+      e.stopPropagation();
+    }else if(key==='ArrowDown'||code===40){
+      changeContent(-1);
+      e.preventDefault();
+      e.stopPropagation();
     }
   });
+}
+
+function changeContent(delta){
+  contentIndex=(contentIndex+delta+CONTENTS.length)%CONTENTS.length;
+  var c=CONTENTS[contentIndex];
+  log('Loading: '+c.name);
+  destroySync();
+  var source=v.querySelector('source');
+  if(source){source.src=c.url;}
+  v.addEventListener('canplay',function(){
+    log('Playing: '+c.name);
+    initSync(c.url);
+  },{once:true});
+  v.load();
+  v.play().catch(function(e){log('Autoplay blocked: '+e.message);});
 }
 
 function seekBy(deltaSeconds){
@@ -69,15 +98,35 @@ function seekBy(deltaSeconds){
 var ms=null;
 function onReady(){
   log('Video ready. Initialising sync...');
-  initSync();
+  initSync(CONTENTS[contentIndex].url);
 }
 
-function initSync(){
+function destroySync(){
+  if(!ms){return;}
+  try{
+    if(typeof ms.disableInterDeviceSync==='function'){
+      ms.disableInterDeviceSync();
+      console.log('Inter-device sync desactivat (disableInterDeviceSync)');
+    }else if(typeof ms.disableInterDevSync==='function'){
+      ms.disableInterDevSync();
+      console.log('Inter-device sync desactivat (disableInterDevSync)');
+    }
+    if(typeof ms.removeMediaObject==='function'){
+      ms.removeMediaObject(v);
+      console.log('Media object eliminat del MediaSynchroniser');
+    }
+  }catch(error){
+    console.warn('Error destruint MediaSynchroniser:',error);
+  }
+  ms=null;
+}
+
+function initSync(contentUrl){
   try{
     if(typeof oipfObjectFactory==='undefined'){log('No oipfObjectFactory');return;}
     ms=oipfObjectFactory.createMediaSynchroniser();
     if(!ms){log('createMediaSynchroniser failed');return;}
-    ms.contentIdOverride='https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd';
+    ms.contentIdOverride=contentUrl;
     ms.onSyncNowAchievable=function(){log('Sync now achievable');};
     ms.onSyncNowUnachievable=function(){log('Sync now unachievable');};
     ms.onInterDevSyncStatus=function(st){
