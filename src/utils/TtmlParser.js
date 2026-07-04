@@ -72,18 +72,21 @@ function extractText(node) {
     text += String(node['#text']);
   }
 
-  // Processar <br/> com a salt de línia
-  if (node.br != null) {
-    text += '\n';
-  }
-
   // Processar <span> niuats
   const spans = node.span;
   if (spans) {
     const spanArray = Array.isArray(spans) ? spans : [spans];
-    for (const span of spanArray) {
-      text += extractText(span);
+    const spanText = spanArray.map(extractText).filter(Boolean);
+    if (node.br != null && !text.trim() && spanText.length > 1) {
+      text += spanText.join('\n');
+    } else {
+      if (node.br != null) {
+        text += '\n';
+      }
+      text += spanText.join('');
     }
+  } else if (node.br != null) {
+    text += '\n';
   }
 
   return text.trim();
