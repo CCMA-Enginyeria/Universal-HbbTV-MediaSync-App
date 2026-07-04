@@ -100,14 +100,12 @@ public class UDPMulticastModule: Module {
     // Resolve the actual bound port.
     var localAddr = sockaddr_in()
     var localLen = socklen_t(MemoryLayout<sockaddr_in>.size)
-    let boundPort: Int = withUnsafeMutablePointer(to: &localAddr) {
+    let getNameResult = withUnsafeMutablePointer(to: &localAddr) {
       $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { saPtr in
-        if getsockname(fd, saPtr, &localLen) == 0 {
-          return Int(UInt16(bigEndian: localAddr.sin_port))
-        }
-        return port
+        getsockname(fd, saPtr, &localLen)
       }
     }
+    let boundPort: Int = getNameResult == 0 ? Int(UInt16(bigEndian: localAddr.sin_port)) : port
 
     lock.lock()
     sockets[socketId] = fd
