@@ -1,6 +1,9 @@
 package expo.modules.foregroundsync
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -37,6 +40,54 @@ class ForegroundSyncModule : Module() {
         }
     }
 
+    // Receiver for the notification's stop action. Forwards the request to JS so
+    // the React layer can tear down the player and the DVB-CSS sync.
+    private var stopReceiver: BroadcastReceiver? = null
+    private var stopReceiverRegistered = false
+
+    private fun registerStopReceiver() {
+        if (stopReceiverRegistered) return
+        val context = appContext.reactContext ?: return
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                if (intent?.action != SyncForegroundService.ACTION_STOP_REQUESTED) return
+                try {
+                    sendEvent("onStopRequested", emptyMap<String, Any>())
+                } catch (e: Exception) {
+                    Log.e(TAG, "onStopRequested sendEvent error: ${e.message}")
+                }
+            }
+        }
+        val filter = IntentFilter(SyncForegroundService.ACTION_STOP_REQUESTED)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("UnspecifiedRegisterReceiverFlag")
+                context.registerReceiver(receiver, filter)
+            }
+            stopReceiver = receiver
+            stopReceiverRegistered = true
+        } catch (e: Exception) {
+            Log.e(TAG, "registerStopReceiver error: ${e.message}")
+        }
+    }
+
+    private fun unregisterStopReceiver() {
+        if (!stopReceiverRegistered) return
+        val context = appContext.reactContext
+        val receiver = stopReceiver
+        if (context != null && receiver != null) {
+            try {
+                context.unregisterReceiver(receiver)
+            } catch (e: Exception) {
+                Log.e(TAG, "unregisterStopReceiver error: ${e.message}")
+            }
+        }
+        stopReceiver = null
+        stopReceiverRegistered = false
+    }
+
     private fun startHeartbeat() {
         if (heartbeatRunning) return
         heartbeatRunning = true
@@ -51,14 +102,15 @@ class ForegroundSyncModule : Module() {
     override fun definition() = ModuleDefinition {
         Name("ForegroundSync")
 
-        Events("onHeartbeat")
+        Events("onHeartbeat", "onStopRequested")
 
-        Function("start") { title: String?, text: String? ->
+        Function("start") { title: String?, text: String?, stopLabel: String? ->
             val context = appContext.reactContext ?: return@Function false
             val intent = Intent(context, SyncForegroundService::class.java).apply {
                 action = SyncForegroundService.ACTION_START
-                putExtra(SyncForegroundService.EXTRA_TITLE, title ?: "HbbTV MediaSync")
+                putExtra(SyncForegroundService.EXTRA_TITLE, title ?: "Universal MediaSync")
                 putExtra(SyncForegroundService.EXTRA_TEXT, text ?: "Sincronizando con la TV")
+                putExtra(SyncForegroundService.EXTRA_STOP_LABEL, stopLabel ?: "Detener")
             }
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -66,6 +118,7 @@ class ForegroundSyncModule : Module() {
                 } else {
                     context.startService(intent)
                 }
+                registerStopReceiver()
                 startHeartbeat()
                 true
             } catch (e: Exception) {
@@ -76,6 +129,7 @@ class ForegroundSyncModule : Module() {
 
         Function("stop") {
             stopHeartbeat()
+            unregisterStopReceiver()
             val context = appContext.reactContext ?: return@Function false
             val intent = Intent(context, SyncForegroundService::class.java).apply {
                 action = SyncForegroundService.ACTION_STOP
@@ -91,6 +145,7 @@ class ForegroundSyncModule : Module() {
 
         OnDestroy {
             stopHeartbeat()
+            unregisterStopReceiver()
         }
     }
 }

@@ -17,7 +17,17 @@ import MpdParserService from '../services/MpdParserService';
 import config from '../utils/config';
 import theme from '../theme';
 import { MaterialIcons } from '@expo/vector-icons';
-import { startForegroundSync, stopForegroundSync, addHeartbeatListener } from '../utils/ForegroundSync';
+import StatusSlot from './StatusSlot';
+import { startForegroundSync, stopForegroundSync, addHeartbeatListener, addStopListener } from '../utils/ForegroundSync';
+
+// Cadència del corrector de sincronització (ms). Lluny del lock corregim cada
+// SYNC_INTERVAL_MS; a prop (deriva < NEAR_DRIFT_BAND) mostregem més sovint amb
+// NEAR_SYNC_INTERVAL_MS per assentar el rate abans que la deriva creui el llindar,
+// i així evitar oscil·lar per sobre/per sota sense haver de relaxar okThreshold
+// (que ha de quedar < durada d'1 frame per mantenir el lipsync).
+const SYNC_INTERVAL_MS = 500;
+const NEAR_SYNC_INTERVAL_MS = 150;
+const NEAR_DRIFT_BAND = 0.08; // 80 ms
 
 export default function TerminalItem({ terminal, onPress, expanded, onToggleExpand }) {
   const { t } = useTranslation();
@@ -54,6 +64,14 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   const lastSyncTimeRef = useRef(0);
   const lastVideoSyncTimeRef = useRef(0);
   const lastContentIdRef = useRef(null);
+  // Estado de pantalla completa y reentrada pendiente: cuando la TV cambia de
+  // contenido mientras el vídeo está en fullscreen, el componente <Video> se
+  // remonta (key={mpdUrl}) y el reproductor fullscreen nativo del componente
+  // antiguo se queda congelado encima. Cerramos el fullscreen antes del remontaje
+  // y lo volvemos a presentar al cargar el nuevo MPD.
+  const isFullscreenRef = useRef(false);
+  const pendingFullscreenRef = useRef(false);
+  const mpdUrlRef = useRef(null);
   const connectTimeoutRef = useRef(null);
   const retryTimeoutRef = useRef(null);
   const setupAndConnectRef = useRef(null);
@@ -77,6 +95,13 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   // (useCallback con deps vacías) sin closures obsoletos.
   const playbackIntentRef = useRef(null);
   playbackIntentRef.current = playbackIntent;
+
+  // Espejos de props usados por `stopEverything` (invocado desde el listener de
+  // la acción de la notificación) para colapsar el terminal sin closures obsoletos.
+  const onToggleExpandRef = useRef(onToggleExpand);
+  onToggleExpandRef.current = onToggleExpand;
+  const expandedRef = useRef(expanded);
+  expandedRef.current = expanded;
 
   // Mirrors adicionales usados por el corrector imperativo (sincronización en
   // background): permiten aplicar la corrección al player desde el handler del
@@ -188,22 +213,35 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     const maxRate = 0.93;
     const minRate = 1.07;
 
-    // Audio activo
-    if (selectedAudioRef.current && audioPlayingRef.current && audioPlayerRef.current) {
-      // Reanudar de forma imperativa tras una pausa por desconexión: en
-      // background el cambio declarativo de `paused` puede no aplicarse, así que
-      // forzamos el resume cuando vuelve a haber posición en reproducción.
-      if (audioPausedImperativelyRef.current && pos.isPlaying) {
-        try { audioPlayerRef.current.resume?.(); } catch (e) { /* ignore */ }
+    // Audio activo (o montado pero pausado, pendiente de reanudar)
+    if (selectedAudioRef.current && audioPlayerRef.current) {
+      // Reanudar de forma imperativa cuando la TV reproduce pero nuestro player
+      // está en pausa (por desconexión o porque `audioPlaying` quedó en false
+      // tras reconectar). En background el cambio declarativo de `paused` no es
+      // fiable, así que forzamos resume() y marcamos audioPlaying=true. Si la TV
+      // está pausada, hacemos lo contrario.
+      if (pos.isPlaying && (audioPausedImperativelyRef.current || !audioPlayingRef.current)) {
+        console.log('▶️ applyPosition: resume() AUDIO imperativo');
+        try { audioPlayerRef.current.resume?.(); } catch (e) { console.log('⚠️ resume audio error', e?.message); }
         audioPausedImperativelyRef.current = false;
+        if (!audioPlayingRef.current) setAudioPlaying(true);
+      } else if (!pos.isPlaying && audioPlayingRef.current) {
+        console.log('⏸️ applyPosition: pause() AUDIO imperativo (TV pausada)');
+        try { audioPlayerRef.current.pause?.(); } catch (e) { /* ignore */ }
+        setAudioPlaying(false);
       }
-      // Throttle compartido con el useEffect de audio para no corregir dos veces.
-      if (now - lastSyncTimeRef.current < 500) return;
+      // Si todavía no debe sonar (TV pausada o estado no listo), no corregir drift.
+      if (!audioPlayingRef.current || !pos.isPlaying) return;
       if (isLive && audioCurrentPlaybackTimeRef.current === 0) return;
-      lastSyncTimeRef.current = now;
       const audioTime = isLive ? audioCurrentPlaybackTimeRef.current : audioCurrentTimeRef.current;
       const drift = audioTime - tvTime;
       const absDrift = Math.abs(drift);
+      // Throttle adaptativo compartido con el useEffect de audio: cerca del lock
+      // muestreamos más a menudo para asentar el rate antes de que la deriva
+      // cruce el umbral (evita oscilar por encima/por debajo sin tocar okThreshold).
+      const syncInterval = absDrift < NEAR_DRIFT_BAND ? NEAR_SYNC_INTERVAL_MS : SYNC_INTERVAL_MS;
+      if (now - lastSyncTimeRef.current < syncInterval) return;
+      lastSyncTimeRef.current = now;
       if (absDrift > seekThreshold) {
         const seekTarget = isLive ? audioCurrentTimeRef.current - drift : tvTime;
         audioPlayerRef.current.seek(seekTarget);
@@ -219,20 +257,28 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       return;
     }
 
-    // Vídeo activo
-    if (selectedVideoRef.current && videoPlayingRef.current && videoPlayerRef.current) {
-      // Reanudar de forma imperativa tras una pausa por desconexión (ver audio).
-      if (videoPausedImperativelyRef.current && pos.isPlaying) {
-        try { videoPlayerRef.current.resume?.(); } catch (e) { /* ignore */ }
+    // Vídeo activo (o montado pero pausado, pendiente de reanudar)
+    if (selectedVideoRef.current && videoPlayerRef.current) {
+      // Reanudar / pausar de forma imperativa según la TV (ver audio).
+      if (pos.isPlaying && (videoPausedImperativelyRef.current || !videoPlayingRef.current)) {
+        console.log('▶️ applyPosition: resume() VIDEO imperativo');
+        try { videoPlayerRef.current.resume?.(); } catch (e) { console.log('⚠️ resume video error', e?.message); }
         videoPausedImperativelyRef.current = false;
+        if (!videoPlayingRef.current) setVideoPlaying(true);
+      } else if (!pos.isPlaying && videoPlayingRef.current) {
+        console.log('⏸️ applyPosition: pause() VIDEO imperativo (TV pausada)');
+        try { videoPlayerRef.current.pause?.(); } catch (e) { /* ignore */ }
+        setVideoPlaying(false);
       }
-      // Throttle compartido con el useEffect de vídeo para no corregir dos veces.
-      if (now - lastVideoSyncTimeRef.current < 500) return;
+      if (!videoPlayingRef.current || !pos.isPlaying) return;
       if (isLive && videoCurrentPlaybackTimeRef.current === 0) return;
-      lastVideoSyncTimeRef.current = now;
       const videoTime = isLive ? videoCurrentPlaybackTimeRef.current : videoCurrentTimeRef.current;
       const drift = videoTime - tvTime;
       const absDrift = Math.abs(drift);
+      // Throttle adaptativo (ver bloque de audio).
+      const syncInterval = absDrift < NEAR_DRIFT_BAND ? NEAR_SYNC_INTERVAL_MS : SYNC_INTERVAL_MS;
+      if (now - lastVideoSyncTimeRef.current < syncInterval) return;
+      lastVideoSyncTimeRef.current = now;
       if (absDrift > seekThreshold) {
         const seekTarget = isLive ? videoCurrentTimeRef.current - drift : tvTime;
         videoPlayerRef.current.seek(seekTarget);
@@ -269,6 +315,40 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     }
   }, []);
 
+  // Detiene por completo el reproductor y la sincronización. Se invoca desde la
+  // acción "Detener" de la notificación del foreground service (para poder
+  // parar todo con la app en segundo plano) y es idempotente. Hace el teardown
+  // de forma imperativa (no depende del ciclo setState/cleanup, que en
+  // background puede no ejecutarse de inmediato) y además colapsa el terminal
+  // para reflejarlo en la UI cuando se vuelve a primer plano.
+  const stopEverything = useCallback(() => {
+    isActiveRef.current = false;
+    stopActivePlayers();
+    if (connectTimeoutRef.current) {
+      clearTimeout(connectTimeoutRef.current);
+      connectTimeoutRef.current = null;
+    }
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
+    if (syncServiceRef.current) {
+      const oldService = syncServiceRef.current;
+      syncServiceRef.current = null;
+      oldService.destroy();
+    }
+    setPlaybackIntent(null);
+    setAudioPlaying(false);
+    setVideoPlaying(false);
+    setSyncState(SyncState.DISCONNECTED);
+    stopForegroundSync();
+    if (expandedRef.current && onToggleExpandRef.current) {
+      onToggleExpandRef.current();
+    }
+  }, [stopActivePlayers]);
+  const stopEverythingRef = useRef(stopEverything);
+  stopEverythingRef.current = stopEverything;
+
 
   // Funció de connexió amb timeout i reintents infinits
   setupAndConnectRef.current = () => {
@@ -292,15 +372,14 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
 
     setError(null);
     setIsLoading(true);
-    setAudios([]);
-    setVideos([]);
-    setSelectedAudio(null);
-    setSelectedVideo(null);
+    // No destruimos el player al reconectar: lo dejamos montado pero en pausa
+    // (audioPlaying/videoPlaying=false). Así el ExoPlayer/MediaSession sobrevive
+    // y puede reanudar en background sin recrearse (recrearlo en segundo plano
+    // no arranca la reproducción). loadMpd actualizará la fuente y volverá a
+    // poner playing=true cuando llegue el nuevo MPD.
     setAudioPlaying(false);
     setVideoPlaying(false);
     setPosition(null);
-    setMpdUrl(null);
-    setStreamInfo(null);
     lastContentIdRef.current = null;
 
     const interDevSyncUrl = terminal.getInterDevSyncURL();
@@ -328,7 +407,9 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     service.on('cii-change', ({ state }) => {
       if (!isActiveRef.current) return;
       if (syncServiceRef.current !== service) return;
+      console.log(`📺 cii-change: contentId=${state.contentId} (last=${lastContentIdRef.current})`);
       if (state.contentId && state.contentId.includes('.mpd') && state.contentId !== lastContentIdRef.current) {
+        console.log('📺 cii-change: nuevo contenido -> loadMpd');
         hasReceivedContent = true;
         if (connectTimeoutRef.current) {
           clearTimeout(connectTimeoutRef.current);
@@ -374,19 +455,16 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       if (syncServiceRef.current !== service) return;
       // Detener el audio/vídeo inmediatamente (también en background, donde el
       // desmontaje declarativo del <Video> puede no aplicarse) y quedar a la
-      // espera de una nueva conexión.
+      // espera de una nueva conexión. NO desmontamos el player: lo dejamos
+      // montado pero en pausa (audioPlaying/videoPlaying=false) para que el
+      // ExoPlayer/MediaSession sobreviva y pueda reanudar en background sin
+      // recrearse. Conservamos selección, MPD y playbackIntent.
       stopActivePlayers();
       syncStateRef.current = SyncState.DISCONNECTED;
       setSyncState(SyncState.DISCONNECTED);
       setIsLoading(false);
       setAudioPlaying(false);
       setVideoPlaying(false);
-      setSelectedAudio(null);
-      setSelectedVideo(null);
-      setAudios([]);
-      setVideos([]);
-      setMpdUrl(null);
-      setStreamInfo(null);
       lastContentIdRef.current = null;
       hasReceivedContent = false;
       if (connectTimeoutRef.current) {
@@ -464,6 +542,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       setVideoPlaying(false);
       setPosition(null);
       setMpdUrl(null);
+      mpdUrlRef.current = null;
       setStreamInfo(null);
       setError(null);
       setPlaybackIntent(null);
@@ -510,9 +589,22 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   useEffect(() => {
     if (!expanded || !hasMediaSync) return;
     const sub = addHeartbeatListener(() => {
+      console.log(`💓 Heartbeat: active=${isActiveRef.current}, state=${syncStateRef.current}`);
       if (!isActiveRef.current) return;
       const s = syncStateRef.current;
-      if (s !== SyncState.DISCONNECTED && s !== SyncState.ERROR) return;
+      if (s !== SyncState.DISCONNECTED && s !== SyncState.ERROR) {
+        // Estamos conectados o conectando. Forzamos el envío de una petición WC
+        // (UDP) desde el heartbeat nativo: en background RN congela el
+        // `setInterval` que envía las peticiones WC periódicas, así que sin esto
+        // el WC deja de medir (no llegan respuestas NativeUDP), su dispersión
+        // crece y, en una reconexión, nunca llega a sincronizar y el TS no
+        // arranca. La petición y su respuesta son I/O, que sí despiertan el hilo
+        // JS en segundo plano. Lo hacemos también estando ya sincronizados para
+        // mantener el Wall Clock fresco mientras la app está en background.
+        console.log('💓 Heartbeat: poking WC');
+        syncServiceRef.current?.pokeWallClock?.();
+        return;
+      }
       const now = Date.now();
       if (now - lastReconnectAttemptRef.current < RETRY_DELAY) return;
       lastReconnectAttemptRef.current = now;
@@ -539,16 +631,39 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     if (audioPlaying || videoPlaying || playbackIntent) {
       startForegroundSync(
         terminal.getFriendlyName(),
-        t('discovery.syncingWithTv', { defaultValue: 'Sincronizando con la TV' })
+        t('discovery.syncingWithTv', { defaultValue: 'Sincronizando con la TV' }),
+        t('discovery.stopSync', { defaultValue: 'Detener' })
       );
     } else {
       stopForegroundSync();
     }
   }, [audioPlaying, videoPlaying, playbackIntent, terminal, t]);
 
+  // Acción "Detener" de la notificación del foreground service: permite al
+  // usuario parar el reproductor y la sincronización con la app en segundo
+  // plano, sin tener que reabrirla. El módulo nativo emite `onStopRequested`
+  // cuando se pulsa el botón; delegamos en `stopEverything` (vía ref para
+  // evitar closures obsoletos).
+  useEffect(() => {
+    if (!expanded || !hasMediaSync) return;
+    const sub = addStopListener(() => {
+      console.log('🛑 Stop solicitado desde la notificación');
+      stopEverythingRef.current?.();
+    });
+    return () => sub.remove();
+  }, [expanded, hasMediaSync]);
+
   // Cargar MPD
   const loadMpd = useCallback(async (url) => {
     try {
+      // Si vamos a cambiar de contenido (nuevo MPD) mientras el vídeo está en
+      // pantalla completa, cerramos el reproductor fullscreen del componente
+      // actual ANTES de remontar el <Video> (la ref aún apunta al componente
+      // antiguo). Marcamos la reentrada para volver a fullscreen tras onLoad.
+      if (isFullscreenRef.current && url !== mpdUrlRef.current) {
+        pendingFullscreenRef.current = true;
+        videoPlayerRef.current?.dismissFullscreenPlayer?.();
+      }
       const data = await MpdParserService.parseMpd(url);
       if (!isActiveRef.current) return;
       const audiosData = data.audios || [];
@@ -560,7 +675,9 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
         mpdType: data.mpdType || 'static',
         availabilityStartTime: data.availabilityStartTime,
         timeShiftBufferDepthSeconds: data.timeShiftBufferDepthSeconds,
+        durationSeconds: data.durationSeconds ?? null,
       });
+      mpdUrlRef.current = url;
       setMpdUrl(url);
 
       // Reanudar automáticamente el componente que se estaba reproduciendo si el
@@ -568,31 +685,52 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       // reconexión como un cambio de contenido en la TV, y funciona también con
       // la app en segundo plano (el foreground service la mantiene viva).
       const intent = playbackIntentRef.current;
+      console.log(
+        `📀 loadMpd: audios=${audiosData.length}, videos=${videosData.length}, intent=${intent ? JSON.stringify(intent) : 'null'}`
+      );
+      let resumed = false;
       if (intent) {
         const sameRole = (a, b) => (a || '') === (b || '');
         if (intent.kind === 'audio') {
           const match = audiosData.find(
             (a) => a.iso === intent.iso && sameRole(a.role, intent.role)
           );
+          console.log(`📀 loadMpd: auto-resume AUDIO match=${match ? (match.iso + '/' + (match.role || '')) : 'NONE'} (intent iso=${intent.iso}, role=${intent.role}); disponibles=[${audiosData.map((a) => a.iso + '/' + (a.role || '')).join(', ')}]`);
           if (match) {
             setSelectedVideo(null);
             setVideoPlaying(false);
             setSelectedAudio(match);
             setAudioPlaying(true);
             lastSyncTimeRef.current = 0;
+            resumed = true;
           }
         } else if (intent.kind === 'video') {
           const match = videosData.find(
             (v) => v.iso === intent.iso && sameRole(v.role, intent.role)
           );
+          console.log(`📀 loadMpd: auto-resume VIDEO match=${match ? (match.iso + '/' + (match.role || '')) : 'NONE'} (intent iso=${intent.iso}, role=${intent.role}); disponibles=[${videosData.map((v) => v.iso + '/' + (v.role || '')).join(', ')}]`);
           if (match) {
             setSelectedAudio(null);
             setAudioPlaying(false);
             setSelectedVideo(match);
             setVideoPlaying(true);
             lastVideoSyncTimeRef.current = 0;
+            resumed = true;
           }
         }
+      }
+
+      // Si el nuevo MPD no contiene el componente que estábamos reproduciendo
+      // (o no hay intención de reproducir), detenemos y limpiamos la selección
+      // anterior: así un cambio de contenido en la TV no se queda reproduciendo
+      // el contenido previo. El usuario podrá seleccionar de nuevo en la lista.
+      if (!resumed) {
+        console.log('📀 loadMpd: sin coincidencia -> limpiando selección anterior');
+        stopActivePlayers();
+        setSelectedAudio(null);
+        setSelectedVideo(null);
+        setAudioPlaying(false);
+        setVideoPlaying(false);
       }
     } catch (err) {
       console.error('❌ Error carregant MPD:', err);
@@ -606,11 +744,6 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   // Sincronizar audio con posición TV
   useEffect(() => {
     if (!selectedAudio || !audioPlaying || !position) return;
-
-    const now = Date.now();
-    if (now - lastSyncTimeRef.current < 500) return;
-    lastSyncTimeRef.current = now;
-
     if (position.positionSeconds == null || (streamInfo?.isLive && audioCurrentPlaybackTimeRef.current === 0)) return;
 
     const audioTime = streamInfo?.isLive ? audioCurrentPlaybackTimeRef.current : audioCurrentTimeRef.current;
@@ -620,6 +753,14 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       : position.positionSeconds;
     const drift = audioTime - tvTime;
     const absDrift = Math.abs(drift);
+
+    // Throttle adaptativo: cerca del lock muestreamos más a menudo para asentar
+    // el rate antes de que la deriva cruce el umbral (evita oscilar por encima/
+    // por debajo sin tocar okThreshold, que debe quedar < 1 frame por lipsync).
+    const now = Date.now();
+    const syncInterval = absDrift < NEAR_DRIFT_BAND ? NEAR_SYNC_INTERVAL_MS : SYNC_INTERVAL_MS;
+    if (now - lastSyncTimeRef.current < syncInterval) return;
+    lastSyncTimeRef.current = now;
 
     const seekThreshold = isLive ? 5 : 2;
     const okThreshold = 0.02;
@@ -658,11 +799,6 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   // Sincronizar vídeo con posición TV (mismo algoritmo que el áudio)
   useEffect(() => {
     if (!selectedVideo || !videoPlaying || !position) return;
-
-    const now = Date.now();
-    if (now - lastVideoSyncTimeRef.current < 500) return;
-    lastVideoSyncTimeRef.current = now;
-
     if (position.positionSeconds == null || (streamInfo?.isLive && videoCurrentPlaybackTimeRef.current === 0)) return;
 
     const videoTime = streamInfo?.isLive ? videoCurrentPlaybackTimeRef.current : videoCurrentTimeRef.current;
@@ -672,6 +808,12 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       : position.positionSeconds;
     const drift = videoTime - tvTime;
     const absDrift = Math.abs(drift);
+
+    // Throttle adaptativo (ver el useEffect de audio).
+    const now = Date.now();
+    const syncInterval = absDrift < NEAR_DRIFT_BAND ? NEAR_SYNC_INTERVAL_MS : SYNC_INTERVAL_MS;
+    if (now - lastVideoSyncTimeRef.current < syncInterval) return;
+    lastVideoSyncTimeRef.current = now;
 
     const seekThreshold = isLive ? 5 : 2;
     const okThreshold = 0.02;
@@ -774,6 +916,131 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     return 'language';
   };
 
+  // Formata una durada en segons a HH:MM:SS (o MM:SS si és < 1h).
+  const formatDuration = (seconds) => {
+    if (seconds == null || !isFinite(seconds) || seconds < 0) return '--:--';
+    const total = Math.floor(seconds);
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    const pad = (v) => v.toString().padStart(2, '0');
+    return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+  };
+
+  // Barra de progrés informativa (només lectura): mostra el temps actual i, si
+  // es coneix, la durada total. En streams en directe no hi ha durada fixa, així
+  // que mostrem un indicador "EN DIRECTO" sense progrés. L'usuari no pot moure la
+  // posició (no hi ha cap control interactiu).
+  const renderSeekBar = () => {
+    if (!position) return null;
+    const isLive = !!streamInfo?.isLive;
+    const duration = streamInfo?.durationSeconds ?? null;
+    const current = position.positionSeconds ?? 0;
+    const hasDuration = !isLive && duration != null && duration > 0;
+    const fraction = hasDuration
+      ? Math.max(0, Math.min(1, current / duration))
+      : 0;
+
+    return (
+      <View style={styles.seekRow}>
+        <Text style={styles.seekTimeText}>
+          {isLive ? formatDuration(current) : (position.formattedTime || formatDuration(current))}
+        </Text>
+        <View style={styles.seekTrack}>
+          {isLive ? (
+            <View style={styles.seekLiveIndicator} />
+          ) : (
+            <View style={[styles.seekFill, { width: `${fraction * 100}%` }]} />
+          )}
+        </View>
+        {isLive ? (
+          <View style={styles.seekLiveBadge}>
+            <View style={styles.seekLiveDot} />
+            <Text style={styles.seekLiveText}>{t('discovery.live')}</Text>
+          </View>
+        ) : (
+          <Text style={styles.seekTimeText}>
+            {hasDuration ? formatDuration(duration) : '--:--'}
+          </Text>
+        )}
+      </View>
+    );
+  };
+
+  // Calcula l'estat de sincronització del reproductor respecte la TV. Reutilitza
+  // els mateixos llindars que el corrector (seek 2s VOD / 5s directe, ok 20ms) i
+  // el rate actiu per classificar l'estat. Es recalcula a cada render (amb cada
+  // `position`, ~10 cops/s) llegint el temps del player dels refs (onProgress).
+  const getPlayerSyncStatus = () => {
+    const isAudioActive = !!selectedAudio && audioPlaying;
+    const isVideoActive = !!selectedVideo && videoPlaying;
+    if (!isAudioActive && !isVideoActive) return null;
+
+    const isLive = !!streamInfo?.isLive;
+
+    // Encara sense timeline/WC o sense posició: esperant senyal.
+    if (syncState !== SyncState.SYNCHRONIZED || !position || position.positionSeconds == null) {
+      return { status: 'waiting', driftMs: null, rate: 1 };
+    }
+
+    const rate = isAudioActive ? audioRate : videoRate;
+    const playerTime = isAudioActive
+      ? (isLive ? audioCurrentPlaybackTimeRef.current : audioCurrentTimeRef.current)
+      : (isLive ? videoCurrentPlaybackTimeRef.current : videoCurrentTimeRef.current);
+
+    // En directe, fins que el player no reporta temps de reproducció, esperant.
+    if (isLive && playerTime === 0) return { status: 'waiting', driftMs: null, rate };
+
+    const tvTime = (isLive && position.exoPlayerPositionSeconds != null)
+      ? position.exoPlayerPositionSeconds
+      : position.positionSeconds;
+    const driftSec = playerTime - tvTime;
+    const absDrift = Math.abs(driftSec);
+    const driftMs = Math.round(driftSec * 1000);
+
+    const seekThreshold = isLive ? 5 : 2;
+    const okThreshold = 0.02;
+
+    let status;
+    if (absDrift > seekThreshold) status = 'seeking';
+    else if (rate !== 1.0 || absDrift > okThreshold) status = 'adjusting';
+    else status = 'locked';
+
+    return { status, driftMs, rate };
+  };
+
+  // Mapatge d'estat -> icona i color (dins del badge de reproducció).
+  const SYNC_VISUALS = {
+    locked: { icon: 'check-circle', color: theme.colors.success },
+    adjusting: { icon: 'speed', color: theme.colors.warning },
+    seeking: { icon: 'fast-forward', color: theme.colors.tertiary },
+    waiting: { icon: 'hourglass-empty', color: theme.colors.onSurfaceVariant },
+  };
+
+  // Fila d'estat de sincronització (multiidioma): icona + etiqueta d'estat +
+  // deriva (ms). Es col·loca sobre la barra de seek. Reutilitza les claus i18n
+  // `discovery.sync*`.
+  const renderSyncStatus = (sync) => {
+    if (!sync) return null;
+    const visual = SYNC_VISUALS[sync.status] || SYNC_VISUALS.waiting;
+    const label = sync.status === 'adjusting'
+      ? t('discovery.syncAdjusting', { rate: sync.rate.toFixed(2) })
+      : t(`discovery.sync${sync.status.charAt(0).toUpperCase()}${sync.status.slice(1)}`);
+    const showDrift = sync.driftMs != null && sync.status !== 'waiting';
+    const driftLabel = showDrift
+      ? `${sync.driftMs >= 0 ? '+' : '−'}${Math.abs(sync.driftMs)} ms`
+      : null;
+    return (
+      <View style={styles.syncStatusRow}>
+        <MaterialIcons name={visual.icon} size={14} color={visual.color} />
+        <Text style={[styles.syncStatusText, { color: visual.color }]}>{label}</Text>
+        {driftLabel && <Text style={styles.syncDriftText}>{driftLabel}</Text>}
+      </View>
+    );
+  };
+
+  const playerSync = getPlayerSyncStatus();
+
   return (
     <View style={styles.card}>
       <TouchableOpacity onPress={toggleExpand} activeOpacity={hasMediaSync ? 0.8 : 1} disabled={!hasMediaSync}>
@@ -801,12 +1068,10 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
 
       {expanded && hasMediaSync && (
         <View style={styles.mediaSection}>
-          {isLoading && (
-            <ActivityIndicator color={theme.colors.primary} style={{ marginVertical: 16 }} />
-          )}
-
-          {!isLoading && audios.length === 0 && videos.length === 0 && (
-            <Text style={styles.emptyText}>{t('discovery.waitingForContent')}</Text>
+          {(isLoading || (audios.length === 0 && videos.length === 0)) && (
+            <View style={styles.statusRegion}>
+                <Text style={styles.emptyText}>{t('discovery.waitingForContent')} <ActivityIndicator color={theme.colors.primary} /></Text>
+            </View>
           )}
 
           {audios.length > 0 && (
@@ -867,6 +1132,10 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
 
                 {isSelected && (
                   <View style={styles.playerSection}>
+                    {/* Estat de sincronització sobre la barra de seek */}
+                    {renderSyncStatus(playerSync)}
+                    {/* Barra de progrés informativa (només lectura) */}
+                    {renderSeekBar()}
                     {/* Slider de volumen */}
                     <View style={styles.volumeRow}>
                       <MaterialIcons name="volume-down" size={14} color={theme.colors.onSurfaceVariant} />
@@ -927,9 +1196,10 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
                   <View style={styles.videoPlayerSection}>
                     <View style={styles.videoSurfaceWrapper}>
                       <Video
+                        key={mpdUrl}
                         ref={videoPlayerRef}
                         source={{ uri: mpdUrl, type: 'mpd' }}
-                        paused={!videoPlaying || !position?.isPlaying}
+                        paused={!videoPlaying || (position != null && !position.isPlaying)}
                         rate={videoPlaying && position?.isPlaying ? videoRate : 1.0}
                         volume={volume}
                         resizeMode="contain"
@@ -941,14 +1211,21 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
                         fullscreenOrientation="landscape"
                         fullscreenAutorotate={true}
                         onFullscreenPlayerWillPresent={() => {
+                          isFullscreenRef.current = true;
                           ScreenOrientation.lockAsync(
                             ScreenOrientation.OrientationLock.LANDSCAPE
                           ).catch(() => {});
                         }}
                         onFullscreenPlayerWillDismiss={() => {
-                          ScreenOrientation.lockAsync(
-                            ScreenOrientation.OrientationLock.PORTRAIT_UP
-                          ).catch(() => {});
+                          isFullscreenRef.current = false;
+                          // Si el cierre forma parte de una reentrada automática
+                          // (cambio de contenido en fullscreen), no restauramos
+                          // la orientación vertical para evitar el parpadeo.
+                          if (!pendingFullscreenRef.current) {
+                            ScreenOrientation.lockAsync(
+                              ScreenOrientation.OrientationLock.PORTRAIT_UP
+                            ).catch(() => {});
+                          }
                         }}
                         selectedVideoTrack={
                           selectedVideo.videoTrackIndex != null
@@ -959,6 +1236,13 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
                           if (position?.positionSeconds && videoPlayerRef.current && !streamInfo?.isLive) {
                             videoPlayerRef.current.seek(position.positionSeconds);
                           }
+                          // Si el contenido cambió mientras estábamos en fullscreen,
+                          // volvemos a presentar el reproductor a pantalla completa
+                          // con el nuevo vídeo ya cargado.
+                          if (pendingFullscreenRef.current) {
+                            pendingFullscreenRef.current = false;
+                            videoPlayerRef.current?.presentFullscreenPlayer?.();
+                          }
                         }}
                         onProgress={({ currentTime, currentPlaybackTime }) => {
                           videoCurrentTimeRef.current = currentTime;
@@ -968,7 +1252,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
                           console.error('Error reproduint vídeo:', err);
                           setVideoPlaying(false);
                         }}
-                        progressUpdateInterval={250}
+                        progressUpdateInterval={10}
                         style={styles.videoSurface}
                       />
                       <TouchableOpacity
@@ -979,6 +1263,10 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
                         <MaterialIcons name="fullscreen" size={22} color="#fff" />
                       </TouchableOpacity>
                     </View>
+                    {/* Estat de sincronització sobre la barra de seek */}
+                    {renderSyncStatus(playerSync)}
+                    {/* Barra de progrés informativa (només lectura) */}
+                    {renderSeekBar()}
                     <View style={styles.volumeRow}>
                       <MaterialIcons name="volume-down" size={14} color={theme.colors.onSurfaceVariant} />
                       <Slider
@@ -1002,7 +1290,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
           })}
 
           {/* Error banner */}
-          {error && (
+          {/* <StatusSlot visible={!!error} minHeight={64}>
             <View style={styles.errorBanner}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <MaterialIcons name="error" size={14} color={theme.colors.onErrorContainer} />
@@ -1010,15 +1298,16 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
               </View>
               <Text style={styles.retryText}>{t('discovery.retryingConnection')}</Text>
             </View>
-          )}
+          </StatusSlot> */}
 
           {/* Reproductor de audio oculto */}
           {selectedAudio && mpdUrl && (
             <Video
+              key={mpdUrl}
               ref={audioPlayerRef}
               source={{ uri: mpdUrl, type: 'mpd' }}
               audioOnly={true}
-              paused={!audioPlaying || !position?.isPlaying}
+              paused={!audioPlaying || (position != null && !position.isPlaying)}
               rate={audioPlaying && position?.isPlaying ? audioRate : 1.0}
               volume={volume}
               playInBackground={true}
@@ -1043,7 +1332,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
                 console.error('❌ Error reproduint àudio:', err);
                 setAudioPlaying(false);
               }}
-              progressUpdateInterval={250}
+              progressUpdateInterval={10}
               style={{ height: 0, width: 0 }}
             />
           )}
@@ -1221,6 +1510,27 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     fontFamily: theme.typography.labelCaps.fontFamily,
   },
+  syncStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    gap: 6,
+    marginBottom: theme.spacing.sm,
+  },
+  syncStatusText: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    fontFamily: theme.typography.labelCaps.fontFamily,
+  },
+  syncDriftText: {
+    color: theme.colors.onSurfaceVariant,
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+    fontFamily: theme.typography.bodyMd.fontFamily,
+    fontVariant: ['tabular-nums'],
+  },
   waveContainerCompact: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1267,12 +1577,73 @@ const styles = StyleSheet.create({
     fontFamily: theme.typography.bodyMd.fontFamily,
   },
 
+  seekRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    gap: 8,
+    marginBottom: theme.spacing.sm,
+  },
+  seekTrack: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: theme.colors.surfaceContainerHighest,
+    overflow: 'hidden',
+  },
+  seekFill: {
+    height: '100%',
+    borderRadius: 2,
+    backgroundColor: theme.colors.primary,
+  },
+  seekLiveIndicator: {
+    height: '100%',
+    width: '100%',
+    backgroundColor: theme.colors.surfaceContainerHighest,
+  },
+  seekTimeText: {
+    fontSize: 12,
+    color: theme.colors.onSurfaceVariant,
+    minWidth: 44,
+    textAlign: 'center',
+    fontFamily: theme.typography.bodyMd.fontFamily,
+    fontVariant: ['tabular-nums'],
+  },
+  seekLiveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: theme.radius.full,
+    backgroundColor: theme.colors.surfaceContainerHighest,
+  },
+  seekLiveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: theme.colors.error,
+  },
+  seekLiveText: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    color: theme.colors.onSurface,
+    fontFamily: theme.typography.labelCaps.fontFamily,
+  },
+
 
   errorBanner: {
     backgroundColor: theme.colors.errorContainer,
     borderRadius: theme.radius.md,
     padding: theme.spacing.sm,
     marginTop: theme.spacing.sm,
+  },
+  statusRegion: {
+    minHeight: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: theme.spacing.md,
   },
   errorText: {
     color: theme.colors.onErrorContainer,

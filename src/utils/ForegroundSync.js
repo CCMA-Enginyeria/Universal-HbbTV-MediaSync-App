@@ -26,12 +26,14 @@ const isAvailable = Platform.OS === 'android' && nativeModule != null;
  * the foreground (Android restriction).
  * @param {string} [title]
  * @param {string} [text]
+ * @param {string} [stopLabel] Localized label for the notification's stop
+ *   action button (emits the stop event when tapped).
  * @returns {boolean}
  */
-export function startForegroundSync(title, text) {
+export function startForegroundSync(title, text, stopLabel) {
   if (!isAvailable) return false;
   try {
-    return nativeModule.start(title, text);
+    return nativeModule.start(title, text, stopLabel);
   } catch (e) {
     console.warn('startForegroundSync error:', e?.message);
     return false;
@@ -69,4 +71,21 @@ export function addHeartbeatListener(callback) {
   }
 }
 
-export default { startForegroundSync, stopForegroundSync, addHeartbeatListener, isAvailable };
+/**
+ * Subscribe to the stop request emitted when the user taps the "stop" action on
+ * the foreground-service notification. The callback should tear down the player
+ * and the DVB-CSS synchronization.
+ * @param {() => void} callback
+ * @returns {{ remove: () => void }}
+ */
+export function addStopListener(callback) {
+  if (!isAvailable) return { remove: () => {} };
+  try {
+    return nativeModule.addListener('onStopRequested', callback);
+  } catch (e) {
+    console.warn('addStopListener error:', e?.message);
+    return { remove: () => {} };
+  }
+}
+
+export default { startForegroundSync, stopForegroundSync, addHeartbeatListener, addStopListener, isAvailable };

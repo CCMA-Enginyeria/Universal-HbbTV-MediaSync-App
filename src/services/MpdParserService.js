@@ -6,32 +6,36 @@
  */
 
 import { XMLParser } from 'fast-xml-parser';
-
-// Mapa d'idiomes ISO 639 a noms llegibles
-const LANGUAGE_NAMES = {
-  ca: 'Català',
-  es: 'Castellano',
-  en: 'English',
-  fr: 'Français',
-  de: 'Deutsch',
-  it: 'Italiano',
-  pt: 'Português',
-  qaa: 'Audiodescripció',
-  qad: 'Audiodescripció',
-  und: 'Indefinit',
-  mis: 'Altres',
-};
+import i18n from '../i18n';
 
 /**
- * Obté el nom llegible d'un idioma a partir del codi ISO
+ * Comprova si un codi d'idioma pertany al rang d'ús privat d'ISO 639-2.
+ * Els codis qaa–qtz estan reservats per a ús local o privat, de manera que
+ * el seu significat és específic del contingut i no es pot inferir del codi.
+ */
+function isPrivateUseLanguage(iso) {
+  return typeof iso === 'string' && /^q[a-t][a-z]$/i.test(iso);
+}
+
+/**
+ * Obté el nom llegible d'un idioma a partir del codi ISO,
+ * traduït a l'idioma actiu de l'app.
  */
 function getLanguageName(iso, contentType) {
   if (!iso) {
-    if (contentType === 'audio') return 'Àudio';
-    if (contentType === 'video') return 'Vídeo';
-    return 'Subtítol';
+    if (contentType === 'audio') return i18n.t('discovery.media.audioGeneric');
+    if (contentType === 'video') return i18n.t('discovery.media.videoGeneric');
+    return i18n.t('discovery.media.subtitleGeneric');
   }
-  return LANGUAGE_NAMES[iso] || iso.toUpperCase();
+  const code = iso.toLowerCase();
+  // Codis d'ús privat (qaa–qtz): el significat depèn del contingut.
+  if (isPrivateUseLanguage(code)) {
+    return i18n.t('discovery.media.otherLang');
+  }
+  if (code === 'und') return i18n.t('discovery.media.undefinedLang');
+  if (code === 'mis') return i18n.t('discovery.media.otherLang');
+  const localized = i18n.t(`discovery.media.languages.${code}`, { defaultValue: '' });
+  return localized || iso.toUpperCase();
 }
 
 /**
@@ -134,6 +138,12 @@ class MpdParserService {
       const suggestedPresentationDelay = mpd['@_suggestedPresentationDelay'] || null;
       const isLive = mpdType === 'dynamic';
 
+      // Durada total del contingut (només VOD). Ve com a durada ISO 8601
+      // (p. ex. "PT1H30M45S"); la convertim a segons per a la barra informativa.
+      const durationSeconds = isLive
+        ? null
+        : this._parseIso8601Duration(mpd['@_mediaPresentationDuration']);
+
       if (isLive) {
         console.log(`📡 MPD Live detectat: AST=${availabilityStartTime}, updatePeriod=${minimumUpdatePeriod}`);
       }
@@ -147,11 +157,33 @@ class MpdParserService {
         minimumUpdatePeriod,
         timeShiftBufferDepth,
         suggestedPresentationDelay,
+        durationSeconds,
       };
     } catch (error) {
       console.error('❌ Error parsejant MPD:', error.message);
-      return { audios: [], subtitles: [], videos: [], availabilityStartTime: null, mpdType: 'static', isLive: false };
+      return { audios: [], subtitles: [], videos: [], availabilityStartTime: null, mpdType: 'static', isLive: false, durationSeconds: null };
     }
+  }
+
+  /**
+   * Converteix una durada ISO 8601 (p. ex. "PT1H30M45.5S") a segons.
+   * Retorna null si el valor no existeix o no és vàlid.
+   */
+  _parseIso8601Duration(value) {
+    if (!value || typeof value !== 'string') return null;
+    const match = value.match(
+      /^P(?:(\d+(?:\.\d+)?)Y)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)D)?(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?$/
+    );
+    if (!match) return null;
+    const [, years, months, days, hours, minutes, seconds] = match;
+    const total =
+      (parseFloat(years) || 0) * 31536000 +
+      (parseFloat(months) || 0) * 2592000 +
+      (parseFloat(days) || 0) * 86400 +
+      (parseFloat(hours) || 0) * 3600 +
+      (parseFloat(minutes) || 0) * 60 +
+      (parseFloat(seconds) || 0);
+    return total > 0 ? total : null;
   }
 
   /**
@@ -177,11 +209,16 @@ class MpdParserService {
 
     // Llegir <Role> element per diferenciar main/supplementary/etc.
     const roleEl = as.Role;
-    const role = roleEl?.['@_value'] || '';
+    const rawRole = roleEl?.['@_value'] || '';
 
-    // Llegir <Accessibility> per detectar audiodescripció
+    // Llegir <Accessibility> per detectar audiodescripció.
+    // La detecció es basa en els elements <Accessibility>/<Role> del manifest,
+    // no en el codi d'idioma (els codis qaa–qtz són d'ús privat).
     const accessEl = as.Accessibility;
     const isAccessibility = !!accessEl;
+    const isAudioDescription = rawRole === 'description' || isAccessibility;
+    // Normalitzar el role perquè la UI (getAudioLabel) el pugui interpretar.
+    const role = isAudioDescription ? 'description' : rawRole;
 
     // Agafar la representació amb més bandwidth (millor qualitat)
     let bestRep = representations[0];
@@ -198,7 +235,7 @@ class MpdParserService {
     const repId = bestRep['@_id'] || '';
 
     // Determinar text descriptiu
-    let text = label || (isAccessibility ? 'Audiodescripció' : getLanguageName(lang, 'audio'));
+    let text = label || (isAudioDescription ? i18n.t('discovery.media.audioDescription') : getLanguageName(lang, 'audio'));
     // Afegir info de codec si és rellevant
     const codecShort = repCodecs.includes('ec-3') ? 'Dolby' :
                        repCodecs.includes('ac-3') ? 'AC3' :
@@ -258,11 +295,11 @@ class MpdParserService {
     let text = label;
     if (!text) {
       if (isSign) {
-        text = 'Llengua de signes';
+        text = i18n.t('discovery.media.signLanguage');
       } else if (role !== 'main') {
-        text = `Vídeo (${role})`;
+        text = `${i18n.t('discovery.media.videoGeneric')} (${role})`;
       } else {
-        text = getLanguageName(lang, 'video') || 'Vídeo';
+        text = getLanguageName(lang, 'video') || i18n.t('discovery.media.videoGeneric');
       }
     }
     if (width && height) {

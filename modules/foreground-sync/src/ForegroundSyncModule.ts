@@ -9,8 +9,11 @@ declare class ForegroundSyncModule extends NativeModule<ForegroundSyncModuleEven
    * notification WITHOUT media controls (all control happens on the TV).
    *
    * Must be called while the app is in the foreground (Android restriction).
+   *
+   * `stopLabel` is the localized label shown on the notification's stop action
+   * button (the action emits the `onStopRequested` event when tapped).
    */
-  start(title?: string, text?: string): boolean;
+  start(title?: string, text?: string, stopLabel?: string): boolean;
 
   /**
    * Stop the foreground service and remove its notification.

@@ -5,4 +5,10 @@ export type ForegroundSyncModuleEvents = {
    * setTimeout) so reconnection logic can run.
    */
   onHeartbeat: (params: { timestamp: number }) => void;
+  /**
+   * Emitted when the user taps the "stop" action on the foreground-service
+   * notification. The React layer should tear down the player and the
+   * DVB-CSS synchronization in response.
+   */
+  onStopRequested: () => void;
 };
