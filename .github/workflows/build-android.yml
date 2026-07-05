@@ -60,45 +60,26 @@ jobs:
           # misleading "keystore password was incorrect" Gradle error.
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > android/app/release.keystore
 
-      - name: Verify Keystore (diagnostics)
+      - name: Verify Keystore
         if: ${{ github.event_name == 'push' || github.event.inputs.build_type == 'release' }}
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          set +e
           KS=android/app/release.keystore
+          # sha256 is safe to print and lets us confirm the secret matches the
+          # keystore used locally without exposing anything sensitive.
+          echo "keystore sha256=$(sha256sum "$KS" | awk '{print $1}')"
 
-          echo "===== Keystore file diagnostics ====="
-          ls -l "$KS"
-          echo "size_bytes=$(wc -c < "$KS")"
-          echo "sha256=$(sha256sum "$KS" | awk '{print $1}')"
-          echo "file_type=$(file -b "$KS")"
-
-          echo ""
-          echo "===== Secret sanity (lengths only, values never printed) ====="
-          # A trailing newline/space in a secret is a very common cause of
-          # "password incorrect". These print ONLY the character counts.
-          echo "store_password_length=${#ANDROID_KEYSTORE_PASSWORD}"
-          echo "key_password_length=${#ANDROID_KEY_PASSWORD}"
-          echo "key_alias_length=${#ANDROID_KEY_ALIAS}"
-          echo "store_and_key_password_match=$([ "$ANDROID_KEYSTORE_PASSWORD" = "$ANDROID_KEY_PASSWORD" ] && echo yes || echo no)"
-
-          echo ""
-          echo "===== keytool: validate STORE password + list aliases ====="
-          # If the store password is correct this succeeds and lists the real
-          # alias(es). GitHub masks any value equal to a secret, so the true
-          # alias only prints if it differs from the ANDROID_KEY_ALIAS secret.
-          keytool -list -keystore "$KS" -storepass "$ANDROID_KEYSTORE_PASSWORD" 2>&1
-          echo "keytool_list_exit=$?"
-
-          echo ""
-          echo "===== keytool: validate the CONFIGURED alias + key password ====="
-          keytool -list -keystore "$KS" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" 2>&1
-          echo "keytool_alias_exit=$?"
-          # Never fail the build here — this step is purely diagnostic.
-          exit 0
+          # Fail fast (before Gradle) if the store password does not match the
+          # keystore in the secret. This is the exact failure that previously
+          # surfaced as a confusing "keystore password was incorrect" deep in
+          # Gradle's PackageAndroidArtifact task.
+          if ! keytool -list -keystore "$KS" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null 2>&1; then
+            echo "::error::The ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS secrets do not match the keystore in ANDROID_KEYSTORE_BASE64. Regenerate the base64 from the correct release.keystore and update the secrets."
+            exit 1
+          fi
+          echo "Keystore verified: store password OK and alias present."
 
       - name: Build Release APK + AAB
         if: ${{ github.event_name == 'push' || github.event.inputs.build_type == 'release' }}
