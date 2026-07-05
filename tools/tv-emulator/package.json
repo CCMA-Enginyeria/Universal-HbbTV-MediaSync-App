@@ -1,0 +1,17 @@
+{
+  "name": "hbbtv-mediasync-tv-emulator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Self-contained Node.js emulator of an HbbTV TV with DVB-CSS MediaSync (SSDP/DIAL discovery + CSS-CII + CSS-WC + CSS-TS). Lets the mobile app discover and synchronize end-to-end without a real television.",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
