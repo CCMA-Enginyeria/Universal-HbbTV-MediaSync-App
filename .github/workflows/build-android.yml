@@ -54,7 +54,51 @@ jobs:
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/release.keystore
+          # Strip any whitespace / CR / LF the secret may contain (e.g. base64
+          # generated on Windows with CRLF, or pasted with line wraps). Leaving
+          # them in corrupts the decoded keystore, which later surfaces as the
+          # misleading "keystore password was incorrect" Gradle error.
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > android/app/release.keystore
+
+      - name: Verify Keystore (diagnostics)
+        if: ${{ github.event_name == 'push' || github.event.inputs.build_type == 'release' }}
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set +e
+          KS=android/app/release.keystore
+
+          echo "===== Keystore file diagnostics ====="
+          ls -l "$KS"
+          echo "size_bytes=$(wc -c < "$KS")"
+          echo "sha256=$(sha256sum "$KS" | awk '{print $1}')"
+          echo "file_type=$(file -b "$KS")"
+
+          echo ""
+          echo "===== Secret sanity (lengths only, values never printed) ====="
+          # A trailing newline/space in a secret is a very common cause of
+          # "password incorrect". These print ONLY the character counts.
+          echo "store_password_length=${#ANDROID_KEYSTORE_PASSWORD}"
+          echo "key_password_length=${#ANDROID_KEY_PASSWORD}"
+          echo "key_alias_length=${#ANDROID_KEY_ALIAS}"
+          echo "store_and_key_password_match=$([ "$ANDROID_KEYSTORE_PASSWORD" = "$ANDROID_KEY_PASSWORD" ] && echo yes || echo no)"
+
+          echo ""
+          echo "===== keytool: validate STORE password + list aliases ====="
+          # If the store password is correct this succeeds and lists the real
+          # alias(es). GitHub masks any value equal to a secret, so the true
+          # alias only prints if it differs from the ANDROID_KEY_ALIAS secret.
+          keytool -list -keystore "$KS" -storepass "$ANDROID_KEYSTORE_PASSWORD" 2>&1
+          echo "keytool_list_exit=$?"
+
+          echo ""
+          echo "===== keytool: validate the CONFIGURED alias + key password ====="
+          keytool -list -keystore "$KS" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" 2>&1
+          echo "keytool_alias_exit=$?"
+          # Never fail the build here — this step is purely diagnostic.
+          exit 0
 
       - name: Build Release APK + AAB
         if: ${{ github.event_name == 'push' || github.event.inputs.build_type == 'release' }}
