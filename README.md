@@ -1,5 +1,11 @@
 # Universal HbbTV MediaSync App
 
+[![Tests](https://github.com/CCMA-Enginyeria/Universal-HbbTV-MediaSync-App/actions/workflows/tests.yml/badge.svg)](https://github.com/CCMA-Enginyeria/Universal-HbbTV-MediaSync-App/actions/workflows/tests.yml)
+[![Build Android APK](https://github.com/CCMA-Enginyeria/Universal-HbbTV-MediaSync-App/actions/workflows/build-android.yml/badge.svg)](https://github.com/CCMA-Enginyeria/Universal-HbbTV-MediaSync-App/actions/workflows/build-android.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS-blue.svg)](#)
+[![Made with Expo](https://img.shields.io/badge/Made%20with-Expo-000020.svg?logo=expo&logoColor=white)](https://expo.dev)
+
 ![Universal HbbTV MediaSync App preview](assets/preview.jpg)
 
 ## Vision
