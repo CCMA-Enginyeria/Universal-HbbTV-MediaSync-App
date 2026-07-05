@@ -62,7 +62,7 @@ export class MediaSyncService extends EventEmitter {
     
     // Timer per actualitzacions periòdiques
     this.updateTimer = null;
-    this.updateInterval = 100; // ms
+    this.updateInterval = mediaSyncConfig?.MEDIA_SYNC?.POSITION_UPDATE_INTERVAL_MS ?? 250; // ms
   }
 
   /**

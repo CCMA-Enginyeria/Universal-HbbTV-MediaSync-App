@@ -25,8 +25,10 @@ import { startForegroundSync, stopForegroundSync, addHeartbeatListener, addStopL
 // NEAR_SYNC_INTERVAL_MS per assentar el rate abans que la deriva creui el llindar,
 // i així evitar oscil·lar per sobre/per sota sense haver de relaxar okThreshold
 // (que ha de quedar < durada d'1 frame per mantenir el lipsync).
-const SYNC_INTERVAL_MS = 500;
-const NEAR_SYNC_INTERVAL_MS = 150;
+// Configurables a config.js (MEDIA_SYNC) per poder ajustar el compromís
+// precisió/bateria sense tocar la lògica.
+const SYNC_INTERVAL_MS = config.MEDIA_SYNC?.SYNC_INTERVAL_MS ?? 500;
+const NEAR_SYNC_INTERVAL_MS = config.MEDIA_SYNC?.NEAR_SYNC_INTERVAL_MS ?? 250;
 const NEAR_DRIFT_BAND = 0.08; // 80 ms
 
 export default function TerminalItem({ terminal, onPress, expanded, onToggleExpand }) {
@@ -1252,7 +1254,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
                           console.error('Error reproduint vídeo:', err);
                           setVideoPlaying(false);
                         }}
-                        progressUpdateInterval={10}
+                        progressUpdateInterval={config.MEDIA_SYNC?.PROGRESS_UPDATE_INTERVAL_MS ?? 250}
                         style={styles.videoSurface}
                       />
                       <TouchableOpacity
@@ -1332,7 +1334,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
                 console.error('❌ Error reproduint àudio:', err);
                 setAudioPlaying(false);
               }}
-              progressUpdateInterval={10}
+              progressUpdateInterval={config.MEDIA_SYNC?.PROGRESS_UPDATE_INTERVAL_MS ?? 250}
               style={{ height: 0, width: 0 }}
             />
           )}

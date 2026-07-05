@@ -39,6 +39,21 @@ export const config = {
     TOLERANCE_MS: 100,
     // Wall-clock synchronization interval.
     WC_SYNC_INTERVAL_MS: 1000,
+    // Player progress callback sampling interval (ms). Lower values give a more
+    // precise drift measurement but cost more CPU/battery (ExoPlayer fires the
+    // callback at this rate). The synchronized timeline is extrapolated locally
+    // between samples (accounting for playback speed), so a coarser value saves
+    // battery without losing sync.
+    PROGRESS_UPDATE_INTERVAL_MS: 250,
+    // Interval at which the locally extrapolated position is emitted to the
+    // player corrector (ms).
+    POSITION_UPDATE_INTERVAL_MS: 250,
+    // Drift-correction cadence far from lock (ms).
+    SYNC_INTERVAL_MS: 500,
+    // Drift-correction cadence near lock (ms). Should not be lower than
+    // PROGRESS_UPDATE_INTERVAL_MS, otherwise we would correct more often than we
+    // sample the player position.
+    NEAR_SYNC_INTERVAL_MS: 250,
     // Default timeline selector (MPEG-DASH PTS).
     TIMELINE_SELECTOR: 'urn:dvb:css:timeline:pts',
     // Tick rate for PTS (90kHz).
