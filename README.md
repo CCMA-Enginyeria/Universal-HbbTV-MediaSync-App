@@ -4,9 +4,14 @@
 [![Build Android APK](https://github.com/CCMA-Enginyeria/Universal-HbbTV-MediaSync-App/actions/workflows/build-android.yml/badge.svg)](https://github.com/CCMA-Enginyeria/Universal-HbbTV-MediaSync-App/actions/workflows/build-android.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS-blue.svg)](#)
+[![Get it on Google Play](https://img.shields.io/badge/Get%20it%20on-Google%20Play-01875f?logo=googleplay&logoColor=white)](https://play.google.com/store/apps/details?id=cat.ccma.universalmediasync&pcampaignid=web_share)
 [![Made with Expo](https://img.shields.io/badge/Made%20with-Expo-000020.svg?logo=expo&logoColor=white)](https://expo.dev)
 
 ![Universal HbbTV MediaSync App preview](assets/preview.jpg)
+
+## Download
+
+The Android app is available on Google Play: [Universal MediaSync](https://play.google.com/store/apps/details?id=cat.ccma.universalmediasync&pcampaignid=web_share).
 
 ## Vision
 
