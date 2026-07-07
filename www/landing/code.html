@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 
-<html class="scroll-smooth dark" lang="en" style="">
+<html class="scroll-smooth dark" lang="en">
 
 <head>
     <meta charset="utf-8" />
@@ -119,6 +119,7 @@
 
         .text-gradient-brand {
             background: linear-gradient(135deg, #2e7dff 0%, #7c3aed 100%);
+            background-clip: text;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
@@ -206,25 +207,27 @@
                     </button>
                 </div>
                 <div class="mt-xl flex flex-col items-center gap-sm">
-                    <p class="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-widest">Coming Soon
-                        to</p>
-                    <div class="flex gap-md opacity-50 grayscale">
+                    <p class="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-widest">Available
+                        now on Android</p>
+                    <div class="flex flex-wrap gap-md justify-center">
                         <div
-                            class="flex items-center gap-xs px-md py-sm border border-outline-variant rounded-lg bg-surface-container">
+                            class="flex items-center gap-xs px-md py-sm border border-outline-variant rounded-lg bg-surface-container opacity-50 grayscale">
                             <span class="material-symbols-outlined text-2xl">phone_iphone</span>
                             <div class="text-left">
-                                <p class="text-[10px] uppercase leading-none">Download on the</p>
+                                <p class="text-[10px] uppercase leading-none">Coming soon on the</p>
                                 <p class="font-bold text-sm leading-none">App Store</p>
                             </div>
                         </div>
-                        <div
-                            class="flex items-center gap-xs px-md py-sm border border-outline-variant rounded-lg bg-surface-container">
+                        <a href="https://play.google.com/store/apps/details?id=cat.ccma.universalmediasync&amp;pcampaignid=web_share"
+                            class="flex items-center gap-xs px-md py-sm border border-primary rounded-lg bg-surface-container transition-all hover:bg-surface-container-high hover:shadow-[0_0_18px_rgba(46,125,255,0.25)]"
+                            target="_blank" rel="noopener noreferrer"
+                            aria-label="Get Universal MediaSync on Google Play">
                             <span class="material-symbols-outlined text-2xl">play_arrow</span>
                             <div class="text-left">
                                 <p class="text-[10px] uppercase leading-none">Get it on</p>
                                 <p class="font-bold text-sm leading-none">Google Play</p>
                             </div>
-                        </div>
+                        </a>
                     </div>
                 </div>
                 <div class="mt-lg flex flex-wrap items-end justify-center gap-md">
@@ -614,10 +617,13 @@
                                         class="material-symbols-outlined text-on-surface-variant transition-transform group-open:rotate-180">expand_more</span>
                                 </summary>
                                 <div class="px-lg pb-lg text-on-surface-variant">
-                                    Just download it from your app store (App Store or Google Play). Open the app while
-                                    on the same Wi-Fi network as your TV: it automatically discovers the television,
-                                    loads the companion content and synchronizes with what is playing on screen. No
-                                    setup, accounts or pairing codes required.
+                                    On Android, download it from
+                                    <a class="text-primary hover:underline"
+                                        href="https://play.google.com/store/apps/details?id=cat.ccma.universalmediasync&amp;pcampaignid=web_share"
+                                        target="_blank" rel="noopener noreferrer">Google Play</a>.
+                                    Open the app while on the same Wi-Fi network as your TV: it automatically discovers
+                                    the television, loads the companion content and synchronizes with what is playing on
+                                    screen. No setup, accounts or pairing codes required.
                                 </div>
                             </details>
                             <details
