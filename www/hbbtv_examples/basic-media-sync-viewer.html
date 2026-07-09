@@ -20,12 +20,29 @@ html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#000;}
 var v=document.getElementById('v');
 var s=document.getElementById('s');
 var SEEK_STEP_SECONDS=10;
+// Cada element pot tenir:
+//   url : MPD DASH que reprodueix la TV (genera el timeline PTS 90 kHz).
+//   web : (opcional) URL d'una web companion (.html) que el segon dispositiu
+//         carregarà a pantalla completa en comptes de reproduir el DASH.
+//         Quan hi ha `web`, s'envia com a contentIdOverride perquè el mòbil
+//         detecti (per l'extensió .html) que ha d'obrir la web sincronitzada.
+//         La TV continua reproduint `url` per mantenir viu el timeline.
 var CONTENTS=[
   {name:'Big Buck Bunny',url:'https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd'},
   {name:'Envivio',url:'https://dash.akamaized.net/envivio/EnvivioDash3/manifest.mpd'},
-  {name:'Tears of Steel',url:'https://dash.akamaized.net/dash264/TestCases/2c/qualcomm/1/MultiResMPEG2.mpd'}
+  {name:'Tears of Steel',url:'https://dash.akamaized.net/dash264/TestCases/2c/qualcomm/1/MultiResMPEG2.mpd'},
+  {name:'Web Demo (Timecode)',url:'https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd',web:'sync_app/index.html'}
 ];
 var contentIndex=0;
+// Resol la URL de la web companion a absoluta (respecte a aquesta pàgina),
+// de manera que el contentIdOverride sigui una URL vàlida per al mòbil.
+function resolveContentId(c){
+  if(c&&c.web){
+    try{return new URL(c.web,window.location.href).href;}
+    catch(e){return c.web;}
+  }
+  return c?c.url:'';
+}
 function log(m){console.log(m);s.textContent=m;}
 
 window.onload=function(){
@@ -70,7 +87,7 @@ function changeContent(delta){
   if(source){source.src=c.url;}
   v.addEventListener('canplay',function(){
     log('Playing: '+c.name);
-    initSync(c.url);
+    initSync(resolveContentId(c));
   },{once:true});
   v.load();
   v.play().catch(function(e){log('Autoplay blocked: '+e.message);});
@@ -98,7 +115,7 @@ function seekBy(deltaSeconds){
 var ms=null;
 function onReady(){
   log('Video ready. Initialising sync...');
-  initSync(CONTENTS[contentIndex].url);
+  initSync(resolveContentId(CONTENTS[contentIndex]));
 }
 
 function destroySync(){
@@ -127,6 +144,9 @@ function initSync(contentUrl){
     ms=oipfObjectFactory.createMediaSynchroniser();
     if(!ms){log('createMediaSynchroniser failed');return;}
     ms.contentIdOverride=contentUrl;
+    if(/\.html?(\?|#|$)/i.test(contentUrl)){
+      log('Enviant web companion: '+contentUrl);
+    }
     ms.onSyncNowAchievable=function(){log('Sync now achievable');};
     ms.onSyncNowUnachievable=function(){log('Sync now unachievable');};
     ms.onInterDevSyncStatus=function(st){
