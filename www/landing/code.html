@@ -469,6 +469,19 @@
                                 angles, or sign-language feeds into a fully synchronized fullscreen view.</p>
                         </div>
                     </div>
+                    <!-- Card 4: Synchronized Web -->
+                    <div
+                        class="bg-surface-container-low rounded-xl p-lg border border-outline-variant hover:border-primary transition-colors flex flex-col gap-md group">
+                        <span
+                            class="material-symbols-outlined text-primary text-4xl group-hover:scale-110 transition-transform">public</span>
+                        <div>
+                            <h3 class="font-bold text-on-surface mb-xs">Synchronized Web</h3>
+                            <p class="text-on-surface-variant text-sm">Broadcasters can point the content ID to a
+                                companion <strong>web app</strong> instead of a DASH track. The mobile opens it
+                                fullscreen and streams the TV timeline to it via post-messages, so the page renders in
+                                perfect sync with the broadcast.</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>
@@ -541,6 +554,21 @@
                                 <p class="text-on-surface-variant">CSS-CII, CSS-WC, and CSS-TS endpoints align the
                                     second
                                     device to the TV timeline with less than 20 ms of delay.</p>
+                            </div>
+                        </div>
+                        <div
+                            class="flex gap-md relative bg-surface-container-low/70 border border-primary/40 rounded-xl p-md">
+                            <div
+                                class="w-12 h-12 rounded-full bg-surface-container-high text-primary flex items-center justify-center z-10 shadow-lg flex-shrink-0">
+                                <span class="material-symbols-outlined">public</span>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-on-surface">Or a synchronized web instead of a track</h4>
+                                <p class="text-on-surface-variant">When the content ID is a web page (<code>.html</code>)
+                                    rather than an MPD, the app skips manifest parsing: it shows a card, opens the web
+                                    fullscreen in a WebView, and feeds it the live timeline via post-messages
+                                    (<code>window.__hbbtvSync</code>). If the content ID changes to another web it
+                                    reloads it; if it no longer points to a web, the user is told and can close it.</p>
                             </div>
                         </div>
                     </div>
