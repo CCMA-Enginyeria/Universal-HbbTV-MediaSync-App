@@ -7,9 +7,11 @@ import {
   ActivityIndicator,
   Animated,
   AppState,
+  Modal,
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import Video from 'react-native-video';
+import { WebView } from 'react-native-webview';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useTranslation } from 'react-i18next';
 import { MediaSyncService, SyncState } from '../services/MediaSyncService';
@@ -31,6 +33,19 @@ const SYNC_INTERVAL_MS = config.MEDIA_SYNC?.SYNC_INTERVAL_MS ?? 500;
 const NEAR_SYNC_INTERVAL_MS = config.MEDIA_SYNC?.NEAR_SYNC_INTERVAL_MS ?? 250;
 const NEAR_DRIFT_BAND = 0.08; // 80 ms
 
+// Cadència d'enviament de correccions de sincronització a la web companion. La
+// web porta el seu propi rellotge i interpola entre missatges, de manera que no
+// cal inundar-la amb post-messages: només li enviem una correcció periòdica (o
+// immediata quan canvia l'estat de reproducció / la velocitat).
+const WEB_FEED_INTERVAL_MS = 1000;
+
+// El contentId (contentIdOverride) pot apuntar a un MPD DASH o, alternativament,
+// a una web companion (.html) que s'ha de carregar a pantalla completa en un
+// WebView i alimentar amb la sincronització via post-messages, en comptes de
+// parsejar un MPD. Detectem el cas web per l'extensió de la URL.
+const isWebContent = (url) =>
+  typeof url === 'string' && /\.html?(\?|#|$)/i.test(url);
+
 export default function TerminalItem({ terminal, onPress, expanded, onToggleExpand }) {
   const { t } = useTranslation();
   const [syncState, setSyncState] = useState(SyncState.DISCONNECTED);
@@ -48,6 +63,14 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   const [mpdUrl, setMpdUrl] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  // Contingut web companion: quan la TV envia una URL .html com a contentId,
+  // en comptes de parsejar un MPD mostrem una targeta i, en obrir-la, carreguem
+  // la web a pantalla completa dins d'un WebView alimentat amb la sincronització.
+  const [companionWebUrl, setCompanionWebUrl] = useState(null);
+  const [webModalVisible, setWebModalVisible] = useState(false);
+  // Quan, amb la web oberta, arriba un nou contentId que NO és una web, avisem
+  // l'usuari que ja no hi ha contingut web sincronitzat i el deixem tancar.
+  const [webNoContent, setWebNoContent] = useState(false);
   // Intención de reproducción activa: recuerda el componente (audio/vídeo) que
   // el usuario está reproduciendo para poder reanudarlo automáticamente cuando
   // se carga un nuevo MPD (reconexión o cambio de contenido). Se identifica por
@@ -78,6 +101,14 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   const retryTimeoutRef = useRef(null);
   const setupAndConnectRef = useRef(null);
   const isActiveRef = useRef(false);
+  // WebView de la web companion i miralls d'estat (per usar-los dins de handlers
+  // sense closures obsoletos).
+  const webViewRef = useRef(null);
+  const companionWebUrlRef = useRef(null);
+  const webModalVisibleRef = useRef(false);
+  // Throttle de l'aliment a la web companion (veure WEB_FEED_INTERVAL_MS).
+  const lastWebFeedRef = useRef(0);
+  const lastWebFeedStateRef = useRef({ isPlaying: null, speed: null });
   // Momento del último intento de reconexión disparado por el heartbeat nativo
   // (para no reintentar más a menudo que RETRY_DELAY en segundo plano).
   const lastReconnectAttemptRef = useRef(0);
@@ -117,6 +148,8 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   videoPlayingRef.current = videoPlaying;
   audioRateRef.current = audioRate;
   videoRateRef.current = videoRate;
+  companionWebUrlRef.current = companionWebUrl;
+  webModalVisibleRef.current = webModalVisible;
 
   // Marca que el player fue pausado de forma imperativa (al cerrarse la
   // conexión). Sirve para reanudarlo también de forma imperativa cuando vuelve
@@ -317,6 +350,59 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     }
   }, []);
 
+  // Reenvia la informació de sincronització a la web companion carregada al
+  // WebView, injectant una crida a `window.__hbbtvSync(payload)`. Només actua si
+  // el modal amb la web està obert. És el pont TV -> web: cada `position-update`
+  // (control timestamp de CSS-TS) es tradueix en un missatge amb el timecode i
+  // l'estat de reproducció, però que la web pugui mostrar-los sincronitzats.
+  const feedWebView = useCallback((pos) => {
+    if (!webModalVisibleRef.current || !webViewRef.current || !pos) return;
+    if (pos.positionSeconds == null) return;
+    // La web interpola amb el seu propi rellotge; només l'enviem una correcció
+    // cada WEB_FEED_INTERVAL_MS, o immediatament si canvia l'estat de
+    // reproducció (play/pausa) o la velocitat, per corregir de seguida.
+    const now = Date.now();
+    const stateChanged =
+      pos.isPlaying !== lastWebFeedStateRef.current.isPlaying ||
+      pos.speed !== lastWebFeedStateRef.current.speed;
+    if (!stateChanged && now - lastWebFeedRef.current < WEB_FEED_INTERVAL_MS) return;
+    lastWebFeedRef.current = now;
+    lastWebFeedStateRef.current = { isPlaying: pos.isPlaying, speed: pos.speed };
+    const payload = {
+      type: 'position',
+      positionSeconds: pos.positionSeconds,
+      positionMillis: pos.positionMillis,
+      isPlaying: pos.isPlaying,
+      speed: pos.speed,
+      isLive: pos.isLive,
+      formattedTime: pos.formattedTime,
+    };
+    try {
+      webViewRef.current.injectJavaScript(
+        `window.__hbbtvSync && window.__hbbtvSync(${JSON.stringify(payload)}); true;`
+      );
+    } catch (e) {
+      // ignore
+    }
+  }, []);
+
+  // Obre la web companion a pantalla completa i desbloqueja l'orientació perquè
+  // l'usuari pugui girar el telèfon mentre la mira. Reinicia el throttle perquè
+  // el primer aliment (a onLoadEnd) s'enviï immediatament.
+  const openWebModal = useCallback(() => {
+    lastWebFeedRef.current = 0;
+    lastWebFeedStateRef.current = { isPlaying: null, speed: null };
+    setWebNoContent(false);
+    setWebModalVisible(true);
+    ScreenOrientation.unlockAsync().catch(() => {});
+  }, []);
+
+  // Tanca la web companion i restaura l'orientació vertical de l'app.
+  const closeWebModal = useCallback(() => {
+    setWebModalVisible(false);
+    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+  }, []);
+
   // Detiene por completo el reproductor y la sincronización. Se invoca desde la
   // acción "Detener" de la notificación del foreground service (para poder
   // parar todo con la app en segundo plano) y es idempotente. Hace el teardown
@@ -409,16 +495,57 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     service.on('cii-change', ({ state }) => {
       if (!isActiveRef.current) return;
       if (syncServiceRef.current !== service) return;
-      console.log(`📺 cii-change: contentId=${state.contentId} (last=${lastContentIdRef.current})`);
-      if (state.contentId && state.contentId.includes('.mpd') && state.contentId !== lastContentIdRef.current) {
+      const contentId = state.contentId;
+      console.log(`📺 cii-change: contentId=${contentId} (last=${lastContentIdRef.current})`);
+      if (!contentId || contentId === lastContentIdRef.current) return;
+
+      if (isWebContent(contentId)) {
+        // Contingut WEB companion: no parsegem MPD. Netegem qualsevol estat de
+        // reproducció MPD anterior i mostrem la targeta / carreguem la web.
+        console.log('📺 cii-change: contingut WEB companion');
+        hasReceivedContent = true;
+        if (connectTimeoutRef.current) {
+          clearTimeout(connectTimeoutRef.current);
+          connectTimeoutRef.current = null;
+        }
+        lastContentIdRef.current = contentId;
+        stopActivePlayers();
+        setSelectedAudio(null);
+        setSelectedVideo(null);
+        setAudioPlaying(false);
+        setVideoPlaying(false);
+        setAudios([]);
+        setVideos([]);
+        setMpdUrl(null);
+        mpdUrlRef.current = null;
+        setPlaybackIntent(null);
+        setWebNoContent(false);
+        setCompanionWebUrl(contentId); // si el modal ja és obert, el WebView recarrega
+        setIsLoading(false);
+      } else if (contentId.includes('.mpd')) {
         console.log('📺 cii-change: nuevo contenido -> loadMpd');
         hasReceivedContent = true;
         if (connectTimeoutRef.current) {
           clearTimeout(connectTimeoutRef.current);
           connectTimeoutRef.current = null;
         }
-        lastContentIdRef.current = state.contentId;
-        loadMpd(state.contentId);
+        lastContentIdRef.current = contentId;
+        // Si veníem d'una web companion, ja no hi ha web: si el modal és obert,
+        // avisem l'usuari (podrà tancar-lo).
+        if (companionWebUrlRef.current) {
+          setCompanionWebUrl(null);
+          if (webModalVisibleRef.current) setWebNoContent(true);
+        }
+        loadMpd(contentId);
+      } else {
+        // contentId no reconegut (ni web ni MPD). Si hi havia una web oberta,
+        // avisem que ja no hi ha contingut web sincronitzat.
+        console.log('📺 cii-change: contentId no reconegut (ni web ni mpd)');
+        lastContentIdRef.current = contentId;
+        if (companionWebUrlRef.current) {
+          setCompanionWebUrl(null);
+          if (webModalVisibleRef.current) setWebNoContent(true);
+        }
       }
     });
 
@@ -431,6 +558,8 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       // app esté en segundo plano (donde el ciclo setState/useEffect puede no
       // ejecutarse con la cadencia esperada).
       applyPositionToActivePlayer(pos);
+      // Alimentar la web companion (si el modal amb el WebView està obert).
+      feedWebView(pos);
     });
 
     service.on('error', ({ service: svc, error: err }) => {
@@ -549,6 +678,13 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       setError(null);
       setPlaybackIntent(null);
       lastContentIdRef.current = null;
+      setCompanionWebUrl(null);
+      setWebModalVisible(false);
+      setWebNoContent(false);
+      companionWebUrlRef.current = null;
+      webModalVisibleRef.current = false;
+      // Restaurar l'orientació vertical si la web companion estava oberta.
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     };
   }, [expanded, hasMediaSync, terminal]);
 
@@ -1070,10 +1206,33 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
 
       {expanded && hasMediaSync && (
         <View style={styles.mediaSection}>
-          {(isLoading || (audios.length === 0 && videos.length === 0)) && (
+          {(isLoading || (!companionWebUrl && audios.length === 0 && videos.length === 0)) && (
             <View style={styles.statusRegion}>
                 <Text style={styles.emptyText}>{t('discovery.waitingForContent')} <ActivityIndicator color={theme.colors.primary} /></Text>
             </View>
+          )}
+
+          {/* Contingut web companion: targeta per obrir la web sincronitzada */}
+          {companionWebUrl && (
+            <>
+              <Text style={styles.sectionLabel}>{t('discovery.webSection')}</Text>
+              <View style={styles.webCard}>
+                <View style={styles.webIconWrap}>
+                  <MaterialIcons name="public" size={20} color={theme.colors.primary} />
+                </View>
+                <View style={styles.webInfo}>
+                  <Text style={styles.webTitle}>{t('discovery.webAvailableTitle')}</Text>
+                  <Text style={styles.webSubtitle}>{t('discovery.webAvailableSubtitle')}</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.webOpenButton}
+                  onPress={openWebModal}
+                >
+                  <MaterialIcons name="open-in-full" size={16} color={theme.colors.onPrimary} />
+                  <Text style={styles.webOpenButtonText}>{t('discovery.webOpen')}</Text>
+                </TouchableOpacity>
+              </View>
+            </>
           )}
 
           {audios.length > 0 && (
@@ -1340,6 +1499,58 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
           )}
         </View>
       )}
+
+      {/* Web companion a pantalla completa. Es carrega la URL rebuda per CII i
+          s'alimenta amb la sincronitzaci\u00f3 via window.__hbbtvSync (feedWebView).
+          Si arriba un contentId sense web mentre est\u00e0 obert, mostrem l'av\u00eds
+          `webNoContent` i l'usuari pot tancar. */}
+      <Modal
+        visible={webModalVisible}
+        animationType="slide"
+        onRequestClose={closeWebModal}
+        supportedOrientations={['portrait', 'landscape']}
+      >
+        <View style={styles.webModalContainer}>
+          {companionWebUrl && !webNoContent ? (
+            <WebView
+              ref={webViewRef}
+              source={{ uri: companionWebUrl }}
+              style={styles.webModalWebView}
+              originWhitelist={['*']}
+              allowsInlineMediaPlayback
+              mediaPlaybackRequiresUserAction={false}
+              javaScriptEnabled
+              domStorageEnabled
+              onLoadEnd={() => {
+                // Missatge inicial + darrera posici\u00f3 coneguda, per\u00f2 que la web
+                // tingui context i mostri de seguida el timecode.
+                const initPayload = { type: 'init', contentId: companionWebUrlRef.current };
+                try {
+                  webViewRef.current?.injectJavaScript(
+                    `window.__hbbtvSync && window.__hbbtvSync(${JSON.stringify(initPayload)}); true;`
+                  );
+                } catch (e) {
+                  // ignore
+                }
+                if (positionRef.current) feedWebView(positionRef.current);
+              }}
+            />
+          ) : (
+            <View style={styles.webNoContent}>
+              <MaterialIcons name="link-off" size={48} color={theme.colors.onSurfaceVariant} />
+              <Text style={styles.webNoContentText}>{t('discovery.webNoContent')}</Text>
+            </View>
+          )}
+          <TouchableOpacity
+            style={styles.webCloseButton}
+            onPress={closeWebModal}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <MaterialIcons name="close" size={22} color="#fff" />
+            <Text style={styles.webCloseButtonText}>{t('discovery.webClose')}</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1487,6 +1698,95 @@ const styles = StyleSheet.create({
   },
   listenButtonText: {
     color: theme.colors.onSurface,
+    fontSize: 13,
+    fontWeight: '600',
+    fontFamily: theme.typography.bodyMd.fontFamily,
+  },
+  webCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.surfaceContainerHigh,
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.md,
+  },
+  webIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: theme.colors.surfaceContainerHighest,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: theme.spacing.md,
+  },
+  webInfo: {
+    flex: 1,
+  },
+  webTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.colors.onSurface,
+    fontFamily: theme.typography.bodyLg.fontFamily,
+  },
+  webSubtitle: {
+    fontSize: 12,
+    color: theme.colors.onSurfaceVariant,
+    marginTop: 2,
+    fontFamily: theme.typography.bodyMd.fontFamily,
+  },
+  webOpenButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: theme.colors.primary,
+    borderRadius: theme.radius.full,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  webOpenButtonText: {
+    color: theme.colors.onPrimary,
+    fontSize: 13,
+    fontWeight: '600',
+    fontFamily: theme.typography.bodyMd.fontFamily,
+  },
+  webModalContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  webModalWebView: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  webNoContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: theme.spacing.xl,
+    gap: theme.spacing.md,
+    backgroundColor: theme.colors.surface,
+  },
+  webNoContentText: {
+    color: theme.colors.onSurfaceVariant,
+    fontSize: 16,
+    textAlign: 'center',
+    fontFamily: theme.typography.bodyLg.fontFamily,
+  },
+  webCloseButton: {
+    position: 'absolute',
+    top: 40,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: theme.radius.full,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  webCloseButtonText: {
+    color: '#fff',
     fontSize: 13,
     fontWeight: '600',
     fontFamily: theme.typography.bodyMd.fontFamily,

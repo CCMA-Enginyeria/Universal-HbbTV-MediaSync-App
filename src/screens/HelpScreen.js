@@ -43,7 +43,7 @@ export default function HelpScreen({ navigation }) {
         showsVerticalScrollIndicator={false}
       >
         {/* Televisores compatibles */}
-        <View style={styles.section}>
+        {/*<View style={styles.section}>
           <View style={styles.sectionHeader}>
             <MaterialIcons name="tv" size={20} color={theme.colors.onSurface} style={styles.sectionIcon} />
             <Text style={styles.sectionTitle}>{t('help.compatibleTVs')}</Text>
@@ -76,10 +76,10 @@ export default function HelpScreen({ navigation }) {
               </View>
             </View>
           ))}
-        </View>
+        </View>*/}
 
         {/* Canales con servicio */}
-        <View style={styles.section}>
+        {/*<View style={styles.section}>
           <View style={styles.sectionHeader}>
             <MaterialIcons name="satellite" size={20} color={theme.colors.onSurface} style={styles.sectionIcon} />
             <Text style={styles.sectionTitle}>{t('help.channelsTitle')}</Text>
@@ -97,7 +97,7 @@ export default function HelpScreen({ navigation }) {
               </View>
             ))}
           </View>
-        </View>
+        </View>*/}
 
         {/* Troubleshooting */}
         <View style={styles.troubleshootingCard}>

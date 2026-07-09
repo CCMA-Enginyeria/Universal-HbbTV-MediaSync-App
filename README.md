@@ -51,17 +51,63 @@ Once this snippet runs, the HbbTV terminal advertises itself over **DIAL/SSDP** 
 serves the content ID over **CSS-CII**, allowing the mobile app to discover it and
 synchronize the complementary track automatically.
 
+### Companion web app (instead of a DASH track)
+
+The content ID does not have to be a DASH manifest. If `contentIdOverride` points to
+a **web URL** (an `.html` page), the mobile app will not parse an MPD: instead it
+shows a card announcing that synchronized content is available and, when the user
+opens it, loads that web full-screen inside a WebView and feeds it the live
+synchronization data via post-messages.
+
+```js
+var ms = oipfObjectFactory.createMediaSynchroniser();
+
+// Announce a companion WEB (.html) instead of an MPD.
+// The TV keeps playing a <video> so the PTS timeline stays alive; only the
+// content ID advertised to the companion changes.
+ms.contentIdOverride = 'https://your-broadcaster.example/sync_app/index.html';
+
+ms.initMediaSynchroniser(video, 'urn:dvb:css:timeline:pts');
+ms.enableInterDeviceSync(function () {
+  console.log('Inter-device sync enabled');
+});
+```
+
+Inside the companion web, receive the synchronization messages by defining a global
+handler that the mobile app calls on every timeline update:
+
+```js
+// Called by the mobile app on each sync update.
+window.__hbbtvSync = function (msg) {
+  // msg = { type:'init', contentId } on load, then
+  // msg = { type:'position', positionSeconds, positionMillis, isPlaying, speed, isLive, formattedTime }
+  if (msg.type === 'position') {
+    render(msg.positionSeconds); // e.g. show the exact timecode
+  }
+};
+```
+
+A minimal, ready-to-run demonstrator that displays the exact synchronized timecode
+lives at [`www/hbbtv_examples/sync_app/index.html`](www/hbbtv_examples/sync_app/index.html),
+and [`www/hbbtv_examples/basic-media-sync-viewer.html`](www/hbbtv_examples/basic-media-sync-viewer.html)
+includes a *“Web Demo (Timecode)”* content entry that advertises it.
+
 ## How It Works
 
 1. The mobile app **discovers devices on the Wi-Fi network** that have MediaSync enabled, using the **DIAL** protocol (SSDP).
 2. The user selects the TV set.
-3. The app connects to the running HbbTV application, receives the content ID over **CSS-CII** (`ms.contentIdOverride`), and reads the DASH **MPD**.
-4. It presents the user with the **available audio and video tracks** announced in the manifest.
+3. The app connects to the running HbbTV application, receives the content ID over **CSS-CII** (`ms.contentIdOverride`), and reads the DASH **MPD** — or, if the content ID is a **web** (`.html`), loads that page full-screen in a WebView and feeds it the sync data via post-messages instead of parsing an MPD.
+4. It presents the user with the **available audio and video tracks** announced in the manifest (or a card to open the synchronized web).
 5. The selected track plays **with precise synchronization** via **DVB-CSS** (CSS-WC UDP wallclock + CSS-TS timeline, `urn:dvb:css:timeline:pts`, 90 kHz).
 
 Additional capabilities:
 - **Background audio**: minimize the app and keep the synchronized audio playing.
 - **Video track** selection (e.g. sign-language / alternate video) with a visible player.
+- **Companion web content**: when the content ID is a web (`.html`), the app opens it
+  full-screen in a WebView and streams the timeline to it via post-messages
+  (`window.__hbbtvSync`) instead of parsing an MPD. If a new content ID arrives with a
+  different web it reloads it; if it no longer points to a web, the app tells the user
+  and lets them close it.
 - 7 UI languages: Catalan, Spanish, Basque, English, German, Italian, French
   (default/fallback: **English**).
 
