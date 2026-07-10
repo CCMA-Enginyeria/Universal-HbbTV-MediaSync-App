@@ -110,6 +110,10 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   if (!videoSyncControllerRef.current) videoSyncControllerRef.current = new SyncController(SYNC_CONTROLLER_OPTIONS);
   // Throttle for the diagnostic sync log (per player).
   const lastDebugLogRef = useRef({ audio: 0, video: 0 });
+  // Latest sync status per player, written by the drift controller so the UI
+  // badge reflects the controller's real decision (filtered drift + mode)
+  // instead of recomputing a separate, noisier raw-drift heuristic.
+  const lastSyncInfoRef = useRef({ audio: null, video: null });
   // Estado de pantalla completa y reentrada pendiente: cuando la TV cambia de
   // contenido mientras el vídeo está en fullscreen, el componente <Video> se
   // remonta (key={mpdUrl}) y el reproductor fullscreen nativo del componente
@@ -291,6 +295,18 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       tvTime,
       seekThresholdS: isLive ? 5 : 2,
     });
+
+    // Publish the controller's real decision for the UI badge (filtered drift +
+    // mode), so the on-screen status matches what the controller is actually
+    // doing instead of flickering on raw measurement noise.
+    lastSyncInfoRef.current[kind] = {
+      status: result.action === 'seek'
+        ? 'seeking'
+        : (controller.mode === 'correcting' ? 'adjusting' : 'locked'),
+      driftMs: Math.round(result.filteredDrift * 1000),
+      rate: controller.currentRate,
+      at: now,
+    };
 
     if (DEBUG_SYNC) {
       const dbg = lastDebugLogRef.current;
@@ -1064,46 +1080,30 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     );
   };
 
-  // Calcula l'estat de sincronització del reproductor respecte la TV. Reutilitza
-  // els mateixos llindars que el corrector (seek 2s VOD / 5s directe, ok 20ms) i
-  // el rate actiu per classificar l'estat. Es recalcula a cada render (amb cada
-  // `position`, ~10 cops/s) llegint el temps del player dels refs (onProgress).
+  // Estat de sincronització del reproductor per al badge de la UI. Llegeix la
+  // decisió real del controlador (drift filtrat + mode), publicada a
+  // `lastSyncInfoRef` a cada correcció, en lloc de recalcular una heurística
+  // pròpia amb el drift cru (que oscil·laria amb el soroll de mesura). Si no hi
+  // ha dada recent (player pausat, sense senyal) mostrem "waiting".
   const getPlayerSyncStatus = () => {
     const isAudioActive = !!selectedAudio && audioPlaying;
     const isVideoActive = !!selectedVideo && videoPlaying;
     if (!isAudioActive && !isVideoActive) return null;
-
-    const isLive = !!streamInfo?.isLive;
 
     // Encara sense timeline/WC o sense posició: esperant senyal.
     if (syncState !== SyncState.SYNCHRONIZED || !position || position.positionSeconds == null) {
       return { status: 'waiting', driftMs: null, rate: 1 };
     }
 
+    const info = isAudioActive ? lastSyncInfoRef.current.audio : lastSyncInfoRef.current.video;
     const rate = isAudioActive ? audioRate : videoRate;
-    const playerTime = isAudioActive
-      ? (isLive ? audioCurrentPlaybackTimeRef.current : audioCurrentTimeRef.current)
-      : (isLive ? videoCurrentPlaybackTimeRef.current : videoCurrentTimeRef.current);
+    // Sense correcció recent (< 1s): el player encara no reporta o està en
+    // transició → esperant.
+    if (!info || Date.now() - info.at > 1000) {
+      return { status: 'waiting', driftMs: null, rate };
+    }
 
-    // En directe, fins que el player no reporta temps de reproducció, esperant.
-    if (isLive && playerTime === 0) return { status: 'waiting', driftMs: null, rate };
-
-    const tvTime = (isLive && position.exoPlayerPositionSeconds != null)
-      ? position.exoPlayerPositionSeconds
-      : position.positionSeconds;
-    const driftSec = playerTime - tvTime;
-    const absDrift = Math.abs(driftSec);
-    const driftMs = Math.round(driftSec * 1000);
-
-    const seekThreshold = isLive ? 5 : 2;
-    const okThreshold = 0.02;
-
-    let status;
-    if (absDrift > seekThreshold) status = 'seeking';
-    else if (rate !== 1.0 || absDrift > okThreshold) status = 'adjusting';
-    else status = 'locked';
-
-    return { status, driftMs, rate };
+    return { status: info.status, driftMs: info.driftMs, rate: info.rate };
   };
 
   // Mapatge d'estat -> icona i color (dins del badge de reproducció).
