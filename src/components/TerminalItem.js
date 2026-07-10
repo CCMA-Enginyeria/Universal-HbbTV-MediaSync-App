@@ -17,21 +17,34 @@ import { useTranslation } from 'react-i18next';
 import { MediaSyncService, SyncState } from '../services/MediaSyncService';
 import MpdParserService from '../services/MpdParserService';
 import config from '../utils/config';
+import SyncController from '../utils/SyncController';
 import theme from '../theme';
 import { MaterialIcons } from '@expo/vector-icons';
 import StatusSlot from './StatusSlot';
 import { startForegroundSync, stopForegroundSync, addHeartbeatListener, addStopListener } from '../utils/ForegroundSync';
 
-// Cadència del corrector de sincronització (ms). Lluny del lock corregim cada
-// SYNC_INTERVAL_MS; a prop (deriva < NEAR_DRIFT_BAND) mostregem més sovint amb
-// NEAR_SYNC_INTERVAL_MS per assentar el rate abans que la deriva creui el llindar,
-// i així evitar oscil·lar per sobre/per sota sense haver de relaxar okThreshold
-// (que ha de quedar < durada d'1 frame per mantenir el lipsync).
-// Configurables a config.js (MEDIA_SYNC) per poder ajustar el compromís
-// precisió/bateria sense tocar la lògica.
-const SYNC_INTERVAL_MS = config.MEDIA_SYNC?.SYNC_INTERVAL_MS ?? 500;
-const NEAR_SYNC_INTERVAL_MS = config.MEDIA_SYNC?.NEAR_SYNC_INTERVAL_MS ?? 250;
-const NEAR_DRIFT_BAND = 0.08; // 80 ms
+// Minimum interval (ms) between two drift corrections for the same player. The
+// predictive controller is fed from two paths — the player `onProgress`
+// (primary, foreground) and the `position-update` event (background-safe, since
+// control timestamps wake JS even when timers freeze). This throttle
+// de-duplicates overlapping calls without dropping legitimate onProgress samples.
+const MIN_CORRECTION_INTERVAL_MS = config.MEDIA_SYNC?.SYNC_MIN_CORRECTION_INTERVAL_MS ?? 80;
+
+// When true, the drift control loop logs its inputs/decision to the console so
+// the sync behaviour can be diagnosed on-device. Toggle via config.MEDIA_SYNC.DEBUG_SYNC.
+const DEBUG_SYNC = config.MEDIA_SYNC?.DEBUG_SYNC ?? false;
+
+// Tuning for the predictive sync controller, read from config so the
+// precision/battery trade-off can be adjusted without touching the logic.
+const SYNC_CONTROLLER_OPTIONS = {
+  emaAlpha: config.MEDIA_SYNC?.SYNC_EMA_ALPHA ?? 0.4,
+  enterBandS: config.MEDIA_SYNC?.SYNC_ENTER_BAND_S ?? 0.06,
+  exitBandS: config.MEDIA_SYNC?.SYNC_EXIT_BAND_S ?? 0.02,
+  horizonS: config.MEDIA_SYNC?.SYNC_HORIZON_S ?? 3.0,
+  deadTimeS: config.MEDIA_SYNC?.SYNC_DEAD_TIME_S ?? 0.35,
+  maxRateDelta: config.MEDIA_SYNC?.SYNC_MAX_RATE_DELTA ?? 0.05,
+  rateEps: config.MEDIA_SYNC?.SYNC_RATE_EPS ?? 0.002,
+};
 
 // Cadència d'enviament de correccions de sincronització a la web companion. La
 // web porta el seu propi rellotge i interpola entre missatges, de manera que no
@@ -89,6 +102,14 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   const lastSyncTimeRef = useRef(0);
   const lastVideoSyncTimeRef = useRef(0);
   const lastContentIdRef = useRef(null);
+  // Predictive drift controllers (one per companion player). Kept in refs so the
+  // imperative correction loop can reach them without re-creating them on render.
+  const audioSyncControllerRef = useRef(null);
+  const videoSyncControllerRef = useRef(null);
+  if (!audioSyncControllerRef.current) audioSyncControllerRef.current = new SyncController(SYNC_CONTROLLER_OPTIONS);
+  if (!videoSyncControllerRef.current) videoSyncControllerRef.current = new SyncController(SYNC_CONTROLLER_OPTIONS);
+  // Throttle for the diagnostic sync log (per player).
+  const lastDebugLogRef = useRef({ audio: 0, video: 0 });
   // Estado de pantalla completa y reentrada pendiente: cuando la TV cambia de
   // contenido mientras el vídeo está en fullscreen, el componente <Video> se
   // remonta (key={mpdUrl}) y el reproductor fullscreen nativo del componente
@@ -226,27 +247,86 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     return t('discovery.connectionError');
   }, [t]);
 
+  // Fine drift correction for one companion player, driven by the shared
+  // predictive controller (see src/utils/SyncController.js). Reads the freshest
+  // player time from the onProgress refs and re-extrapolates the TV timeline on
+  // demand so measurement and target are sampled at the same instant. Called
+  // from the player `onProgress` (primary, high cadence) and from the
+  // `position-update` handler (background-safe fallback); a short min-interval
+  // throttle de-duplicates overlapping calls.
+  const runDriftCorrection = useCallback((kind) => {
+    const service = syncServiceRef.current;
+    if (!service) return;
+
+    const isAudio = kind === 'audio';
+    const playerRef = isAudio ? audioPlayerRef : videoPlayerRef;
+    const controller = isAudio ? audioSyncControllerRef.current : videoSyncControllerRef.current;
+    const playingRef = isAudio ? audioPlayingRef : videoPlayingRef;
+    const rateRef = isAudio ? audioRateRef : videoRateRef;
+    const setRate = isAudio ? setAudioRate : setVideoRate;
+    const currentTimeRef = isAudio ? audioCurrentTimeRef : videoCurrentTimeRef;
+    const playbackTimeRef = isAudio ? audioCurrentPlaybackTimeRef : videoCurrentPlaybackTimeRef;
+    const lastRef = isAudio ? lastSyncTimeRef : lastVideoSyncTimeRef;
+
+    if (!controller || !playerRef.current || !playingRef.current) return;
+
+    const now = Date.now();
+    if (now - lastRef.current < MIN_CORRECTION_INTERVAL_MS) return;
+
+    const pos = service.getCurrentPosition?.();
+    if (!pos || pos.positionSeconds == null || !pos.isPlaying) return;
+
+    const isLive = !!streamInfoRef.current?.isLive;
+    if (isLive && playbackTimeRef.current === 0) return;
+
+    const tvTime = (isLive && pos.exoPlayerPositionSeconds != null)
+      ? pos.exoPlayerPositionSeconds
+      : pos.positionSeconds;
+    const playerTime = isLive ? playbackTimeRef.current : currentTimeRef.current;
+
+    lastRef.current = now;
+
+    const result = controller.update({
+      playerTime,
+      tvTime,
+      seekThresholdS: isLive ? 5 : 2,
+    });
+
+    if (DEBUG_SYNC) {
+      const dbg = lastDebugLogRef.current;
+      if (now - dbg[kind] >= 250) {
+        dbg[kind] = now;
+        const appliedRate = result.action === 'rate' ? result.rate : rateRef.current;
+        const wcDisp = service.wcService?.getDispersionMillis?.();
+        console.log(
+          `🎯 sync[${kind}] drift=${(result.drift * 1000).toFixed(0)}ms ` +
+          `filt=${(result.filteredDrift * 1000).toFixed(0)}ms ` +
+          `tv=${tvTime.toFixed(3)}s player=${playerTime.toFixed(3)}s ` +
+          `rate=${appliedRate.toFixed(3)} act=${result.action} ` +
+          `spd=${pos.speed}` +
+          (wcDisp != null && isFinite(wcDisp) ? ` wcDisp=${wcDisp.toFixed(0)}ms` : '')
+        );
+      }
+    }
+
+    if (result.action === 'seek') {
+      const seekTarget = isLive ? currentTimeRef.current - result.drift : tvTime;
+      try { playerRef.current.seek(seekTarget); } catch (e) { /* ignore */ }
+      if (rateRef.current !== 1.0) setRate(1.0);
+    } else if (result.action === 'rate') {
+      if (result.rate !== rateRef.current) setRate(result.rate);
+    }
+  }, []);
+
   // Corrector imperativo de posición. Se invoca desde el handler del evento
   // `position-update` para que la sincronización funcione también con la app en
   // segundo plano: los control timestamps de CSS-TS siguen llegando (WebSocket
   // entrante) aunque Android congele los timers JS, pero el ciclo
-  // setState -> useEffect no es fiable en background. Aquí aplicamos el ajuste
-  // (seek o cambio de rate) directamente al player activo usando refs, con el
-  // mismo algoritmo de drift que los efectos de primer plano.
+  // setState -> useEffect no es fiable en background. Aquí reconciliamos el
+  // estado play/pause y delegamos la corrección de drift al controlador
+  // predictivo compartido (runDriftCorrection).
   const applyPositionToActivePlayer = useCallback((pos) => {
     if (!pos || pos.positionSeconds == null) return;
-
-    const now = Date.now();
-    const isLive = !!streamInfoRef.current?.isLive;
-    const tvTime = (isLive && pos.exoPlayerPositionSeconds != null)
-      ? pos.exoPlayerPositionSeconds
-      : pos.positionSeconds;
-
-    const seekThreshold = isLive ? 5 : 2;
-    const okThreshold = 0.02;
-    const maxCorrection = 0.05;
-    const maxRate = 0.93;
-    const minRate = 1.07;
 
     // Audio activo (o montado pero pausado, pendiente de reanudar)
     if (selectedAudioRef.current && audioPlayerRef.current) {
@@ -265,30 +345,8 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
         try { audioPlayerRef.current.pause?.(); } catch (e) { /* ignore */ }
         setAudioPlaying(false);
       }
-      // Si todavía no debe sonar (TV pausada o estado no listo), no corregir drift.
-      if (!audioPlayingRef.current || !pos.isPlaying) return;
-      if (isLive && audioCurrentPlaybackTimeRef.current === 0) return;
-      const audioTime = isLive ? audioCurrentPlaybackTimeRef.current : audioCurrentTimeRef.current;
-      const drift = audioTime - tvTime;
-      const absDrift = Math.abs(drift);
-      // Throttle adaptativo compartido con el useEffect de audio: cerca del lock
-      // muestreamos más a menudo para asentar el rate antes de que la deriva
-      // cruce el umbral (evita oscilar por encima/por debajo sin tocar okThreshold).
-      const syncInterval = absDrift < NEAR_DRIFT_BAND ? NEAR_SYNC_INTERVAL_MS : SYNC_INTERVAL_MS;
-      if (now - lastSyncTimeRef.current < syncInterval) return;
-      lastSyncTimeRef.current = now;
-      if (absDrift > seekThreshold) {
-        const seekTarget = isLive ? audioCurrentTimeRef.current - drift : tvTime;
-        audioPlayerRef.current.seek(seekTarget);
-        if (audioRateRef.current !== 1.0) setAudioRate(1.0);
-      } else if (absDrift > okThreshold) {
-        const correction = Math.min(absDrift * 0.1, maxCorrection);
-        const newRate = drift > 0 ? 1.0 - correction : 1.0 + correction;
-        const clampedRate = Math.max(maxRate, Math.min(minRate, newRate));
-        if (clampedRate !== audioRateRef.current) setAudioRate(clampedRate);
-      } else if (audioRateRef.current !== 1.0) {
-        setAudioRate(1.0);
-      }
+      // Delegar la corrección de drift al controlador predictivo (background-safe).
+      runDriftCorrection('audio');
       return;
     }
 
@@ -305,27 +363,8 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
         try { videoPlayerRef.current.pause?.(); } catch (e) { /* ignore */ }
         setVideoPlaying(false);
       }
-      if (!videoPlayingRef.current || !pos.isPlaying) return;
-      if (isLive && videoCurrentPlaybackTimeRef.current === 0) return;
-      const videoTime = isLive ? videoCurrentPlaybackTimeRef.current : videoCurrentTimeRef.current;
-      const drift = videoTime - tvTime;
-      const absDrift = Math.abs(drift);
-      // Throttle adaptativo (ver bloque de audio).
-      const syncInterval = absDrift < NEAR_DRIFT_BAND ? NEAR_SYNC_INTERVAL_MS : SYNC_INTERVAL_MS;
-      if (now - lastVideoSyncTimeRef.current < syncInterval) return;
-      lastVideoSyncTimeRef.current = now;
-      if (absDrift > seekThreshold) {
-        const seekTarget = isLive ? videoCurrentTimeRef.current - drift : tvTime;
-        videoPlayerRef.current.seek(seekTarget);
-        if (videoRateRef.current !== 1.0) setVideoRate(1.0);
-      } else if (absDrift > okThreshold) {
-        const correction = Math.min(absDrift * 0.1, maxCorrection);
-        const newRate = drift > 0 ? 1.0 - correction : 1.0 + correction;
-        const clampedRate = Math.max(maxRate, Math.min(minRate, newRate));
-        if (clampedRate !== videoRateRef.current) setVideoRate(clampedRate);
-      } else if (videoRateRef.current !== 1.0) {
-        setVideoRate(1.0);
-      }
+      // Delegar la corrección de drift al controlador predictivo (background-safe).
+      runDriftCorrection('video');
     }
   }, []);
 
@@ -879,47 +918,6 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     }
   }, []);
 
-  // Sincronizar audio con posición TV
-  useEffect(() => {
-    if (!selectedAudio || !audioPlaying || !position) return;
-    if (position.positionSeconds == null || (streamInfo?.isLive && audioCurrentPlaybackTimeRef.current === 0)) return;
-
-    const audioTime = streamInfo?.isLive ? audioCurrentPlaybackTimeRef.current : audioCurrentTimeRef.current;
-    const isLive = !!streamInfo?.isLive;
-    const tvTime = (isLive && position.exoPlayerPositionSeconds != null)
-      ? position.exoPlayerPositionSeconds
-      : position.positionSeconds;
-    const drift = audioTime - tvTime;
-    const absDrift = Math.abs(drift);
-
-    // Throttle adaptativo: cerca del lock muestreamos más a menudo para asentar
-    // el rate antes de que la deriva cruce el umbral (evita oscilar por encima/
-    // por debajo sin tocar okThreshold, que debe quedar < 1 frame por lipsync).
-    const now = Date.now();
-    const syncInterval = absDrift < NEAR_DRIFT_BAND ? NEAR_SYNC_INTERVAL_MS : SYNC_INTERVAL_MS;
-    if (now - lastSyncTimeRef.current < syncInterval) return;
-    lastSyncTimeRef.current = now;
-
-    const seekThreshold = isLive ? 5 : 2;
-    const okThreshold = 0.02;
-    const maxCorrection = 0.05;
-    const maxRate = 0.93;
-    const minRate = 1.07;
-
-    if (absDrift > seekThreshold) {
-      const seekTarget = isLive ? audioCurrentTimeRef.current - drift : tvTime;
-      if (audioPlayerRef.current) audioPlayerRef.current.seek(seekTarget);
-      setAudioRate(1.0);
-    } else if (absDrift > okThreshold) {
-      const correction = Math.min(absDrift * 0.1, maxCorrection);
-      const newRate = drift > 0 ? 1.0 - correction : 1.0 + correction;
-      const clampedRate = Math.max(maxRate, Math.min(minRate, newRate));
-      setAudioRate(clampedRate);
-    } else {
-      if (audioRate !== 1.0) setAudioRate(1.0);
-    }
-  }, [position, selectedAudio, audioPlaying, streamInfo]);
-
   // Play/pause reactivo según TV
   const prevIsPlayingRef = useRef(null);
   useEffect(() => {
@@ -933,45 +931,6 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     }
     prevIsPlayingRef.current = tvIsPlaying;
   }, [position?.isPlaying, selectedAudio]);
-
-  // Sincronizar vídeo con posición TV (mismo algoritmo que el áudio)
-  useEffect(() => {
-    if (!selectedVideo || !videoPlaying || !position) return;
-    if (position.positionSeconds == null || (streamInfo?.isLive && videoCurrentPlaybackTimeRef.current === 0)) return;
-
-    const videoTime = streamInfo?.isLive ? videoCurrentPlaybackTimeRef.current : videoCurrentTimeRef.current;
-    const isLive = !!streamInfo?.isLive;
-    const tvTime = (isLive && position.exoPlayerPositionSeconds != null)
-      ? position.exoPlayerPositionSeconds
-      : position.positionSeconds;
-    const drift = videoTime - tvTime;
-    const absDrift = Math.abs(drift);
-
-    // Throttle adaptativo (ver el useEffect de audio).
-    const now = Date.now();
-    const syncInterval = absDrift < NEAR_DRIFT_BAND ? NEAR_SYNC_INTERVAL_MS : SYNC_INTERVAL_MS;
-    if (now - lastVideoSyncTimeRef.current < syncInterval) return;
-    lastVideoSyncTimeRef.current = now;
-
-    const seekThreshold = isLive ? 5 : 2;
-    const okThreshold = 0.02;
-    const maxCorrection = 0.05;
-    const maxRate = 0.93;
-    const minRate = 1.07;
-
-    if (absDrift > seekThreshold) {
-      const seekTarget = isLive ? videoCurrentTimeRef.current - drift : tvTime;
-      if (videoPlayerRef.current) videoPlayerRef.current.seek(seekTarget);
-      setVideoRate(1.0);
-    } else if (absDrift > okThreshold) {
-      const correction = Math.min(absDrift * 0.1, maxCorrection);
-      const newRate = drift > 0 ? 1.0 - correction : 1.0 + correction;
-      const clampedRate = Math.max(maxRate, Math.min(minRate, newRate));
-      setVideoRate(clampedRate);
-    } else {
-      if (videoRate !== 1.0) setVideoRate(1.0);
-    }
-  }, [position, selectedVideo, videoPlaying, streamInfo]);
 
   // Play/pause reactivo del vídeo según TV
   const prevVideoIsPlayingRef = useRef(null);
@@ -1394,6 +1353,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
                             : { type: 'auto' }
                         }
                         onLoad={() => {
+                          videoSyncControllerRef.current?.reset();
                           if (position?.positionSeconds && videoPlayerRef.current && !streamInfo?.isLive) {
                             videoPlayerRef.current.seek(position.positionSeconds);
                           }
@@ -1408,6 +1368,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
                         onProgress={({ currentTime, currentPlaybackTime }) => {
                           videoCurrentTimeRef.current = currentTime;
                           videoCurrentPlaybackTimeRef.current = currentPlaybackTime / 1000;
+                          runDriftCorrection('video');
                         }}
                         onError={(err) => {
                           console.error('Error reproduint vídeo:', err);
@@ -1481,6 +1442,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
                   : { type: 'language', value: selectedAudio.iso }
               }
               onLoad={() => {
+                audioSyncControllerRef.current?.reset();
                 if (position?.positionSeconds && audioPlayerRef.current && !streamInfo?.isLive) {
                   audioPlayerRef.current.seek(position.positionSeconds);
                 }
@@ -1488,6 +1450,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
               onProgress={({ currentTime, currentPlaybackTime }) => {
                 audioCurrentTimeRef.current = currentTime;
                 audioCurrentPlaybackTimeRef.current = currentPlaybackTime / 1000;
+                runDriftCorrection('audio');
               }}
               onError={(err) => {
                 console.error('❌ Error reproduint àudio:', err);

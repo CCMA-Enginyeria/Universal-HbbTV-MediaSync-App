@@ -39,21 +39,44 @@ export const config = {
     TOLERANCE_MS: 100,
     // Wall-clock synchronization interval.
     WC_SYNC_INTERVAL_MS: 1000,
-    // Player progress callback sampling interval (ms). Lower values give a more
-    // precise drift measurement but cost more CPU/battery (ExoPlayer fires the
-    // callback at this rate). The synchronized timeline is extrapolated locally
-    // between samples (accounting for playback speed), so a coarser value saves
-    // battery without losing sync.
+    // Player progress callback sampling interval (ms). ExoPlayer updates its
+    // internal position in coarse steps, so polling too fast (e.g. 100 ms)
+    // returns uneven `currentTime` deltas (one short reading then a catch-up),
+    // which injects measurement noise into the drift. 250 ms lets the position
+    // settle between samples → smoother deltas, less CPU, and is still far
+    // faster than the (slow) real drift needs.
     PROGRESS_UPDATE_INTERVAL_MS: 250,
     // Interval at which the locally extrapolated position is emitted to the
-    // player corrector (ms).
+    // player corrector (ms). Used for UI updates and the background-safe
+    // correction fallback (control timestamps wake JS even when timers freeze).
     POSITION_UPDATE_INTERVAL_MS: 250,
-    // Drift-correction cadence far from lock (ms).
-    SYNC_INTERVAL_MS: 500,
-    // Drift-correction cadence near lock (ms). Should not be lower than
-    // PROGRESS_UPDATE_INTERVAL_MS, otherwise we would correct more often than we
-    // sample the player position.
-    NEAR_SYNC_INTERVAL_MS: 250,
+    // Minimum interval (ms) between two drift corrections for the same player.
+    // De-duplicates the onProgress and position-update paths without dropping
+    // legitimate onProgress samples (keep it below PROGRESS_UPDATE_INTERVAL_MS).
+    SYNC_MIN_CORRECTION_INTERVAL_MS: 80,
+    // Predictive drift-controller tuning (see src/utils/SyncController.js).
+    // Low-pass filter weight for the measured drift (0..1); higher = more reactive.
+    // Kept low so onProgress/wall-clock measurement spikes (~80-100 ms bursts)
+    // are smoothed away instead of triggering corrections.
+    SYNC_EMA_ALPHA: 0.25,
+    // Start correcting when the filtered drift exceeds this (seconds). Set well
+    // above the observed measurement noise (real drift is ~±20 ms) so noise
+    // never engages the controller; the audio then stays glued at rate 1.0.
+    SYNC_ENTER_BAND_S: 0.1,
+    // Return to normal speed (lock) when the filtered drift drops below this (seconds).
+    SYNC_EXIT_BAND_S: 0.02,
+    // Time budget over which the predicted drift is nulled (seconds). Larger =
+    // gentler corrections; smaller = faster but nearer the overshoot edge.
+    SYNC_HORIZON_S: 3.0,
+    // Loop dead-time compensated by the controller's lead term (seconds).
+    SYNC_DEAD_TIME_S: 0.35,
+    // Maximum playback-rate deviation from 1.0 (clamps to [1 - delta, 1 + delta]).
+    SYNC_MAX_RATE_DELTA: 0.05,
+    // Ignore rate changes smaller than this (avoids React state churn).
+    SYNC_RATE_EPS: 0.002,
+    // When true, logs the drift/rate control loop (~4 lines/s per player) to the
+    // console for diagnosing sync stability. Turn off for production.
+    DEBUG_SYNC: true,
     // Default timeline selector (MPEG-DASH PTS).
     TIMELINE_SELECTOR: 'urn:dvb:css:timeline:pts',
     // Tick rate for PTS (90kHz).
