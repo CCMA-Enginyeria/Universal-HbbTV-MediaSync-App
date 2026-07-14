@@ -56,6 +56,23 @@ const brand = {
   // contentId via DVB-CSS CII. Leave null for the standard HbbTV flow.
   defaultContentUrl: null,
 
+  // ---- Permissions --------------------------------------------------------
+  // Opt-in device permissions. Kept off by default so a fork only declares the
+  // native capability (iOS Info.plist / Android manifest) when it truly needs
+  // it — which keeps store listings clean. When a permission is disabled the
+  // corresponding request is denied at runtime (the OS prompt never appears).
+  permissions: {
+    // Allow the companion web page rendered in the in-app WebView (second
+    // device) to access the camera via `getUserMedia()`. The OS permission is
+    // requested on-demand, only when the page actually asks for the camera.
+    camera: true,
+  },
+  // Static usage description shown in the iOS camera permission dialog
+  // (`NSCameraUsageDescription`). iOS requires a fixed string here; user-facing
+  // Android rationale is localized via i18n (`permissions.camera.*`).
+  cameraUsageDescription:
+    'This app lets the companion web page use the camera when you interact with it.',
+
   // ---- About / support ----------------------------------------------------
   supportUrl: 'https://www.hbbtv.org',
 };

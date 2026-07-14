@@ -2,11 +2,13 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
   Animated,
   AppState,
+  Alert,
   Modal,
 } from 'react-native';
 import Slider from '@react-native-community/slider';
@@ -18,10 +20,13 @@ import { MediaSyncService, SyncState } from '../services/MediaSyncService';
 import MpdParserService from '../services/MpdParserService';
 import config from '../utils/config';
 import SyncController from '../utils/SyncController';
+import { fetchWebMetadata } from '../utils/webMetadata';
 import theme from '../theme';
 import { MaterialIcons } from '@expo/vector-icons';
 import StatusSlot from './StatusSlot';
 import { startForegroundSync, stopForegroundSync, addHeartbeatListener, addStopListener } from '../utils/ForegroundSync';
+import brand from '../brand/brand.config';
+import { requestCameraPermission } from '../utils/CameraPermissions';
 
 // Minimum interval (ms) between two drift corrections for the same player. The
 // predictive controller is fed from two paths — the player `onProgress`
@@ -81,6 +86,11 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   // la web a pantalla completa dins d'un WebView alimentat amb la sincronització.
   const [companionWebUrl, setCompanionWebUrl] = useState(null);
   const [webModalVisible, setWebModalVisible] = useState(false);
+  // Metadata (title + favicon) of the companion web page, fetched from its HTML
+  // so the user recognizes what the synchronized content is instead of seeing a
+  // generic globe icon. Both null while loading or on failure (UI falls back).
+  const [webPageTitle, setWebPageTitle] = useState(null);
+  const [webFaviconUrl, setWebFaviconUrl] = useState(null);
   // Quan, amb la web oberta, arriba un nou contentId que NO és una web, avisem
   // l'usuari que ja no hi ha contingut web sincronitzat i el deixem tancar.
   const [webNoContent, setWebNoContent] = useState(false);
@@ -175,6 +185,24 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   videoRateRef.current = videoRate;
   companionWebUrlRef.current = companionWebUrl;
   webModalVisibleRef.current = webModalVisible;
+
+  // Fetch the companion web page's title and favicon whenever its URL changes so
+  // the card can show what the synchronized content is. The request is aborted
+  // if the URL changes again or the component unmounts.
+  useEffect(() => {
+    if (!companionWebUrl) {
+      setWebPageTitle(null);
+      setWebFaviconUrl(null);
+      return;
+    }
+    const controller = new AbortController();
+    fetchWebMetadata(companionWebUrl, { signal: controller.signal }).then(({ title, faviconUrl }) => {
+      if (controller.signal.aborted) return;
+      setWebPageTitle(title);
+      setWebFaviconUrl(faviconUrl);
+    });
+    return () => controller.abort();
+  }, [companionWebUrl]);
 
   // Marca que el player fue pausado de forma imperativa (al cerrarse la
   // conexión). Sirve para reanudarlo también de forma imperativa cuando vuelve
@@ -457,6 +485,35 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     setWebModalVisible(false);
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
   }, []);
+
+  // Android: resolve camera permission requests coming from the companion web
+  // page. We only request the OS permission now (on-demand), and grant just the
+  // camera resource. Microphone (and any other resource) is denied. If the
+  // brand has not opted into camera access, deny everything.
+  const handleWebViewPermissionRequest = useCallback(
+    async (event) => {
+      const request = event?.nativeEvent ?? event;
+      const resources = request?.resources ?? [];
+      const CAMERA_RESOURCE = 'android.webkit.resource.VIDEO_CAPTURE';
+
+      if (!brand.permissions?.camera || !resources.includes(CAMERA_RESOURCE)) {
+        request?.deny?.();
+        return;
+      }
+
+      const granted = await requestCameraPermission();
+      if (granted) {
+        request?.grant?.([CAMERA_RESOURCE]);
+      } else {
+        request?.deny?.();
+        Alert.alert(
+          t('permissions.camera.deniedTitle'),
+          t('permissions.camera.deniedMessage')
+        );
+      }
+    },
+    [t]
+  );
 
   // Detiene por completo el reproductor y la sincronización. Se invoca desde la
   // acción "Detener" de la notificación del foreground service (para poder
@@ -1177,10 +1234,20 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
               <Text style={styles.sectionLabel}>{t('discovery.webSection')}</Text>
               <View style={styles.webCard}>
                 <View style={styles.webIconWrap}>
-                  <MaterialIcons name="public" size={20} color={theme.colors.primary} />
+                  {webFaviconUrl ? (
+                    <Image
+                      source={{ uri: webFaviconUrl }}
+                      style={styles.webFavicon}
+                      onError={() => setWebFaviconUrl(null)}
+                    />
+                  ) : (
+                    <MaterialIcons name="public" size={20} color={theme.colors.primary} />
+                  )}
                 </View>
                 <View style={styles.webInfo}>
-                  <Text style={styles.webTitle}>{t('discovery.webAvailableTitle')}</Text>
+                  <Text style={styles.webTitle} numberOfLines={1}>
+                    {webPageTitle || t('discovery.webAvailableTitle')}
+                  </Text>
                   <Text style={styles.webSubtitle}>{t('discovery.webAvailableSubtitle')}</Text>
                 </View>
                 <TouchableOpacity
@@ -1484,6 +1551,16 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
               mediaPlaybackRequiresUserAction={false}
               javaScriptEnabled
               domStorageEnabled
+              // iOS: let the loaded page use the camera when the brand opts in.
+              // The OS still shows its own prompt (NSCameraUsageDescription) on
+              // first use; if the brand disables it, deny outright.
+              mediaCapturePermissionGrantType={
+                brand.permissions?.camera ? 'grantIfSameHostElsePrompt' : 'deny'
+              }
+              // Android: the WebView asks us to resolve camera/mic requests. We
+              // request the OS camera permission on-demand (only now, when the
+              // page needs it) and grant just the camera resource.
+              onPermissionRequest={handleWebViewPermissionRequest}
               onLoadEnd={() => {
                 // Missatge inicial + darrera posici\u00f3 coneguda, per\u00f2 que la web
                 // tingui context i mostri de seguida el timecode.
@@ -1683,6 +1760,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: theme.spacing.md,
+  },
+  webFavicon: {
+    width: 24,
+    height: 24,
+    borderRadius: 4,
+    resizeMode: 'contain',
   },
   webInfo: {
     flex: 1,

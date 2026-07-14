@@ -68,6 +68,11 @@ module.exports = {
           'This app uses the local network to discover and synchronize with HbbTV televisions (DIAL/SSDP).',
         // Keep companion audio playing while the app is in the background.
         UIBackgroundModes: ['audio'],
+        // Only declare camera usage when the brand opts in; the string is shown
+        // in the on-demand iOS camera permission dialog.
+        ...(brand.permissions?.camera
+          ? { NSCameraUsageDescription: brand.cameraUsageDescription }
+          : {}),
       },
     },
     android: {
@@ -91,6 +96,9 @@ module.exports = {
         // WebSockets/UDP sockets) as soon as the app goes to the background.
         'android.permission.POST_NOTIFICATIONS',
         'android.permission.WAKE_LOCK',
+        // Only declared when the brand opts in. The runtime prompt is still
+        // shown on-demand (only when the companion web page uses the camera).
+        ...(brand.permissions?.camera ? ['android.permission.CAMERA'] : []),
       ],
       usesCleartextTraffic: true,
     },

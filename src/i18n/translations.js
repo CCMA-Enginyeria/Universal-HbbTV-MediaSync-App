@@ -86,6 +86,12 @@ const translations = {
         home: 'Inici',
         help: 'Ajuda',
       },
+      permissions: {
+        camera: {
+          deniedTitle: 'Càmera no disponible',
+          deniedMessage: 'Cal el permís de càmera perquè la pàgina web la pugui utilitzar.',
+        },
+      },
     },
   },
   es: {
@@ -171,6 +177,12 @@ const translations = {
       nav: {
         home: 'Inicio',
         help: 'Ayuda',
+      },
+      permissions: {
+        camera: {
+          deniedTitle: 'Cámara no disponible',
+          deniedMessage: 'Se necesita el permiso de cámara para que la página web pueda usarla.',
+        },
       },
     },
   },
@@ -258,6 +270,12 @@ const translations = {
         home: 'Hasiera',
         help: 'Laguntza',
       },
+      permissions: {
+        camera: {
+          deniedTitle: 'Kamera ez dago erabilgarri',
+          deniedMessage: 'Kamerarako baimena behar da web-orriak erabili ahal izateko.',
+        },
+      },
     },
   },
   en: {
@@ -343,6 +361,12 @@ const translations = {
       nav: {
         home: 'Home',
         help: 'Help',
+      },
+      permissions: {
+        camera: {
+          deniedTitle: 'Camera unavailable',
+          deniedMessage: 'Camera permission is required for the web page to use it.',
+        },
       },
     },
   },
@@ -430,6 +454,12 @@ const translations = {
         home: 'Start',
         help: 'Hilfe',
       },
+      permissions: {
+        camera: {
+          deniedTitle: 'Kamera nicht verfügbar',
+          deniedMessage: 'Für die Nutzung durch die Webseite ist die Kameraberechtigung erforderlich.',
+        },
+      },
     },
   },
   it: {
@@ -516,6 +546,12 @@ const translations = {
         home: 'Home',
         help: 'Aiuto',
       },
+      permissions: {
+        camera: {
+          deniedTitle: 'Fotocamera non disponibile',
+          deniedMessage: 'La pagina web ha bisogno del permesso della fotocamera per usarla.',
+        },
+      },
     },
   },
   fr: {
@@ -601,6 +637,12 @@ const translations = {
       nav: {
         home: 'Accueil',
         help: 'Aide',
+      },
+      permissions: {
+        camera: {
+          deniedTitle: 'Caméra indisponible',
+          deniedMessage: 'La permission de la caméra est nécessaire pour cette page web.',
+        },
       },
     },
   },
