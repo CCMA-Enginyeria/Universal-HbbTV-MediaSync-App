@@ -83,7 +83,7 @@ module.exports = {
       },
       edgeToEdgeEnabled: true,
       package: brand.androidPackage,
-      versionCode: 2,
+      versionCode: 3,
       permissions: [
         'android.permission.INTERNET',
         'android.permission.ACCESS_NETWORK_STATE',
