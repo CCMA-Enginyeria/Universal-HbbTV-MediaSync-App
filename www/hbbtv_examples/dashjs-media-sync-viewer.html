@@ -24,6 +24,23 @@ function log(m){console.log(m);s.textContent=m;}
 
 var dp=null, ms=null;
 
+/**
+ * Attach a MediaSynchroniser event handler in the safest way for the current terminal.
+ * Some HbbTV terminals crash when a callback property (e.g. `ms.onSyncNowAchievable = fn`)
+ * is assigned directly on the native embedded object. The HbbTV spec (2.0.1+) exposes the
+ * same events via DOM2 addEventListener, where the event name is the intrinsic name without
+ * the leading "on" (onSyncNowAchievable -> "SyncNowAchievable", onError -> "Error").
+ * We prefer addEventListener and fall back to the property style (needed by the polyfill).
+ */
+function addMsListener(target,intrinsicName,handler){
+  if(!target){return;}
+  if(typeof target.addEventListener==='function'){
+    target.addEventListener(intrinsicName.replace(/^on/,''),handler);
+  }else{
+    target[intrinsicName]=handler;
+  }
+}
+
 window.onload=function(){
   if(typeof hbbtvlib_initialize!=='undefined'){hbbtvlib_initialize();hbbtvlib_show();}
   registerSeekKeys();
@@ -86,13 +103,17 @@ function initSync(){
     ms=oipfObjectFactory.createMediaSynchroniser();
     if(!ms){log('createMediaSynchroniser failed');return;}
     ms.contentIdOverride=DASH_URL;
-    ms.onSyncNowAchievable=function(){log('Sync now achievable');};
-    ms.onSyncNowUnachievable=function(){log('Sync now unachievable');};
-    ms.onInterDevSyncStatus=function(st){
+    addMsListener(ms,'onSyncNowAchievable',function(){log('Sync now achievable');});
+    addMsListener(ms,'onSyncNowUnachievable',function(){log('Sync now unachievable');});
+    addMsListener(ms,'onInterDevSyncStatus',function(arg){
+      var st=(arg&&arg.type)?arg.status:arg;
       var map={0:'disconnected',1:'connecting',2:'connected'};
       log('InterDev status: '+(map[st]||st));
-    };
-    ms.onError=function(err,src){log('Sync error: '+err);};
+    });
+    addMsListener(ms,'onError',function(arg){
+      var code=(arg&&arg.type)?ms.lastError:arg;
+      log('Sync error: '+code);
+    });
     ms.initMediaSynchroniser(v,'urn:dvb:css:timeline:pts');
     var en=(typeof ms.enableInterDeviceSync==='function')?ms.enableInterDeviceSync:
            (typeof ms.enableInterDevSync==='function')?ms.enableInterDevSync:null;

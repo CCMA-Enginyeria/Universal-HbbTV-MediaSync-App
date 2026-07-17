@@ -391,6 +391,14 @@ export class CSSWCService extends EventEmitter {
     console.log('🔌 WC: Tancant connexió...');
     this.stopSync();
     if (this.ws) {
+      // Detach handlers before closing: the OS may still fire a late
+      // `onerror`/`onclose` on the closing socket, and if the service has
+      // already been destroyed (`removeAllListeners`) that `emit('error')`
+      // would throw "Unhandled error. (undefined)".
+      this.ws.onopen = null;
+      this.ws.onclose = null;
+      this.ws.onerror = null;
+      this.ws.onmessage = null;
       this.ws.close(1000, 'Client closing');
       this.ws = null;
     }

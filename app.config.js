@@ -24,6 +24,7 @@ module.exports = {
       './plugins/withNetworkConfig',
       './plugins/withReleaseSigning',
       'expo-localization',
+      'expo-web-browser',
       [
         'react-native-video',
         {

@@ -164,7 +164,8 @@
             try {
                 var app = document.getElementById('appmgr');
                 if (app && app.getOwnerApplication) app = app.getOwnerApplication(document);
-                if (!app && typeof oipfObjectFactory !== 'undefined') {
+                if (!app && typeof oipfObjectFactory !== 'undefined' &&
+                    typeof oipfObjectFactory.createApplicationManager === 'function') {
                     app = oipfObjectFactory.createApplicationManager().getOwnerApplication(document);
                 }
                 if (app && app.privateData && app.privateData.keyset) {

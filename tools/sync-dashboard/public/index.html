@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sync Dashboard — DVB-CSS</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="dot" id="conn-dot"></span>
+      <h1>Sync Dashboard</h1>
+    </div>
+    <div class="badges">
+      <span class="badge" id="state-badge">—</span>
+      <span class="meta" id="conn-text">connecting…</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-metric">
+        <span class="hero-value" id="drift-value">—</span>
+        <span class="hero-unit">ms</span>
+        <span class="hero-label">filtered drift</span>
+      </div>
+      <div class="hero-side">
+        <div class="kv"><span>raw drift</span><b id="drift-raw">—</b></div>
+        <div class="kv"><span>rate</span><b id="rate-value">—</b></div>
+        <div class="kv"><span>action</span><b id="action-value">—</b></div>
+        <div class="kv"><span>player speed</span><b id="spd-value">—</b></div>
+      </div>
+    </section>
+
+    <section class="chart-card">
+      <div class="card-head">
+        <h2>Drift (ms)</h2>
+        <div class="legend">
+          <span class="lg lg-raw">raw</span>
+          <span class="lg lg-filt">filtered</span>
+          <span class="lg lg-zero">0</span>
+        </div>
+      </div>
+      <canvas id="drift-chart" height="220"></canvas>
+    </section>
+
+    <section class="cards">
+      <div class="card">
+        <h3>Wall Clock (CSS-WC)</h3>
+        <div class="kv"><span>RTT avg</span><b id="wc-rtt">—</b></div>
+        <div class="kv"><span>RTT min / max</span><b id="wc-rtt-range">—</b></div>
+        <div class="kv"><span>dispersion</span><b id="wc-disp">—</b></div>
+        <div class="kv"><span>requests</span><b id="wc-req">—</b></div>
+        <div class="kv"><span>responses</span><b id="wc-resp">—</b></div>
+        <div class="kv"><span>request rate</span><b id="wc-rate">—</b></div>
+      </div>
+
+      <div class="card">
+        <h3>Timeline (CSS-TS)</h3>
+        <div class="kv"><span>TV position</span><b id="ts-tv">—</b></div>
+        <div class="kv"><span>Player position</span><b id="ts-pl">—</b></div>
+        <div class="kv"><span>TV − Player</span><b id="ts-delta">—</b></div>
+        <div class="kv"><span>player</span><b id="ts-kind">—</b></div>
+      </div>
+
+      <div class="card">
+        <h3>Health</h3>
+        <div class="kv"><span>telemetry age</span><b id="hp-age">—</b></div>
+        <div class="kv"><span>updates/s</span><b id="hp-ups">—</b></div>
+        <div class="kv"><span>WC alive</span><b id="hp-wc">—</b></div>
+        <div class="kv"><span>sync state</span><b id="hp-state">—</b></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

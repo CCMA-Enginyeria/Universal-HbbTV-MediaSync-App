@@ -74,9 +74,24 @@ export const config = {
     SYNC_MAX_RATE_DELTA: 0.05,
     // Ignore rate changes smaller than this (avoids React state churn).
     SYNC_RATE_EPS: 0.002,
+    // After a hard seek, suppress further corrections for this long (ms) or until
+    // the player reports the seek completed (onSeek), whichever comes first. A
+    // DASH seek needs to fetch/buffer new segments, during which onProgress still
+    // reports the old position; without this guard the corrector would re-seek
+    // every cycle to a moving target ("seeking in many slow steps").
+    SYNC_SEEK_COOLDOWN_MS: 1500,
+    // Lead added to the seek target (seconds) to compensate for the seek+rebuffer
+    // latency, so the player lands where the TV *will* be, not where it was.
+    SYNC_SEEK_LEAD_S: 0.4,
     // When true, logs the drift/rate control loop (~4 lines/s per player) to the
-    // console for diagnosing sync stability. Turn off for production.
-    DEBUG_SYNC: true,
+    // console for diagnosing sync stability. Verbose; keep off in favour of the
+    // compact SYNC_TELEMETRY line below unless you need the raw control-loop trace.
+    DEBUG_SYNC: false,
+    // When true, emits one compact single-line JSON telemetry record per sync
+    // tick (marker `SYNCTEL`) with the key sync metrics. Consumed by the
+    // `tools/sync-dashboard` dev tool to render a live web dashboard from
+    // `adb logcat`. Cheap enough (~4 lines/s) to leave on during development.
+    SYNC_TELEMETRY: true,
     // Default timeline selector (MPEG-DASH PTS).
     TIMELINE_SELECTOR: 'urn:dvb:css:timeline:pts',
     // Tick rate for PTS (90kHz).

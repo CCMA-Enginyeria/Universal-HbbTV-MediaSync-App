@@ -10,6 +10,7 @@ import {
   AppState,
   Alert,
   Modal,
+  Platform,
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import Video from 'react-native-video';
@@ -27,6 +28,8 @@ import StatusSlot from './StatusSlot';
 import { startForegroundSync, stopForegroundSync, addHeartbeatListener, addStopListener } from '../utils/ForegroundSync';
 import brand from '../brand/brand.config';
 import { requestCameraPermission } from '../utils/CameraPermissions';
+import { startSyncBridge, sendSyncBridge, stopSyncBridge } from '../utils/SyncBridgeServer';
+import * as WebBrowser from 'expo-web-browser';
 
 // Minimum interval (ms) between two drift corrections for the same player. The
 // predictive controller is fed from two paths — the player `onProgress`
@@ -38,6 +41,20 @@ const MIN_CORRECTION_INTERVAL_MS = config.MEDIA_SYNC?.SYNC_MIN_CORRECTION_INTERV
 // When true, the drift control loop logs its inputs/decision to the console so
 // the sync behaviour can be diagnosed on-device. Toggle via config.MEDIA_SYNC.DEBUG_SYNC.
 const DEBUG_SYNC = config.MEDIA_SYNC?.DEBUG_SYNC ?? false;
+
+// When true, emits one compact single-line JSON telemetry record per sync tick
+// (marker `SYNCTEL`), consumed by the `tools/sync-dashboard` dev tool to render
+// a live sync dashboard from `adb logcat`. Throttled independently of DEBUG_SYNC.
+const SYNC_TELEMETRY = config.MEDIA_SYNC?.SYNC_TELEMETRY ?? false;
+// Minimum interval (ms) between telemetry emissions per player to keep logcat light.
+const TELEMETRY_INTERVAL_MS = 250;
+
+// After a hard seek, corrections are suppressed until the player confirms the
+// seek (onSeek) or this cooldown elapses — otherwise the corrector would re-seek
+// every cycle while the DASH player is still buffering the new position.
+const SEEK_COOLDOWN_MS = config.MEDIA_SYNC?.SYNC_SEEK_COOLDOWN_MS ?? 1500;
+// Lead (seconds) added to the seek target to compensate for seek+rebuffer latency.
+const SEEK_LEAD_S = config.MEDIA_SYNC?.SYNC_SEEK_LEAD_S ?? 0.4;
 
 // Tuning for the predictive sync controller, read from config so the
 // precision/battery trade-off can be adjusted without touching the logic.
@@ -64,6 +81,14 @@ const WEB_FEED_INTERVAL_MS = 1000;
 const isWebContent = (url) =>
   typeof url === 'string' && /\.html?(\?|#|$)/i.test(url);
 
+// A companion URL is treated as an immersive/WebXR experience when it carries an
+// `xr=1` query flag. WebXR does not work inside the in-app WebView (the Android
+// System WebView lacks it), so on Android such content is opened in an external
+// Chrome Custom Tab, and the DVB-CSS sync is relayed over a loopback WebSocket
+// bridge instead of the WebView's `injectJavaScript`.
+const isXrContent = (url) =>
+  typeof url === 'string' && /[?&]xr=1(?:&|#|$)/i.test(url);
+
 export default function TerminalItem({ terminal, onPress, expanded, onToggleExpand }) {
   const { t } = useTranslation();
   const [syncState, setSyncState] = useState(SyncState.DISCONNECTED);
@@ -86,6 +111,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   // la web a pantalla completa dins d'un WebView alimentat amb la sincronització.
   const [companionWebUrl, setCompanionWebUrl] = useState(null);
   const [webModalVisible, setWebModalVisible] = useState(false);
+  const [xrBridgeActive, setXrBridgeActive] = useState(false);
   // Metadata (title + favicon) of the companion web page, fetched from its HTML
   // so the user recognizes what the synchronized content is instead of seeing a
   // generic globe icon. Both null while loading or on failure (UI falls back).
@@ -120,10 +146,16 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   if (!videoSyncControllerRef.current) videoSyncControllerRef.current = new SyncController(SYNC_CONTROLLER_OPTIONS);
   // Throttle for the diagnostic sync log (per player).
   const lastDebugLogRef = useRef({ audio: 0, video: 0 });
+  // Throttle for the compact SYNCTEL telemetry line (per player).
+  const lastTelemetryRef = useRef({ audio: 0, video: 0 });
   // Latest sync status per player, written by the drift controller so the UI
   // badge reflects the controller's real decision (filtered drift + mode)
   // instead of recomputing a separate, noisier raw-drift heuristic.
   const lastSyncInfoRef = useRef({ audio: null, video: null });
+  // Tracks an in-flight hard seek per player. While `seeking` is true the drift
+  // corrector is suppressed (the DASH player is still buffering the new
+  // position), preventing repeated re-seeks to a moving target.
+  const seekStateRef = useRef({ audio: { seeking: false, at: 0 }, video: { seeking: false, at: 0 } });
   // Estado de pantalla completa y reentrada pendiente: cuando la TV cambia de
   // contenido mientras el vídeo está en fullscreen, el componente <Video> se
   // remonta (key={mpdUrl}) y el reproductor fullscreen nativo del componente
@@ -141,6 +173,9 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   const webViewRef = useRef(null);
   const companionWebUrlRef = useRef(null);
   const webModalVisibleRef = useRef(false);
+  // Whether a WebXR companion is currently open in an external Chrome Custom Tab
+  // and being fed through the loopback WebSocket bridge (Android only).
+  const bridgeActiveRef = useRef(false);
   // Throttle de l'aliment a la web companion (veure WEB_FEED_INTERVAL_MS).
   const lastWebFeedRef = useRef(0);
   const lastWebFeedStateRef = useRef({ isPlaying: null, speed: null });
@@ -305,6 +340,20 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     const now = Date.now();
     if (now - lastRef.current < MIN_CORRECTION_INTERVAL_MS) return;
 
+    // In-flight seek guard: while a hard seek is settling, suppress corrections
+    // so we don't re-seek to a moving target while the DASH player buffers the
+    // new position. Cleared by the player's onSeek callback, or by this cooldown
+    // as a fallback if onSeek never fires.
+    const seekState = seekStateRef.current[kind];
+    if (seekState.seeking) {
+      if (now - seekState.at < SEEK_COOLDOWN_MS) {
+        lastSyncInfoRef.current[kind] = { status: 'seeking', driftMs: null, rate: 1.0, at: now };
+        return;
+      }
+      seekState.seeking = false;
+      controller.reset();
+    }
+
     const pos = service.getCurrentPosition?.();
     if (!pos || pos.positionSeconds == null || !pos.isPlaying) return;
 
@@ -353,12 +402,70 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       }
     }
 
+    // Compact single-line telemetry for the sync-dashboard dev tool. One JSON
+    // record per player, throttled, tagged with the `SYNCTEL` marker so the
+    // parser can pick it out of `adb logcat`. Field names are short on purpose
+    // to keep each line small.
+    if (SYNC_TELEMETRY) {
+      const tel = lastTelemetryRef.current;
+      if (now - tel[kind] >= TELEMETRY_INTERVAL_MS) {
+        tel[kind] = now;
+        const appliedRate = result.action === 'rate' ? result.rate : rateRef.current;
+        const wc = service.wcService;
+        const wcDisp = wc?.getDispersionMillis?.();
+        const wcStats = wc?.stats;
+        const payload = {
+          v: 1,
+          t: now,
+          k: kind,
+          st: lastSyncInfoRef.current[kind]?.status ?? null,
+          dr: Math.round(result.drift * 1000),
+          fd: Math.round(result.filteredDrift * 1000),
+          tv: Number(tvTime.toFixed(3)),
+          pl: Number(playerTime.toFixed(3)),
+          rt: Number(appliedRate.toFixed(3)),
+          act: result.action,
+          spd: pos.speed,
+          state: service.state ?? null,
+        };
+        if (wcDisp != null && isFinite(wcDisp)) payload.wcDisp = Math.round(wcDisp);
+        if (wcStats) {
+          if (isFinite(wcStats.avgRoundTrip)) payload.wcRtt = Number(wcStats.avgRoundTrip.toFixed(1));
+          if (isFinite(wcStats.minRoundTrip)) payload.wcRttMin = Number(wcStats.minRoundTrip.toFixed(1));
+          if (isFinite(wcStats.maxRoundTrip)) payload.wcRttMax = Number(wcStats.maxRoundTrip.toFixed(1));
+          if (wcStats.responsesReceived != null) payload.respN = wcStats.responsesReceived;
+        }
+        if (wc?.requestCounter != null) payload.reqN = wc.requestCounter;
+        console.log(`📈 SYNCTEL ${JSON.stringify(payload)}`);
+      }
+    }
+
+    // Apply a playback rate to the companion player. On Android, React Native
+    // (New Architecture) freezes the render/commit path while the app is in the
+    // background, so the declarative `rate` prop never reaches ExoPlayer until
+    // the app returns to the foreground — unlike the imperative `seek`, which
+    // keeps working. We therefore push the rate imperatively through the native
+    // ref (`setRate`, patched into react-native-video mirroring `setVolume`) so
+    // fine drift correction also applies while backgrounded, and still update
+    // the React state for the UI and for platforms on the declarative path.
+    const applyRate = (value) => {
+      if (Platform.OS === 'android') {
+        try { playerRef.current?.setRate?.(value); } catch (e) { /* ignore */ }
+      }
+      setRate(value);
+    };
+
     if (result.action === 'seek') {
-      const seekTarget = isLive ? currentTimeRef.current - result.drift : tvTime;
-      try { playerRef.current.seek(seekTarget); } catch (e) { /* ignore */ }
-      if (rateRef.current !== 1.0) setRate(1.0);
+      // Lead-compensate the target so the player lands where the TV *will* be
+      // once the seek+rebuffer completes, not where it was. Mark the seek
+      // in-flight so subsequent cycles are suppressed until it settles.
+      const base = isLive ? currentTimeRef.current - result.drift : tvTime;
+      seekState.seeking = true;
+      seekState.at = now;
+      try { playerRef.current.seek(base + SEEK_LEAD_S); } catch (e) { /* ignore */ }
+      if (rateRef.current !== 1.0) applyRate(1.0);
     } else if (result.action === 'rate') {
-      if (result.rate !== rateRef.current) setRate(result.rate);
+      if (result.rate !== rateRef.current) applyRate(result.rate);
     }
   }, []);
 
@@ -371,6 +478,31 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   // predictivo compartido (runDriftCorrection).
   const applyPositionToActivePlayer = useCallback((pos) => {
     if (!pos || pos.positionSeconds == null) return;
+
+    // Ejecuta la corrección de drift usando la posición REAL del player nativo.
+    // En background la cadencia de `onProgress` no es fiable, así que el tiempo
+    // de reproducción cacheado puede estar obsoleto; `getCurrentPosition()` lee
+    // la posición real de ExoPlayer (se resuelve en el UI thread, que sigue
+    // ejecutándose en segundo plano). Solo aplica a VOD: la ruta live usa
+    // `currentPlaybackTime`, que no tiene equivalente imperativo, así que
+    // mantiene el espejo de `onProgress`.
+    const correctWithFreshPosition = (kind) => {
+      const isLive = !!streamInfoRef.current?.isLive;
+      const playerRef = kind === 'audio' ? audioPlayerRef : videoPlayerRef;
+      const currentTimeRef = kind === 'audio' ? audioCurrentTimeRef : videoCurrentTimeRef;
+      if (!isLive && typeof playerRef.current?.getCurrentPosition === 'function') {
+        Promise.resolve(playerRef.current.getCurrentPosition())
+          .then((sec) => {
+            if (typeof sec === 'number' && isFinite(sec) && sec >= 0) {
+              currentTimeRef.current = sec;
+            }
+            runDriftCorrection(kind);
+          })
+          .catch(() => runDriftCorrection(kind));
+      } else {
+        runDriftCorrection(kind);
+      }
+    };
 
     // Audio activo (o montado pero pausado, pendiente de reanudar)
     if (selectedAudioRef.current && audioPlayerRef.current) {
@@ -389,8 +521,9 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
         try { audioPlayerRef.current.pause?.(); } catch (e) { /* ignore */ }
         setAudioPlaying(false);
       }
-      // Delegar la corrección de drift al controlador predictivo (background-safe).
-      runDriftCorrection('audio');
+      // Delegar la corrección de drift al controlador predictivo (background-safe),
+      // usando la posición real del player nativo (VOD).
+      correctWithFreshPosition('audio');
       return;
     }
 
@@ -408,7 +541,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
         setVideoPlaying(false);
       }
       // Delegar la corrección de drift al controlador predictivo (background-safe).
-      runDriftCorrection('video');
+      correctWithFreshPosition('video');
     }
   }, []);
 
@@ -439,7 +572,9 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   // (control timestamp de CSS-TS) es tradueix en un missatge amb el timecode i
   // l'estat de reproducció, però que la web pugui mostrar-los sincronitzats.
   const feedWebView = useCallback((pos) => {
-    if (!webModalVisibleRef.current || !webViewRef.current || !pos) return;
+    const bridgeActive = bridgeActiveRef.current;
+    const webVisible = webModalVisibleRef.current && !!webViewRef.current;
+    if ((!webVisible && !bridgeActive) || !pos) return;
     if (pos.positionSeconds == null) return;
     // La web interpola amb el seu propi rellotge; només l'enviem una correcció
     // cada WEB_FEED_INTERVAL_MS, o immediatament si canvia l'estat de
@@ -460,25 +595,66 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       isLive: pos.isLive,
       formattedTime: pos.formattedTime,
     };
-    try {
-      webViewRef.current.injectJavaScript(
-        `window.__hbbtvSync && window.__hbbtvSync(${JSON.stringify(payload)}); true;`
-      );
-    } catch (e) {
-      // ignore
+    // In-app WebView transport (injectJavaScript).
+    if (webVisible) {
+      try {
+        webViewRef.current.injectJavaScript(
+          `window.__hbbtvSync && window.__hbbtvSync(${JSON.stringify(payload)}); true;`
+        );
+      } catch (e) {
+        // ignore
+      }
+    }
+    // External Custom Tab transport (loopback WebSocket bridge).
+    if (bridgeActive) {
+      sendSyncBridge(payload);
     }
   }, []);
 
   // Obre la web companion a pantalla completa i desbloqueja l'orientació perquè
   // l'usuari pugui girar el telèfon mentre la mira. Reinicia el throttle perquè
   // el primer aliment (a onLoadEnd) s'enviï immediatament.
-  const openWebModal = useCallback(() => {
+  const openWebModal = useCallback(async () => {
     lastWebFeedRef.current = 0;
     lastWebFeedStateRef.current = { isPlaying: null, speed: null };
     setWebNoContent(false);
+
+    // WebXR content: open in an external Chrome Custom Tab (Android) so WebXR
+    // works, relaying sync over a loopback WebSocket bridge. Falls back to the
+    // in-app WebView if the bridge cannot start or on non-Android platforms.
+    const url = companionWebUrlRef.current;
+    if (Platform.OS === 'android' && isXrContent(url)) {
+      const port = await startSyncBridge(0);
+      if (port > 0) {
+        bridgeActiveRef.current = true;
+        setXrBridgeActive(true);
+        startForegroundSync(
+          terminal.getFriendlyName(),
+          t('discovery.syncingWithTv', { defaultValue: 'Sincronizando con la TV' }),
+          t('discovery.stopSync', { defaultValue: 'Detener' })
+        );
+        const sep = url.includes('?') ? '&' : '?';
+        const bridgedUrl = `${url}${sep}syncBridge=${encodeURIComponent(`ws://127.0.0.1:${port}`)}`;
+        // Seed the bridge with the last known position before the tab opens.
+        if (positionRef.current) feedWebView(positionRef.current);
+        try {
+          await WebBrowser.openBrowserAsync(bridgedUrl);
+        } catch (e) {
+          console.warn('Custom Tab open failed:', e?.message);
+        } finally {
+          // openBrowserAsync resolves when the user dismisses the tab.
+          bridgeActiveRef.current = false;
+          setXrBridgeActive(false);
+          stopSyncBridge();
+        }
+        return;
+      }
+      console.warn('Sync bridge unavailable; falling back to in-app WebView');
+    }
+
     setWebModalVisible(true);
     ScreenOrientation.unlockAsync().catch(() => {});
-  }, []);
+  }, [feedWebView, terminal, t]);
 
   // Tanca la web companion i restaura l'orientació vertical de l'app.
   const closeWebModal = useCallback(() => {
@@ -524,6 +700,11 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   const stopEverything = useCallback(() => {
     isActiveRef.current = false;
     stopActivePlayers();
+    if (bridgeActiveRef.current) {
+      bridgeActiveRef.current = false;
+      setXrBridgeActive(false);
+      stopSyncBridge();
+    }
     if (connectTimeoutRef.current) {
       clearTimeout(connectTimeoutRef.current);
       connectTimeoutRef.current = null;
@@ -696,18 +877,35 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     service.on('disconnected', () => {
       if (!isActiveRef.current) return;
       if (syncServiceRef.current !== service) return;
-      // Detener el audio/vídeo inmediatamente (también en background, donde el
-      // desmontaje declarativo del <Video> puede no aplicarse) y quedar a la
-      // espera de una nueva conexión. NO desmontamos el player: lo dejamos
-      // montado pero en pausa (audioPlaying/videoPlaying=false) para que el
-      // ExoPlayer/MediaSession sobreviva y pueda reanudar en background sin
-      // recrearse. Conservamos selección, MPD y playbackIntent.
+      // Connection lost: stop audio/video immediately (also in background, where
+      // the declarative unmount of <Video> may not apply) and return to a clean
+      // state waiting for a new connection. When the CII link drops the TV is no
+      // longer presenting anything, so we clear the visible content (track lists,
+      // selection, MPD and companion web card) instead of keeping it on screen —
+      // otherwise the card would still show old content that is gone.
+      // We deliberately KEEP `playbackIntent`: it remembers the element the user
+      // was playing (by language + role) so that when the connection comes back
+      // and the same element is present, `loadMpd` auto-resumes it.
       stopActivePlayers();
       syncStateRef.current = SyncState.DISCONNECTED;
       setSyncState(SyncState.DISCONNECTED);
       setIsLoading(false);
       setAudioPlaying(false);
       setVideoPlaying(false);
+      setSelectedAudio(null);
+      setSelectedVideo(null);
+      setAudios([]);
+      setVideos([]);
+      setMpdUrl(null);
+      mpdUrlRef.current = null;
+      setStreamInfo(null);
+      setPosition(null);
+      // Clear the companion web content too; if its modal is open, tell the user
+      // there is no synchronized content anymore so they can close it.
+      if (companionWebUrlRef.current) {
+        setCompanionWebUrl(null);
+        if (webModalVisibleRef.current) setWebNoContent(true);
+      }
       lastContentIdRef.current = null;
       hasReceivedContent = false;
       if (connectTimeoutRef.current) {
@@ -762,6 +960,8 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
 
     return () => {
       isActiveRef.current = false;
+      bridgeActiveRef.current = false;
+      stopSyncBridge();
       stopForegroundSync();
       if (connectTimeoutRef.current) {
         clearTimeout(connectTimeoutRef.current);
@@ -792,6 +992,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       lastContentIdRef.current = null;
       setCompanionWebUrl(null);
       setWebModalVisible(false);
+      setXrBridgeActive(false);
       setWebNoContent(false);
       companionWebUrlRef.current = null;
       webModalVisibleRef.current = false;
@@ -853,6 +1054,19 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
         // mantener el Wall Clock fresco mientras la app está en background.
         console.log('💓 Heartbeat: poking WC');
         syncServiceRef.current?.pokeWallClock?.();
+        // In background, RN freezes the `setInterval` that emits periodic
+        // `position-update`s, and the TV only sends CSS-TS control timestamps on
+        // state changes. Without a periodic feed, the companion relayed over the
+        // loopback bridge (WebXR content in a Chrome Custom Tab) stops receiving
+        // corrections and trips its "signal lost" timeout. Push the current
+        // position from the native heartbeat so the bridge (and any active
+        // player) keeps getting steady updates while backgrounded. `feedWebView`
+        // self-gates on the bridge/WebView being active and throttles internally.
+        const pos = syncServiceRef.current?.getCurrentPosition?.();
+        if (pos) {
+          applyPositionToActivePlayer(pos);
+          feedWebView(pos);
+        }
         return;
       }
       const now = Date.now();
@@ -863,7 +1077,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       }
     });
     return () => sub.remove();
-  }, [expanded, hasMediaSync]);
+  }, [expanded, hasMediaSync, applyPositionToActivePlayer, feedWebView]);
 
   // Mantener vivo el proceso en background con un foreground service propio (sin
   // controles de media: todo el control se hace en la TV). Se arranca mientras
@@ -878,7 +1092,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   // seleccionar el componente (estando en primer plano) y aquí solo evitamos
   // detenerlo durante la ventana de reconexión.
   useEffect(() => {
-    if (audioPlaying || videoPlaying || playbackIntent) {
+    if (audioPlaying || videoPlaying || playbackIntent || xrBridgeActive) {
       startForegroundSync(
         terminal.getFriendlyName(),
         t('discovery.syncingWithTv', { defaultValue: 'Sincronizando con la TV' }),
@@ -887,7 +1101,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     } else {
       stopForegroundSync();
     }
-  }, [audioPlaying, videoPlaying, playbackIntent, terminal, t]);
+  }, [audioPlaying, videoPlaying, playbackIntent, xrBridgeActive, terminal, t]);
 
   // Acción "Detener" de la notificación del foreground service: permite al
   // usuario parar el reproductor y la sincronización con la app en segundo
@@ -1437,6 +1651,12 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
                           videoCurrentPlaybackTimeRef.current = currentPlaybackTime / 1000;
                           runDriftCorrection('video');
                         }}
+                        onSeek={() => {
+                          // Seek settled: release the in-flight guard and reset
+                          // the controller so drift is re-measured from scratch.
+                          seekStateRef.current.video.seeking = false;
+                          videoSyncControllerRef.current?.reset();
+                        }}
                         onError={(err) => {
                           console.error('Error reproduint vídeo:', err);
                           setVideoPlaying(false);
@@ -1518,6 +1738,12 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
                 audioCurrentTimeRef.current = currentTime;
                 audioCurrentPlaybackTimeRef.current = currentPlaybackTime / 1000;
                 runDriftCorrection('audio');
+              }}
+              onSeek={() => {
+                // Seek settled: release the in-flight guard and reset the
+                // controller so drift is re-measured from scratch.
+                seekStateRef.current.audio.seeking = false;
+                audioSyncControllerRef.current?.reset();
               }}
               onError={(err) => {
                 console.error('❌ Error reproduint àudio:', err);

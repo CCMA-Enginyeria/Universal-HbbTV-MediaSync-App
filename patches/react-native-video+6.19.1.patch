@@ -1,0 +1,73 @@
+diff --git a/node_modules/react-native-video/android/src/main/java/com/brentvatne/react/VideoManagerModule.kt b/node_modules/react-native-video/android/src/main/java/com/brentvatne/react/VideoManagerModule.kt
+index 15031e7..c926f94 100644
+--- a/node_modules/react-native-video/android/src/main/java/com/brentvatne/react/VideoManagerModule.kt
++++ b/node_modules/react-native-video/android/src/main/java/com/brentvatne/react/VideoManagerModule.kt
+@@ -58,6 +58,13 @@ class VideoManagerModule(reactContext: ReactApplicationContext?) : ReactContextB
+         }
+     }
+ 
++    @ReactMethod
++    fun setRateCmd(reactTag: Int, rate: Float) {
++        performOnPlayerView(reactTag) {
++            it?.setRateModifier(rate)
++        }
++    }
++
+     @ReactMethod
+     fun setFullScreenCmd(reactTag: Int, fullScreen: Boolean) {
+         performOnPlayerView(reactTag) {
+diff --git a/node_modules/react-native-video/src/Video.tsx b/node_modules/react-native-video/src/Video.tsx
+index 82b73ab..c0f5fb0 100644
+--- a/node_modules/react-native-video/src/Video.tsx
++++ b/node_modules/react-native-video/src/Video.tsx
+@@ -433,6 +433,10 @@ const Video = forwardRef<VideoRef, ReactVideoProps>(
+       return NativeVideoManager.setVolumeCmd(getReactTag(nativeRef), volume);
+     }, []);
+ 
++    const setRate = useCallback((rate: number) => {
++      return NativeVideoManager.setRateCmd(getReactTag(nativeRef), rate);
++    }, []);
++
+     const setFullScreen = useCallback((fullScreen: boolean) => {
+       return NativeVideoManager.setFullScreenCmd(
+         getReactTag(nativeRef),
+@@ -740,6 +744,7 @@ const Video = forwardRef<VideoRef, ReactVideoProps>(
+         resume,
+         restoreUserInterfaceForPictureInPictureStopCompleted,
+         setVolume,
++        setRate,
+         getCurrentPosition,
+         setFullScreen,
+         enterPictureInPicture,
+@@ -755,6 +760,7 @@ const Video = forwardRef<VideoRef, ReactVideoProps>(
+         resume,
+         restoreUserInterfaceForPictureInPictureStopCompleted,
+         setVolume,
++        setRate,
+         getCurrentPosition,
+         setFullScreen,
+         enterPictureInPicture,
+diff --git a/node_modules/react-native-video/src/specs/NativeVideoManager.ts b/node_modules/react-native-video/src/specs/NativeVideoManager.ts
+index 64644d8..5edb9c4 100644
+--- a/node_modules/react-native-video/src/specs/NativeVideoManager.ts
++++ b/node_modules/react-native-video/src/specs/NativeVideoManager.ts
+@@ -23,6 +23,7 @@ export interface VideoManagerType {
+   setFullScreenCmd: (reactTag: Int32, fullScreen: boolean) => Promise<void>;
+   setSourceCmd: (reactTag: Int32, source?: UnsafeObject) => Promise<void>;
+   setVolumeCmd: (reactTag: Int32, volume: number) => Promise<void>;
++  setRateCmd: (reactTag: Int32, rate: number) => Promise<void>;
+   enterPictureInPictureCmd: (reactTag: number) => Promise<void>;
+   exitPictureInPictureCmd: (reactTag: number) => Promise<void>;
+   save: (reactTag: Int32, option: UnsafeObject) => Promise<VideoSaveData>;
+diff --git a/node_modules/react-native-video/src/types/video-ref.ts b/node_modules/react-native-video/src/types/video-ref.ts
+index 6877b9c..00dd20a 100644
+--- a/node_modules/react-native-video/src/types/video-ref.ts
++++ b/node_modules/react-native-video/src/types/video-ref.ts
+@@ -16,6 +16,7 @@ export interface VideoRef {
+   ) => void;
+   save: (options: object) => Promise<VideoSaveData> | void;
+   setVolume: (volume: number) => void;
++  setRate: (rate: number) => void;
+   getCurrentPosition: () => Promise<number>;
+   setFullScreen: (fullScreen: boolean) => void;
+   setSource: (source?: ReactVideoSource) => void;

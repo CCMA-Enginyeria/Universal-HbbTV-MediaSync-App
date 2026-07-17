@@ -1,170 +1,268 @@
 <!DOCTYPE html>
 <html style="height:100%;margin:0;padding:0;background:#000;">
+
 <head>
-<meta charset="UTF-8">
-<title>Basic Media Sync Viewer</title>
-<script src="js/hbbtvlib.js"></script>
-<script src="js/hbbtv-manager-polyfill.js"></script>
-<style>
-html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#000;}
-#v{position:fixed;top:0;left:0;width:100%;height:100%;object-fit:contain;background:#000;}
-#s{position:fixed;top:10px;left:10px;color:#0f0;font-family:monospace;font-size:12px;background:rgba(0,0,0,0.7);padding:6px 10px;border-radius:4px;z-index:10;white-space:pre-line;}
-</style>
+  <meta charset="UTF-8">
+  <title>Basic Media Sync Viewer</title>
+  <script src="js/hbbtvlib.js"></script>
+  <script src="js/hbbtv-manager-polyfill.js"></script>
+  <style>
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #000;
+    }
+
+    #v {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+    }
+
+    #s {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      color: #0f0;
+      font-family: monospace;
+      font-size: 12px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 6px 10px;
+      border-radius: 4px;
+      z-index: 10;
+      white-space: pre-line;
+    }
+  </style>
 </head>
+
 <body>
-<div id="s">Loading...</div>
-<video id="v" autoplay>
-<source src="https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd" type="application/dash+xml">
-</video>
-<script>
-var v=document.getElementById('v');
-var s=document.getElementById('s');
-var SEEK_STEP_SECONDS=10;
-// Cada element pot tenir:
-//   url : MPD DASH que reprodueix la TV (genera el timeline PTS 90 kHz).
-//   web : (opcional) URL d'una web companion (.html) que el segon dispositiu
-//         carregarà a pantalla completa en comptes de reproduir el DASH.
-//         Quan hi ha `web`, s'envia com a contentIdOverride perquè el mòbil
-//         detecti (per l'extensió .html) que ha d'obrir la web sincronitzada.
-//         La TV continua reproduint `url` per mantenir viu el timeline.
-var CONTENTS=[
-  {name:'Big Buck Bunny',url:'https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd'},
-  {name:'Envivio',url:'https://dash.akamaized.net/envivio/EnvivioDash3/manifest.mpd'},
-  {name:'Tears of Steel',url:'https://dash.akamaized.net/dash264/TestCases/2c/qualcomm/1/MultiResMPEG2.mpd'},
-  {name:'Web Demo (Timecode)',url:'https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd',web:'sync_app/index.html'}
-];
-var contentIndex=0;
-// Resol la URL de la web companion a absoluta (respecte a aquesta pàgina),
-// de manera que el contentIdOverride sigui una URL vàlida per al mòbil.
-function resolveContentId(c){
-  if(c&&c.web){
-    try{return new URL(c.web,window.location.href).href;}
-    catch(e){return c.web;}
-  }
-  return c?c.url:'';
-}
-function log(m){console.log(m);s.textContent=m;}
-
-window.onload=function(){
-  if(typeof hbbtvlib_initialize!=='undefined'){hbbtvlib_initialize();hbbtvlib_show();}
-  registerSeekKeys();
-  v.addEventListener('canplay',onReady,{once:true});
-  v.addEventListener('error',function(){log('Video error');});
-  v.load();
-  v.play().catch(function(e){log('Autoplay blocked: '+e.message);});
-};
-
-function registerSeekKeys(){
-  document.addEventListener('keydown',function(e){
-    var key=e.key||'';
-    var code=e.keyCode||e.which;
-    if(key==='ArrowLeft'||code===37){
-      seekBy(-SEEK_STEP_SECONDS);
-      e.preventDefault();
-      e.stopPropagation();
-    }else if(key==='ArrowRight'||code===39){
-      seekBy(SEEK_STEP_SECONDS);
-      e.preventDefault();
-      e.stopPropagation();
-    }else if(key==='ArrowUp'||code===38){
-      changeContent(1);
-      e.preventDefault();
-      e.stopPropagation();
-    }else if(key==='ArrowDown'||code===40){
-      changeContent(-1);
-      e.preventDefault();
-      e.stopPropagation();
+  <div id="s">Loading...</div>
+  <!-- Camera permission test. Tapping this calls getUserMedia(), which is what
+       triggers the OS camera prompt (and, on Android, the WebView's
+       onPermissionRequest) in the companion app. Purely for testing. -->
+  <button id="camBtn" style="position:fixed;top:12px;right:12px;z-index:9999;padding:10px 14px;font-size:14px;">
+    Test camera
+  </button>
+  <script>
+    (function () {
+      var camBtn = document.getElementById('camBtn');
+      if (!camBtn) { return; }
+      camBtn.addEventListener('click', function () {
+        camBtn.textContent = 'Requesting…';
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          camBtn.textContent = 'getUserMedia unsupported';
+          return;
+        }
+        navigator.mediaDevices.getUserMedia({ video: true })
+          .then(function (stream) {
+            camBtn.textContent = 'Camera granted';
+            // Release the camera immediately; this is only a permission test.
+            stream.getTracks().forEach(function (t) { t.stop(); });
+          })
+          .catch(function (err) {
+            camBtn.textContent = 'Camera denied: ' + (err && err.name ? err.name : 'error');
+          });
+      });
+    })();
+  </script>
+  <video id="v" autoplay>
+    <source src="https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd" type="application/dash+xml">
+  </video>
+  <script>
+    var v = document.getElementById('v');
+    var s = document.getElementById('s');
+    var SEEK_STEP_SECONDS = 10;
+    // Cada element pot tenir:
+    //   url : MPD DASH que reprodueix la TV (genera el timeline PTS 90 kHz).
+    //   web : (opcional) URL d'una web companion (.html) que el segon dispositiu
+    //         carregarà a pantalla completa en comptes de reproduir el DASH.
+    //         Quan hi ha `web`, s'envia com a contentIdOverride perquè el mòbil
+    //         detecti (per l'extensió .html) que ha d'obrir la web sincronitzada.
+    //         La TV continua reproduint `url` per mantenir viu el timeline.
+    var CONTENTS = [
+      { name: 'Big Buck Bunny', url: 'https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd' },
+      { name: 'Envivio', url: 'https://dash.akamaized.net/envivio/EnvivioDash3/manifest.mpd' },
+      { name: 'Tears of Steel', url: 'https://dash.akamaized.net/dash264/TestCases/2c/qualcomm/1/MultiResMPEG2.mpd' },
+      { name: 'Web Demo (WebXR)', url: 'https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd', web: 'https://3cat-eclipsi.pages.dev/index.html?xr=1' },
+      { name: 'Web Demo (WebXR)', url: 'https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd', web: 'sync_app/index.html?xr=1' },
+    ];
+    var contentIndex = 0;
+    // Resol la URL de la web companion a absoluta (respecte a aquesta pàgina),
+    // de manera que el contentIdOverride sigui una URL vàlida per al mòbil.
+    function resolveContentId(c) {
+      if (c && c.web) {
+        try { return new URL(c.web, window.location.href).href; }
+        catch (e) { return c.web; }
+      }
+      return c ? c.url : '';
     }
-  });
-}
+    function log(m) { console.log(m); s.textContent = m; }
 
-function changeContent(delta){
-  contentIndex=(contentIndex+delta+CONTENTS.length)%CONTENTS.length;
-  var c=CONTENTS[contentIndex];
-  log('Loading: '+c.name);
-  destroySync();
-  var source=v.querySelector('source');
-  if(source){source.src=c.url;}
-  v.addEventListener('canplay',function(){
-    log('Playing: '+c.name);
-    initSync(resolveContentId(c));
-  },{once:true});
-  v.load();
-  v.play().catch(function(e){log('Autoplay blocked: '+e.message);});
-}
-
-function seekBy(deltaSeconds){
-  if(!v||v.readyState===0){return;}
-  var target=v.currentTime+deltaSeconds;
-  var minTime=0;
-  var maxTime=(isFinite(v.duration)&&v.duration>0)?v.duration:null;
-  if(v.seekable&&v.seekable.length){
-    minTime=v.seekable.start(0);
-    if(maxTime===null){maxTime=v.seekable.end(v.seekable.length-1);}
-  }
-  if(maxTime!==null){target=Math.min(target,maxTime);}
-  target=Math.max(minTime,target);
-  try{
-    v.currentTime=target;
-    log('Seek '+(deltaSeconds>0?'+':'')+deltaSeconds+'s -> '+Math.floor(target)+'s');
-  }catch(e){
-    log('Seek error: '+e.message);
-  }
-}
-
-var ms=null;
-function onReady(){
-  log('Video ready. Initialising sync...');
-  initSync(resolveContentId(CONTENTS[contentIndex]));
-}
-
-function destroySync(){
-  if(!ms){return;}
-  try{
-    if(typeof ms.disableInterDeviceSync==='function'){
-      ms.disableInterDeviceSync();
-      console.log('Inter-device sync desactivat (disableInterDeviceSync)');
-    }else if(typeof ms.disableInterDevSync==='function'){
-      ms.disableInterDevSync();
-      console.log('Inter-device sync desactivat (disableInterDevSync)');
-    }
-    if(typeof ms.removeMediaObject==='function'){
-      ms.removeMediaObject(v);
-      console.log('Media object eliminat del MediaSynchroniser');
-    }
-  }catch(error){
-    console.warn('Error destruint MediaSynchroniser:',error);
-  }
-  ms=null;
-}
-
-function initSync(contentUrl){
-  try{
-    if(typeof oipfObjectFactory==='undefined'){log('No oipfObjectFactory');return;}
-    ms=oipfObjectFactory.createMediaSynchroniser();
-    if(!ms){log('createMediaSynchroniser failed');return;}
-    ms.contentIdOverride=contentUrl;
-    if(/\.html?(\?|#|$)/i.test(contentUrl)){
-      log('Enviant web companion: '+contentUrl);
-    }
-    ms.onSyncNowAchievable=function(){log('Sync now achievable');};
-    ms.onSyncNowUnachievable=function(){log('Sync now unachievable');};
-    ms.onInterDevSyncStatus=function(st){
-      var map={0:'disconnected',1:'connecting',2:'connected'};
-      log('InterDev status: '+(map[st]||st));
+    window.onload = function () {
+      if (typeof hbbtvlib_initialize !== 'undefined') { hbbtvlib_initialize(); hbbtvlib_show(); }
+      registerSeekKeys();
+      v.addEventListener('canplay', onReady, { once: true });
+      v.addEventListener('error', function () { log('Video error'); });
+      v.load();
+      v.play().catch(function (e) { log('Autoplay blocked: ' + e.message); });
     };
-    ms.onError=function(err,src){log('Sync error: '+err);};
-    ms.initMediaSynchroniser(v,'urn:dvb:css:timeline:pts');
-    var en=(typeof ms.enableInterDeviceSync==='function')?ms.enableInterDeviceSync:
-           (typeof ms.enableInterDevSync==='function')?ms.enableInterDevSync:null;
-    if(en){
-      en.call(ms,function(){log('Inter-device sync enabled');});
-    }else{
-      log('No enable method found');
+
+    function registerSeekKeys() {
+      document.addEventListener('keydown', function (e) {
+        var key = e.key || '';
+        var code = e.keyCode || e.which;
+        if (key === 'ArrowLeft' || code === 37) {
+          seekBy(-SEEK_STEP_SECONDS);
+          e.preventDefault();
+          e.stopPropagation();
+        } else if (key === 'ArrowRight' || code === 39) {
+          seekBy(SEEK_STEP_SECONDS);
+          e.preventDefault();
+          e.stopPropagation();
+        } else if (key === 'ArrowUp' || code === 38) {
+          changeContent(1);
+          e.preventDefault();
+          e.stopPropagation();
+        } else if (key === 'ArrowDown' || code === 40) {
+          changeContent(-1);
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      });
     }
-    log('MediaSynchroniser ready');
-  }catch(e){log('Sync init error: '+e.message);}
-}
-</script>
+
+    function changeContent(delta) {
+      contentIndex = (contentIndex + delta + CONTENTS.length) % CONTENTS.length;
+      var c = CONTENTS[contentIndex];
+      log('Loading: ' + c.name);
+      destroySync();
+      var source = v.querySelector('source');
+      if (source) { source.src = c.url; }
+      v.addEventListener('canplay', function () {
+        log('Playing: ' + c.name);
+        initSync(resolveContentId(c));
+      }, { once: true });
+      v.load();
+      v.play().catch(function (e) { log('Autoplay blocked: ' + e.message); });
+    }
+
+    function seekBy(deltaSeconds) {
+      if (!v || v.readyState === 0) { return; }
+      var target = v.currentTime + deltaSeconds;
+      var minTime = 0;
+      var maxTime = (isFinite(v.duration) && v.duration > 0) ? v.duration : null;
+      if (v.seekable && v.seekable.length) {
+        minTime = v.seekable.start(0);
+        if (maxTime === null) { maxTime = v.seekable.end(v.seekable.length - 1); }
+      }
+      if (maxTime !== null) { target = Math.min(target, maxTime); }
+      target = Math.max(minTime, target);
+      try {
+        v.currentTime = target;
+        log('Seek ' + (deltaSeconds > 0 ? '+' : '') + deltaSeconds + 's -> ' + Math.floor(target) + 's');
+      } catch (e) {
+        log('Seek error: ' + e.message);
+      }
+    }
+
+    var ms = null;
+    // Track listeners registered via addEventListener so we can remove them on destroy.
+    var msListeners = [];
+
+    /**
+     * Attach a MediaSynchroniser event handler in the safest way for the current terminal.
+     * Some HbbTV terminals crash when a callback property (e.g. `ms.onSyncNowAchievable = fn`)
+     * is assigned directly on the native embedded object. The HbbTV spec (2.0.1+) exposes the
+     * same events via DOM2 addEventListener, where the event name is the intrinsic name without
+     * the leading "on" (onSyncNowAchievable -> "SyncNowAchievable", onError -> "Error").
+     * We prefer addEventListener and fall back to the property style (needed by the polyfill).
+     */
+    function addMsListener(target, intrinsicName, handler) {
+      if (!target) { return; }
+      if (typeof target.addEventListener === 'function') {
+        var eventName = intrinsicName.replace(/^on/, '');
+        target.addEventListener(eventName, handler);
+        msListeners.push({ eventName: eventName, handler: handler });
+      } else {
+        target[intrinsicName] = handler;
+      }
+    }
+
+    /** Remove every listener previously registered with addMsListener. */
+    function removeMsListeners(target) {
+      if (target && typeof target.removeEventListener === 'function') {
+        for (var i = 0; i < msListeners.length; i++) {
+          try { target.removeEventListener(msListeners[i].eventName, msListeners[i].handler); } catch (e) {}
+        }
+      }
+      msListeners = [];
+    }
+
+    function onReady() {
+      log('Video ready. Initialising sync...');
+      initSync(resolveContentId(CONTENTS[contentIndex]));
+    }
+
+    function destroySync() {
+      if (!ms) { return; }
+      try {
+        removeMsListeners(ms);
+        if (typeof ms.disableInterDeviceSync === 'function') {
+          ms.disableInterDeviceSync();
+          console.log('Inter-device sync desactivat (disableInterDeviceSync)');
+        } else if (typeof ms.disableInterDevSync === 'function') {
+          ms.disableInterDevSync();
+          console.log('Inter-device sync desactivat (disableInterDevSync)');
+        }
+        if (typeof ms.removeMediaObject === 'function') {
+          ms.removeMediaObject(v);
+          console.log('Media object eliminat del MediaSynchroniser');
+        }
+      } catch (error) {
+        console.warn('Error destruint MediaSynchroniser:', error);
+      }
+      ms = null;
+    }
+
+    function initSync(contentUrl) {
+      try {
+        if (typeof oipfObjectFactory === 'undefined') { log('No oipfObjectFactory'); return; }
+        ms = oipfObjectFactory.createMediaSynchroniser();
+        if (!ms) { log('createMediaSynchroniser failed'); return; }
+        ms.contentIdOverride = contentUrl;
+        if (/\.html?(\?|#|$)/i.test(contentUrl)) {
+          log('Enviant web companion: ' + contentUrl);
+        }
+        addMsListener(ms, 'onSyncNowAchievable', function () { log('Sync now achievable'); });
+        addMsListener(ms, 'onSyncNowUnachievable', function () { log('Sync now unachievable'); });
+        addMsListener(ms, 'onInterDevSyncStatus', function (arg) {
+          var st = (arg && arg.type) ? arg.status : arg;
+          var map = { 0: 'disconnected', 1: 'connecting', 2: 'connected' };
+          log('InterDev status: ' + (map[st] || st));
+        });
+        addMsListener(ms, 'onError', function (arg) {
+          var code = (arg && arg.type) ? ms.lastError : arg;
+          log('Sync error: ' + code);
+        });
+        ms.initMediaSynchroniser(v, 'urn:dvb:css:timeline:pts');
+        var en = (typeof ms.enableInterDeviceSync === 'function') ? ms.enableInterDeviceSync :
+          (typeof ms.enableInterDevSync === 'function') ? ms.enableInterDevSync : null;
+        if (en) {
+          en.call(ms, function () { log('Inter-device sync enabled'); });
+        } else {
+          log('No enable method found');
+        }
+        log('MediaSynchroniser ready');
+      } catch (e) { log('Sync init error: ' + e.message); }
+    }
+  </script>
 </body>
+
 </html>

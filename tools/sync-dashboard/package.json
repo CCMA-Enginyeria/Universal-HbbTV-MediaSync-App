@@ -1,0 +1,16 @@
+{
+  "name": "sync-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Live DVB-CSS sync dashboard: parses the app's SYNCTEL telemetry from adb logcat and serves a real-time web view.",
+  "type": "commonjs",
+  "bin": {
+    "sync-dashboard": "index.js"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
