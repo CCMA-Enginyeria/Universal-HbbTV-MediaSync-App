@@ -44,34 +44,6 @@
 
 <body>
   <div id="s">Loading...</div>
-  <!-- Camera permission test. Tapping this calls getUserMedia(), which is what
-       triggers the OS camera prompt (and, on Android, the WebView's
-       onPermissionRequest) in the companion app. Purely for testing. -->
-  <button id="camBtn" style="position:fixed;top:12px;right:12px;z-index:9999;padding:10px 14px;font-size:14px;">
-    Test camera
-  </button>
-  <script>
-    (function () {
-      var camBtn = document.getElementById('camBtn');
-      if (!camBtn) { return; }
-      camBtn.addEventListener('click', function () {
-        camBtn.textContent = 'Requesting…';
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          camBtn.textContent = 'getUserMedia unsupported';
-          return;
-        }
-        navigator.mediaDevices.getUserMedia({ video: true })
-          .then(function (stream) {
-            camBtn.textContent = 'Camera granted';
-            // Release the camera immediately; this is only a permission test.
-            stream.getTracks().forEach(function (t) { t.stop(); });
-          })
-          .catch(function (err) {
-            camBtn.textContent = 'Camera denied: ' + (err && err.name ? err.name : 'error');
-          });
-      });
-    })();
-  </script>
   <video id="v" autoplay>
     <source src="https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd" type="application/dash+xml">
   </video>

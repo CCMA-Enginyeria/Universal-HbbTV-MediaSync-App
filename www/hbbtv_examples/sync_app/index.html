@@ -160,6 +160,36 @@
   // React Native WebView (Android) pot enviar a document.
   document.addEventListener('message',function(ev){handleSync(ev&&ev.data);});
 
+  // Optional WebSocket transport. When this page is opened OUTSIDE the in-app
+  // WebView (e.g. in a Chrome Custom Tab, so WebXR works), there is no injected
+  // `window.__hbbtvSync`. In that case the mobile app relays the exact same sync
+  // payloads over a loopback WebSocket, whose URL is passed as a query
+  // parameter, e.g. `?syncBridge=ws://127.0.0.1:8790`.
+  //
+  // Purely additive: the injected/postMessage transports above keep working
+  // unchanged inside the WebView, and this stays inert unless the param is
+  // present. The URL must be loopback (127.0.0.1) so an HTTPS page may open a
+  // plain `ws://` connection without mixed-content blocking.
+  (function connectSyncBridge(){
+    var params;
+    try{params=new URLSearchParams(window.location.search);}catch(e){return;}
+    var url=params.get('syncBridge')||params.get('bridge');
+    if(!url){return;}
+    var ws=null;
+    var retryTimer=null;
+    function scheduleReconnect(){
+      if(retryTimer){return;}
+      retryTimer=setTimeout(function(){retryTimer=null;openBridge();},2000);
+    }
+    function openBridge(){
+      try{ws=new WebSocket(url);}catch(e){scheduleReconnect();return;}
+      ws.onmessage=function(ev){handleSync(ev&&ev.data);};
+      ws.onclose=function(){scheduleReconnect();};
+      ws.onerror=function(){try{ws.close();}catch(e){}};
+    }
+    openBridge();
+  })();
+
   // Si es perd el senyal (>5 s sense correccions), tornem a l'estat d'espera.
   // Amb el rellotge propi n'hi ha prou amb correccions periòdiques, però si
   // deixen d'arribar del tot considerem que s'ha perdut la sincronització.
