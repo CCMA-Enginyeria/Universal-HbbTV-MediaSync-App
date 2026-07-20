@@ -63,7 +63,7 @@ const brand = {
   // When the TV announces HLS (M3U8) instead, iOS uses the native player and
   // ignores this. The repo source lives at
   // `www/hbbtv_examples/sync_webplayer/index.html`.
-  syncWebPlayerUrl: 'https://3cat-eclipsi.pages.dev/sync_webplayer/index.html',
+  syncWebPlayerUrl: 'https://ccma-labs-generic.s3.eu-west-1.amazonaws.com/hbbtv-dial-viewer/sync_webplayer/index.html',
 
   // ---- Permissions --------------------------------------------------------
   // Opt-in device permissions. Kept off by default so a fork only declares the
