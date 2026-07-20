@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>Sync Web Player · dash.js</title>
 <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
+<script src="SyncController.js"></script>
 <style>
   html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#05070d;color:#e8edff;
     font-family:'Segoe UI',Roboto,system-ui,sans-serif;-webkit-user-select:none;user-select:none;}
@@ -74,76 +75,6 @@
 (function () {
   'use strict';
 
-  // ---- SyncController (pure-JS port of src/utils/SyncController.js) ----------
-  // Predictive, lead-compensated drift corrector. Given the player time and the
-  // target TV time it decides: hard-seek, nudge rate, or hold. Hysteresis keeps
-  // it locked at rate 1.0 once synced so measurement jitter does not chatter.
-  var SC_DEFAULTS = {
-    emaAlpha: 0.25,      // drift low-pass filter weight (0..1)
-    enterBandS: 0.1,     // start correcting above this filtered drift (s)
-    exitBandS: 0.02,     // return to lock below this filtered drift (s)
-    horizonS: 3.0,       // time budget over which predicted drift is nulled (s)
-    deadTimeS: 0.35,     // loop dead-time compensated by the lead term (s)
-    maxRateDelta: 0.05,  // clamp rate to [1-delta, 1+delta]
-    rateEps: 0.002,      // ignore tiny rate changes
-    seekThresholdS: 2.0, // hard-seek above this raw drift (s)
-  };
-
-  function SyncController(options) {
-    this.opts = Object.assign({}, SC_DEFAULTS, options || {});
-    this.reset();
-  }
-  SyncController.prototype.reset = function () {
-    this.filteredDrift = null;
-    this.currentRate = 1.0;
-    this.mode = 'locked';
-  };
-  SyncController.prototype.update = function (m) {
-    var o = this.opts;
-    var seekThreshold = (m.seekThresholdS != null) ? m.seekThresholdS : o.seekThresholdS;
-    // Drift > 0 means the player is AHEAD of the TV.
-    var drift = m.playerTime - m.tvTime;
-
-    if (this.filteredDrift == null) {
-      this.filteredDrift = drift;
-    } else {
-      this.filteredDrift = o.emaAlpha * drift + (1 - o.emaAlpha) * this.filteredDrift;
-    }
-    var fd = this.filteredDrift;
-
-    if (Math.abs(drift) > seekThreshold) {
-      this.mode = 'locked';
-      this.currentRate = 1.0;
-      this.filteredDrift = 0;
-      return { action: 'seek', rate: 1.0, drift: drift, filteredDrift: fd };
-    }
-
-    if (this.mode === 'locked') {
-      if (Math.abs(fd) <= o.enterBandS) {
-        return { action: 'none', rate: 1.0, drift: drift, filteredDrift: fd };
-      }
-      this.mode = 'correcting';
-    } else if (Math.abs(fd) <= o.exitBandS) {
-      this.mode = 'locked';
-      this.currentRate = 1.0;
-      return { action: 'rate', rate: 1.0, drift: drift, filteredDrift: fd };
-    }
-
-    // Predict the drift at the moment the new rate takes effect and null it over
-    // the horizon. Player ahead (fd>0) -> slow down (<1.0), and vice-versa.
-    var predicted = fd + (this.currentRate - 1.0) * o.deadTimeS;
-    var rate = 1.0 - predicted / o.horizonS;
-    var min = 1.0 - o.maxRateDelta;
-    var max = 1.0 + o.maxRateDelta;
-    if (rate < min) rate = min;
-    if (rate > max) rate = max;
-    if (Math.abs(rate - this.currentRate) < o.rateEps) {
-      return { action: 'none', rate: this.currentRate, drift: drift, filteredDrift: fd };
-    }
-    this.currentRate = rate;
-    return { action: 'rate', rate: rate, drift: drift, filteredDrift: fd };
-  };
-
   // ---- Params ---------------------------------------------------------------
   function qp(name, def) {
     var m = new RegExp('[?&]' + name + '=([^&#]*)').exec(location.search);
@@ -156,6 +87,22 @@
   var TRACK_ROLE = qp('role', '');
   var INIT_VOLUME = parseFloat(qp('volume', '1'));
   var IS_LIVE = qp('live', '0') === '1';
+  function numberParam(name, fallback) {
+    var value = parseFloat(qp(name, String(fallback)));
+    return isFinite(value) ? value : fallback;
+  }
+  var CONTROLLER_OPTIONS = {
+    emaAlpha: numberParam('emaAlpha', 0.25),
+    enterBandS: numberParam('enterBandS', 0.1),
+    exitBandS: numberParam('exitBandS', 0.02),
+    horizonS: numberParam('horizonS', 3.0),
+    deadTimeS: numberParam('deadTimeS', 0.35),
+    maxRateDelta: numberParam('maxRateDelta', 0.05),
+    rateEps: numberParam('rateEps', 0.002),
+  };
+  var SEEK_COOLDOWN_MS = numberParam('seekCooldownMs', 1500);
+  var SEEK_LEAD_S = numberParam('seekLeadS', 0.4);
+  var CORRECTION_INTERVAL_MS = numberParam('correctionIntervalMs', 250);
 
   // ---- Elements -------------------------------------------------------------
   var stage = document.getElementById('stage');
@@ -199,7 +146,7 @@
   }
 
   // ---- Own clock (anchor + elapsed) -----------------------------------------
-  var anchor = { seconds: null, at: 0, speed: 1, isPlaying: true };
+  var anchor = { seconds: null, liveSeconds: null, at: 0, speed: 1, isPlaying: true };
   var haveData = false;
   var lastUpdate = 0;
   var streamReady = false;
@@ -208,9 +155,10 @@
     return (window.performance && performance.now) ? performance.now() : Date.now();
   }
   function targetSeconds() {
-    if (anchor.seconds == null) return null;
-    if (!anchor.isPlaying) return anchor.seconds;
-    return anchor.seconds + ((now() - anchor.at) / 1000) * anchor.speed;
+    var seconds = IS_LIVE && anchor.liveSeconds != null ? anchor.liveSeconds : anchor.seconds;
+    if (seconds == null) return null;
+    if (!anchor.isPlaying) return seconds;
+    return seconds + ((now() - anchor.at) / 1000) * anchor.speed;
   }
 
   function pad(n, w) { n = Math.floor(Math.abs(n)).toString(); while (n.length < (w || 2)) { n = '0' + n; } return n; }
@@ -229,7 +177,7 @@
 
   // ---- dash.js --------------------------------------------------------------
   var player = null;
-  var controller = new SyncController({ seekThresholdS: IS_LIVE ? 5 : 2 });
+  var controller = new SyncController(CONTROLLER_OPTIONS);
   var seekCooldownUntil = 0;
 
   function selectTrack() {
@@ -284,7 +232,10 @@
   }
 
   function playerCurrentTime() {
-    try { return player ? player.time() : media.currentTime; }
+    try {
+      if (IS_LIVE && player && typeof player.timeAsUTC === 'function') return player.timeAsUTC();
+      return player ? player.time() : media.currentTime;
+    }
     catch (e) { return media.currentTime; }
   }
   function safeSeek(sec) {
@@ -313,7 +264,8 @@
     });
     if (res.action === 'seek') {
       controller.reset();
-      safeSeek(tgt + 0.4); // small lead to compensate seek+rebuffer latency
+      var seekBase = IS_LIVE ? player.time() - res.drift : tgt;
+      safeSeek(seekBase + SEEK_LEAD_S);
       media.playbackRate = 1.0;
     } else if (res.action === 'rate') {
       try { media.playbackRate = res.rate; } catch (e) {}
@@ -336,6 +288,9 @@
     if (elHint.style.display !== 'none') { elHint.style.display = 'none'; }
 
     anchor.seconds = seconds;
+    anchor.liveSeconds = data.exoPlayerPositionSeconds != null
+      ? data.exoPlayerPositionSeconds
+      : null;
     anchor.at = now();
     anchor.speed = (data.speed != null) ? data.speed : 1;
     anchor.isPlaying = data.isPlaying !== false;
@@ -362,7 +317,7 @@
     requestAnimationFrame(tick);
   }
   requestAnimationFrame(tick);
-  setInterval(correct, 200);
+  setInterval(correct, CORRECTION_INTERVAL_MS);
 
   // Signal loss: back to waiting after 5 s without corrections.
   setInterval(function () {

@@ -612,6 +612,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       type: 'position',
       positionSeconds: pos.positionSeconds,
       positionMillis: pos.positionMillis,
+      exoPlayerPositionSeconds: pos.exoPlayerPositionSeconds,
       isPlaying: pos.isPlaying,
       speed: pos.speed,
       isLive: pos.isLive,
@@ -711,6 +712,16 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       `role=${encodeURIComponent(media?.role || '')}`,
       `volume=${encodeURIComponent(String(volumeRef.current != null ? volumeRef.current : 1))}`,
       `live=${streamInfoRef.current?.isLive ? '1' : '0'}`,
+      `emaAlpha=${SYNC_CONTROLLER_OPTIONS.emaAlpha}`,
+      `enterBandS=${SYNC_CONTROLLER_OPTIONS.enterBandS}`,
+      `exitBandS=${SYNC_CONTROLLER_OPTIONS.exitBandS}`,
+      `horizonS=${SYNC_CONTROLLER_OPTIONS.horizonS}`,
+      `deadTimeS=${SYNC_CONTROLLER_OPTIONS.deadTimeS}`,
+      `maxRateDelta=${SYNC_CONTROLLER_OPTIONS.maxRateDelta}`,
+      `rateEps=${SYNC_CONTROLLER_OPTIONS.rateEps}`,
+      `seekCooldownMs=${SEEK_COOLDOWN_MS}`,
+      `seekLeadS=${SEEK_LEAD_S}`,
+      `correctionIntervalMs=${config.MEDIA_SYNC?.PROGRESS_UPDATE_INTERVAL_MS ?? 250}`,
     ].join('&');
     const url = `${base}${base.includes('?') ? '&' : '?'}${query}`;
     // Reset the feed throttle so the first __hbbtvSync reaches the page at once.
