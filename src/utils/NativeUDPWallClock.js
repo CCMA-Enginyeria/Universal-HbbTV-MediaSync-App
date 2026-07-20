@@ -10,17 +10,21 @@
 import { Platform } from 'react-native';
 import { EventEmitter } from 'events';
 
-// Import the Expo Module
+// Import the Expo Module (Android and iOS). On other platforms (e.g. web) the
+// native module is intentionally absent, so we skip the require to avoid a
+// misleading warning.
 let UDPWallClockModule = null;
-try {
-  UDPWallClockModule = require('../../modules/udp-wall-clock').default;
-  console.log('✅ UDPWallClockModule loaded successfully:', UDPWallClockModule ? 'YES' : 'NO');
-} catch (e) {
-  console.warn('❌ UDPWallClockModule not available:', e.message);
+if (Platform.OS === 'android' || Platform.OS === 'ios') {
+  try {
+    UDPWallClockModule = require('../../modules/udp-wall-clock').default;
+    console.log('✅ UDPWallClockModule loaded successfully:', UDPWallClockModule ? 'YES' : 'NO');
+  } catch (e) {
+    console.warn('❌ UDPWallClockModule not available:', e.message);
+  }
 }
 
 // Check if module is available
-const isAvailable = Platform.OS === 'android' && UDPWallClockModule != null;
+const isAvailable = (Platform.OS === 'android' || Platform.OS === 'ios') && UDPWallClockModule != null;
 console.log(`🔌 NativeUDPWallClock: Platform=${Platform.OS}, isAvailable=${isAvailable}`);
 
 // Global socket registry (similar to Cordova pattern)

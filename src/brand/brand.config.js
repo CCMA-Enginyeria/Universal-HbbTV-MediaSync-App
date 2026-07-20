@@ -18,8 +18,8 @@ const brand = {
   version: '1.2.0',
 
   // Native identifiers (must be unique per published fork)
-  bundleIdentifier: 'cat.ccma.universalmediasync', // iOS
-  androidPackage: 'cat.ccma.universalmediasync', // Android
+  bundleIdentifier: 'cat.ccma.lab.universalmediasync', // iOS
+  androidPackage: 'cat.ccma.lab.universalmediasync', // Android
 
   // ---- Localization -------------------------------------------------------
   // Default / fallback UI language. Supported: ca, es, eu, en, de, it, fr.
@@ -55,6 +55,15 @@ const brand = {
   // Optional fallback DASH (MPD) URL, used only if the TV announces no
   // contentId via DVB-CSS CII. Leave null for the standard HbbTV flow.
   defaultContentUrl: null,
+
+  // URL of the hosted `sync_webplayer` page (dash.js). Used on iOS to play DASH
+  // (MPD) content, since iOS AVPlayer cannot play MPEG-DASH natively: the app
+  // opens this page in a full-screen WebView and feeds it the DVB-CSS sync via
+  // `window.__hbbtvSync`. Host it like the companion `sync_app` page (per fork).
+  // When the TV announces HLS (M3U8) instead, iOS uses the native player and
+  // ignores this. The repo source lives at
+  // `www/hbbtv_examples/sync_webplayer/index.html`.
+  syncWebPlayerUrl: 'https://3cat-eclipsi.pages.dev/sync_webplayer/index.html',
 
   // ---- Permissions --------------------------------------------------------
   // Opt-in device permissions. Kept off by default so a fork only declares the

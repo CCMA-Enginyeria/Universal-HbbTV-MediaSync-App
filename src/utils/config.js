@@ -25,6 +25,10 @@ export const config = {
   // App2App / DVB-CSS channel used to talk to the HbbTV application.
   CHANNEL: brand.app2appChannel,
 
+  // URL of the hosted `sync_webplayer` (dash.js) page opened on iOS to play DASH
+  // (MPD) content, which iOS AVPlayer cannot handle natively. Brand-configurable.
+  SYNC_WEBPLAYER_URL: brand.syncWebPlayerUrl,
+
   // HbbTV application metadata (used when launching an app via DIAL).
   HBBTV_APP: {
     orgId: 0,

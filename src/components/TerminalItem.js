@@ -89,6 +89,15 @@ const isWebContent = (url) =>
 const isXrContent = (url) =>
   typeof url === 'string' && /[?&]xr=1(?:&|#|$)/i.test(url);
 
+// Content-format detectors for the contentId (MPD manifest URL). iOS AVPlayer
+// cannot play MPEG-DASH natively, so on iOS a DASH (MPD) contentId is played in
+// a dash.js WebView instead of the native <Video>. HLS (M3U8) plays natively on
+// iOS (AVPlayer), so it is left on the native path (future flow).
+const isDashUrl = (url) =>
+  typeof url === 'string' && /\.mpd(\?|#|$)/i.test(url);
+const isHlsUrl = (url) =>
+  typeof url === 'string' && /\.m3u8(\?|#|$)/i.test(url);
+
 export default function TerminalItem({ terminal, onPress, expanded, onToggleExpand }) {
   const { t } = useTranslation();
   const [syncState, setSyncState] = useState(SyncState.DISCONNECTED);
@@ -112,6 +121,11 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   const [companionWebUrl, setCompanionWebUrl] = useState(null);
   const [webModalVisible, setWebModalVisible] = useState(false);
   const [xrBridgeActive, setXrBridgeActive] = useState(false);
+  // iOS DASH playback: URL of the hosted `sync_webplayer` (dash.js) page shown
+  // in a full-screen WebView, since iOS AVPlayer cannot play MPEG-DASH. Fed the
+  // DVB-CSS sync via `window.__hbbtvSync` (see feedWebView). Null when inactive.
+  const [webPlayerUrl, setWebPlayerUrl] = useState(null);
+  const [webPlayerVisible, setWebPlayerVisible] = useState(false);
   // Metadata (title + favicon) of the companion web page, fetched from its HTML
   // so the user recognizes what the synchronized content is instead of seeing a
   // generic globe icon. Both null while loading or on failure (UI falls back).
@@ -173,6 +187,10 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   const webViewRef = useRef(null);
   const companionWebUrlRef = useRef(null);
   const webModalVisibleRef = useRef(false);
+  // iOS dash.js WebView player (see webPlayerUrl). Mirror kept for handlers that
+  // run without a fresh closure (feed loop, teardown).
+  const webPlayerViewRef = useRef(null);
+  const webPlayerVisibleRef = useRef(false);
   // Whether a WebXR companion is currently open in an external Chrome Custom Tab
   // and being fed through the loopback WebSocket bridge (Android only).
   const bridgeActiveRef = useRef(false);
@@ -214,12 +232,15 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   const videoPlayingRef = useRef(false);
   const audioRateRef = useRef(1.0);
   const videoRateRef = useRef(1.0);
+  const volumeRef = useRef(1);
   audioPlayingRef.current = audioPlaying;
   videoPlayingRef.current = videoPlaying;
   audioRateRef.current = audioRate;
   videoRateRef.current = videoRate;
+  volumeRef.current = volume;
   companionWebUrlRef.current = companionWebUrl;
   webModalVisibleRef.current = webModalVisible;
+  webPlayerVisibleRef.current = webPlayerVisible;
 
   // Fetch the companion web page's title and favicon whenever its URL changes so
   // the card can show what the synchronized content is. The request is aborted
@@ -574,7 +595,8 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   const feedWebView = useCallback((pos) => {
     const bridgeActive = bridgeActiveRef.current;
     const webVisible = webModalVisibleRef.current && !!webViewRef.current;
-    if ((!webVisible && !bridgeActive) || !pos) return;
+    const playerVisible = webPlayerVisibleRef.current && !!webPlayerViewRef.current;
+    if ((!webVisible && !playerVisible && !bridgeActive) || !pos) return;
     if (pos.positionSeconds == null) return;
     // La web interpola amb el seu propi rellotge; només l'enviem una correcció
     // cada WEB_FEED_INTERVAL_MS, o immediatament si canvia l'estat de
@@ -599,6 +621,16 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     if (webVisible) {
       try {
         webViewRef.current.injectJavaScript(
+          `window.__hbbtvSync && window.__hbbtvSync(${JSON.stringify(payload)}); true;`
+        );
+      } catch (e) {
+        // ignore
+      }
+    }
+    // iOS dash.js media player WebView (same __hbbtvSync protocol).
+    if (playerVisible) {
+      try {
+        webPlayerViewRef.current.injectJavaScript(
           `window.__hbbtvSync && window.__hbbtvSync(${JSON.stringify(payload)}); true;`
         );
       } catch (e) {
@@ -662,6 +694,48 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
   }, []);
 
+  // iOS DASH playback: open the hosted dash.js `sync_webplayer` page in a
+  // full-screen WebView for the given track. iOS AVPlayer cannot play MPEG-DASH,
+  // so the WebView renders the audio/video via dash.js and follows the TV via
+  // the same `window.__hbbtvSync` feed as the companion pages. `media` is the
+  // parsed audio/video descriptor; `mode` is 'audio' | 'video'.
+  const openWebPlayer = useCallback((media, mode) => {
+    const base = config.SYNC_WEBPLAYER_URL;
+    if (!base || !mpdUrlRef.current) return false;
+    const trackIndex = mode === 'audio' ? media?.audioTrackIndex : media?.videoTrackIndex;
+    const query = [
+      `mpd=${encodeURIComponent(mpdUrlRef.current)}`,
+      `mode=${mode}`,
+      `iso=${encodeURIComponent(media?.iso || '')}`,
+      `track=${encodeURIComponent(String(trackIndex != null ? trackIndex : -1))}`,
+      `role=${encodeURIComponent(media?.role || '')}`,
+      `volume=${encodeURIComponent(String(volumeRef.current != null ? volumeRef.current : 1))}`,
+      `live=${streamInfoRef.current?.isLive ? '1' : '0'}`,
+    ].join('&');
+    const url = `${base}${base.includes('?') ? '&' : '?'}${query}`;
+    // Reset the feed throttle so the first __hbbtvSync reaches the page at once.
+    lastWebFeedRef.current = 0;
+    lastWebFeedStateRef.current = { isPlaying: null, speed: null };
+    setWebPlayerUrl(url);
+    setWebPlayerVisible(true);
+    webPlayerVisibleRef.current = true;
+    ScreenOrientation.unlockAsync().catch(() => {});
+    return true;
+  }, []);
+
+  // Close the iOS dash.js player, restore portrait and clear playback selection.
+  const closeWebPlayer = useCallback(() => {
+    setWebPlayerVisible(false);
+    webPlayerVisibleRef.current = false;
+    setWebPlayerUrl(null);
+    setSelectedAudio(null);
+    setSelectedVideo(null);
+    setAudioPlaying(false);
+    setVideoPlaying(false);
+    setPlaybackIntent(null);
+    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+  }, []);
+
   // Android: resolve camera permission requests coming from the companion web
   // page. We only request the OS permission now (on-demand), and grant just the
   // camera resource. Microphone (and any other resource) is denied. If the
@@ -704,6 +778,11 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       bridgeActiveRef.current = false;
       setXrBridgeActive(false);
       stopSyncBridge();
+    }
+    if (webPlayerVisibleRef.current) {
+      webPlayerVisibleRef.current = false;
+      setWebPlayerVisible(false);
+      setWebPlayerUrl(null);
     }
     if (connectTimeoutRef.current) {
       clearTimeout(connectTimeoutRef.current);
@@ -996,6 +1075,10 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       setWebNoContent(false);
       companionWebUrlRef.current = null;
       webModalVisibleRef.current = false;
+      // Tear down the iOS dash.js player WebView too.
+      setWebPlayerUrl(null);
+      setWebPlayerVisible(false);
+      webPlayerVisibleRef.current = false;
       // Restaurar l'orientació vertical si la web companion estava oberta.
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     };
@@ -1234,10 +1317,12 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   }, [position?.isPlaying, selectedVideo]);
 
   const handleSelectAudio = useCallback((audio) => {
+    const useWebPlayer = Platform.OS === 'ios' && isDashUrl(mpdUrlRef.current);
     if (selectedAudio?.representationId === audio.representationId && selectedAudio?.role === audio.role) {
       setSelectedAudio(null);
       setAudioPlaying(false);
       setPlaybackIntent(null);
+      if (useWebPlayer) closeWebPlayer();
       return;
     }
     // Reproducir áudio i vídeo són mútuament excloents.
@@ -1247,19 +1332,24 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     setAudioPlaying(true);
     setPlaybackIntent({ kind: 'audio', iso: audio.iso, role: audio.role || '' });
     lastSyncTimeRef.current = 0;
-  }, [selectedAudio]);
+    // iOS + DASH: play through the dash.js WebView (AVPlayer can't play MPD).
+    if (useWebPlayer) openWebPlayer(audio, 'audio');
+  }, [selectedAudio, openWebPlayer, closeWebPlayer]);
 
   const handleStopAudio = useCallback(() => {
     setSelectedAudio(null);
     setAudioPlaying(false);
     setPlaybackIntent(null);
-  }, []);
+    if (webPlayerVisibleRef.current) closeWebPlayer();
+  }, [closeWebPlayer]);
 
   const handleSelectVideo = useCallback((video) => {
+    const useWebPlayer = Platform.OS === 'ios' && isDashUrl(mpdUrlRef.current);
     if (selectedVideo?.representationId === video.representationId && selectedVideo?.role === video.role) {
       setSelectedVideo(null);
       setVideoPlaying(false);
       setPlaybackIntent(null);
+      if (useWebPlayer) closeWebPlayer();
       return;
     }
     // Reproducir áudio i vídeo són mútuament excloents.
@@ -1269,13 +1359,16 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     setVideoPlaying(true);
     setPlaybackIntent({ kind: 'video', iso: video.iso, role: video.role || '' });
     lastVideoSyncTimeRef.current = 0;
-  }, [selectedVideo]);
+    // iOS + DASH: play through the dash.js WebView (AVPlayer can't play MPD).
+    if (useWebPlayer) openWebPlayer(video, 'video');
+  }, [selectedVideo, openWebPlayer, closeWebPlayer]);
 
   const handleStopVideo = useCallback(() => {
     setSelectedVideo(null);
     setVideoPlaying(false);
     setPlaybackIntent(null);
-  }, []);
+    if (webPlayerVisibleRef.current) closeWebPlayer();
+  }, [closeWebPlayer]);
 
   const toggleExpand = () => {
     if (!hasMediaSync) {
@@ -1287,6 +1380,11 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   };
 
   const isConnected = syncState === SyncState.SYNCHRONIZED;
+
+  // iOS + DASH: playback happens in the dash.js WebView (see openWebPlayer), so
+  // the native <Video> players are not mounted. iOS + HLS and Android stay on
+  // the native path.
+  const useWebPlayer = Platform.OS === 'ios' && isDashUrl(mpdUrl);
 
   const getAudioLabel = (audio) => {
     if (audio.role === 'main' || !audio.role) return t('discovery.audioMain');
@@ -1593,7 +1691,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
                   )}
                 </View>
 
-                {isSelected && mpdUrl && (
+                {isSelected && mpdUrl && !useWebPlayer && (
                   <View style={styles.videoPlayerSection}>
                     <View style={styles.videoSurfaceWrapper}>
                       <Video
@@ -1710,7 +1808,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
           </StatusSlot> */}
 
           {/* Reproductor de audio oculto */}
-          {selectedAudio && mpdUrl && (
+          {selectedAudio && mpdUrl && !useWebPlayer && (
             <Video
               key={mpdUrl}
               ref={audioPlayerRef}
@@ -1810,6 +1908,55 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
           <TouchableOpacity
             style={styles.webCloseButton}
             onPress={closeWebModal}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <MaterialIcons name="close" size={22} color="#fff" />
+            <Text style={styles.webCloseButtonText}>{t('discovery.webClose')}</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
+      {/* iOS DASH player: dash.js `sync_webplayer` page in a full-screen WebView,
+          since iOS AVPlayer cannot play MPEG-DASH. Fed the DVB-CSS sync via
+          window.__hbbtvSync (feedWebView), like the companion pages. */}
+      <Modal
+        visible={webPlayerVisible}
+        animationType="slide"
+        onRequestClose={closeWebPlayer}
+        supportedOrientations={['portrait', 'landscape']}
+      >
+        <View style={styles.webModalContainer}>
+          {webPlayerUrl ? (
+            <WebView
+              ref={webPlayerViewRef}
+              source={{ uri: webPlayerUrl }}
+              style={styles.webModalWebView}
+              originWhitelist={['*']}
+              allowsInlineMediaPlayback
+              allowsFullscreenVideo
+              mediaPlaybackRequiresUserAction={false}
+              javaScriptEnabled
+              domStorageEnabled
+              onMessage={(event) => {
+                let data = null;
+                try {
+                  data = JSON.parse(event?.nativeEvent?.data ?? '');
+                } catch (e) {
+                  return;
+                }
+                if (data?.type === 'error') {
+                  console.warn('⚠️ sync_webplayer error:', data.message);
+                }
+              }}
+              onLoadEnd={() => {
+                // Seed the page with the last known position immediately.
+                if (positionRef.current) feedWebView(positionRef.current);
+              }}
+            />
+          ) : null}
+          <TouchableOpacity
+            style={styles.webCloseButton}
+            onPress={closeWebPlayer}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <MaterialIcons name="close" size={22} color="#fff" />

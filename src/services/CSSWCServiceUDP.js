@@ -18,7 +18,8 @@
  * - Bytes 28-31: Transmit Timestamp Nanoseconds (uint32, big-endian)
  * 
  * Android: Uses native UDPWallClockModule for reliable UDP communication
- * iOS: Uses NativeUDPMulticast (may have limitations)
+ * iOS: Uses native UDPWallClockModule (dedicated unicast UDP, no multicast entitlement);
+ *      falls back to NativeUDPMulticast if the dedicated module is unavailable
  */
 
 import { EventEmitter } from 'events';
@@ -320,7 +321,13 @@ export class CSSWCServiceUDP extends EventEmitter {
         console.log('🔌 WC-UDP: Usant mòdul natiu Android (UDPWallClockModule)');
         this.socket = NativeUDPWallClock.createSocket();
         this.useNativeHex = true; // Flag to indicate hex-based communication
+      } else if (Platform.OS === 'ios' && NativeUDPWallClock.isModuleAvailable()) {
+        // iOS: Use dedicated native module (unicast UDP, no multicast entitlement needed)
+        console.log('🔌 WC-UDP: Usant mòdul natiu iOS (UDPWallClockModule)');
+        this.socket = NativeUDPWallClock.createSocket();
+        this.useNativeHex = true; // Flag to indicate hex-based communication
       } else if (Platform.OS === 'ios') {
+        // iOS fallback: reuse the multicast module's unicast socket
         this.socket = NativeUDPMulticast.createSocket('udp4');
         this.useNativeHex = false;
       } else {
