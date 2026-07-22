@@ -616,6 +616,10 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       isPlaying: pos.isPlaying,
       speed: pos.speed,
       isLive: pos.isLive,
+      // When the position was valid (device wall clock). The web player uses it
+      // to compensate the feed latency so it locks to where the TV IS now, not
+      // where it was when we sampled it.
+      generatedAt: pos.generatedAt,
       formattedTime: pos.formattedTime,
     };
     // In-app WebView transport (injectJavaScript).
@@ -722,6 +726,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       `seekCooldownMs=${SEEK_COOLDOWN_MS}`,
       `seekLeadS=${SEEK_LEAD_S}`,
       `correctionIntervalMs=${config.MEDIA_SYNC?.PROGRESS_UPDATE_INTERVAL_MS ?? 250}`,
+      `tel=${SYNC_TELEMETRY ? '1' : '0'}`,
     ].join('&');
     const url = `${base}${base.includes('?') ? '&' : '?'}${query}`;
     // Reset the feed throttle so the first __hbbtvSync reaches the page at once.
@@ -1328,7 +1333,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   }, [position?.isPlaying, selectedVideo]);
 
   const handleSelectAudio = useCallback((audio) => {
-    const useWebPlayer = Platform.OS === 'ios' && isDashUrl(mpdUrlRef.current);
+    const useWebPlayer = Platform.OS != 'ios' && isDashUrl(mpdUrlRef.current);
     if (selectedAudio?.representationId === audio.representationId && selectedAudio?.role === audio.role) {
       setSelectedAudio(null);
       setAudioPlaying(false);
@@ -1355,7 +1360,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   }, [closeWebPlayer]);
 
   const handleSelectVideo = useCallback((video) => {
-    const useWebPlayer = Platform.OS === 'ios' && isDashUrl(mpdUrlRef.current);
+    const useWebPlayer = Platform.OS != 'ios' && isDashUrl(mpdUrlRef.current);
     if (selectedVideo?.representationId === video.representationId && selectedVideo?.role === video.role) {
       setSelectedVideo(null);
       setVideoPlaying(false);
@@ -1395,7 +1400,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   // iOS + DASH: playback happens in the dash.js WebView (see openWebPlayer), so
   // the native <Video> players are not mounted. iOS + HLS and Android stay on
   // the native path.
-  const useWebPlayer = Platform.OS === 'ios' && isDashUrl(mpdUrl);
+  const useWebPlayer = Platform.OS != 'ios' && isDashUrl(mpdUrl);
 
   const getAudioLabel = (audio) => {
     if (audio.role === 'main' || !audio.role) return t('discovery.audioMain');
@@ -1957,6 +1962,11 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
                 }
                 if (data?.type === 'error') {
                   console.warn('⚠️ sync_webplayer error:', data.message);
+                } else if (data?.type === 'synctel' && data.payload) {
+                  // Re-emit the web player's sync telemetry as a SYNCTEL line so
+                  // it flows through adb logcat into the tools/sync-dashboard,
+                  // reusing the native telemetry pipeline (payload tagged src:'web').
+                  console.log(`📈 SYNCTEL ${JSON.stringify(data.payload)}`);
                 }
               }}
               onLoadEnd={() => {

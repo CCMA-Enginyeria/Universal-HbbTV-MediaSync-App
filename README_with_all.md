@@ -1,4 +1,4 @@
-# Universal HbbTV MediaSync App
+# Universal MediaSync
 
 ## Vision
 

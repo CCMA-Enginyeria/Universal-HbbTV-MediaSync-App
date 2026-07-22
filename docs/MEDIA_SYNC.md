@@ -196,7 +196,13 @@ The core logic is a **pure, unit‑tested state machine**:
 `update({ playerTime, tvTime, seekThresholdS })` does:
 
 **1. Seek tier.** If `|drift| > seekThreshold` (2 s VOD, 5 s live) → return a
-`seek` action, reset the filter, rate back to 1.0.
+`seek` action, reset the filter, rate back to 1.0. The seek target is
+**lead‑compensated** (`+ SYNC_SEEK_LEAD_S`) so the player lands where the TV
+*will* be after the seek+rebuffer, and the seek is marked **in‑flight**:
+corrections are suppressed until the player's `onSeek` confirms completion (or a
+`SYNC_SEEK_COOLDOWN_MS` fallback elapses). Without this guard the corrector would
+re‑seek every cycle to a moving target while DASH buffers — the classic
+"seeking in many slow steps".
 
 **2. EMA drift filter.** Low‑pass the raw drift to reject wall‑clock/onProgress
 jitter:
@@ -266,6 +272,8 @@ defaults:
 | `SYNC_DEAD_TIME_S` | `0.35` | Loop dead‑time compensated by the lead term. |
 | `SYNC_MAX_RATE_DELTA` | `0.05` | Max deviation from 1.0 (clamp to [0.95, 1.05]). |
 | `SYNC_RATE_EPS` | `0.002` | Ignore rate changes smaller than this. |
+| `SYNC_SEEK_COOLDOWN_MS` | `1500` | After a hard seek, suppress corrections until `onSeek` fires or this elapses (prevents re‑seek storms during buffering). |
+| `SYNC_SEEK_LEAD_S` | `0.4` | Lead added to the seek target to compensate seek+rebuffer latency. |
 | `DEBUG_SYNC` | `true`* | Console log of the control loop. **Set `false` for production.** |
 | `TICK_RATE` | `90000` | PTS tick rate (90 kHz). |
 | `TIMELINE_SELECTOR` | `urn:dvb:css:timeline:pts` | DVB‑CSS timeline selector. |

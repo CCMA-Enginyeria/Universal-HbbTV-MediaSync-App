@@ -103,6 +103,12 @@
   var SEEK_COOLDOWN_MS = numberParam('seekCooldownMs', 1500);
   var SEEK_LEAD_S = numberParam('seekLeadS', 0.4);
   var CORRECTION_INTERVAL_MS = numberParam('correctionIntervalMs', 250);
+  // Dev telemetry: when `tel=1`, emit a compact sync record to the host on each
+  // correction tick (throttled). The host re-logs it as a `SYNCTEL` line so the
+  // tools/sync-dashboard dev tool can render the web player's sync alongside the
+  // native player's. Gated by the app's SYNC_TELEMETRY flag.
+  var TELEMETRY = qp('tel', '0') === '1';
+  var TELEMETRY_INTERVAL_MS = 250;
 
   // ---- Elements -------------------------------------------------------------
   var stage = document.getElementById('stage');
@@ -179,6 +185,40 @@
   var player = null;
   var controller = new SyncController(CONTROLLER_OPTIONS);
   var seekCooldownUntil = 0;
+  var lastTelemetryAt = 0;
+
+  // Emit a compact sync-telemetry record to the host (schema mirrors the native
+  // `SYNCTEL` line so tools/sync-dashboard can parse it unchanged). `src:'web'`
+  // tells the dashboard this sample comes from the web player, not the native
+  // controller. Throttled to keep the message rate low.
+  function emitTelemetry(res, playerTime, tvTime) {
+    if (!TELEMETRY) return;
+    var t = Date.now();
+    if (t - lastTelemetryAt < TELEMETRY_INTERVAL_MS) return;
+    lastTelemetryAt = t;
+    var status = res.action === 'seek'
+      ? 'seeking'
+      : (controller.mode === 'correcting' ? 'adjusting' : 'locked');
+    var appliedRate = res.action === 'rate' ? res.rate : controller.currentRate;
+    postToHost({
+      type: 'synctel',
+      payload: {
+        v: 1,
+        t: t,
+        k: MODE,
+        st: status,
+        dr: Math.round(res.drift * 1000),
+        fd: Math.round(res.filteredDrift * 1000),
+        tv: Number(tvTime.toFixed(3)),
+        pl: Number(playerTime.toFixed(3)),
+        rt: Number(appliedRate.toFixed(3)),
+        act: res.action,
+        spd: anchor.speed,
+        state: haveData ? 'synchronized' : null,
+        src: 'web',
+      },
+    });
+  }
 
   function selectTrack() {
     if (!player) return;
@@ -257,11 +297,13 @@
 
     if (now() < seekCooldownUntil) return;
 
+    var playerTime = playerCurrentTime();
     var res = controller.update({
-      playerTime: playerCurrentTime(),
+      playerTime: playerTime,
       tvTime: tgt,
       seekThresholdS: IS_LIVE ? 5 : 2,
     });
+    emitTelemetry(res, playerTime, tgt);
     if (res.action === 'seek') {
       controller.reset();
       var seekBase = IS_LIVE ? player.time() - res.drift : tgt;
@@ -287,13 +329,26 @@
     lastUpdate = Date.now();
     if (elHint.style.display !== 'none') { elHint.style.display = 'none'; }
 
-    anchor.seconds = seconds;
+    var speed = (data.speed != null) ? data.speed : 1;
+    var isPlaying = data.isPlaying !== false;
+    // Latency compensation: the fed position was valid at `generatedAt` (device
+    // wall clock). The WebView shares that device clock, so the transport
+    // latency until we anchor here is `Date.now() - generatedAt`. Advance the
+    // anchor by that staleness so we lock to where the TV IS now, not where it
+    // was when the host sampled it; otherwise the web player trails the TV by
+    // the feed latency (~100 ms), which the local drift metric cannot see
+    // because it measures against this already-offset target.
+    var staleMs = (typeof data.generatedAt === 'number') ? (Date.now() - data.generatedAt) : 0;
+    if (!isFinite(staleMs) || staleMs < 0 || staleMs > 2000) staleMs = 0;
+    var advanceS = isPlaying ? (staleMs / 1000) * speed : 0;
+
+    anchor.seconds = seconds + advanceS;
     anchor.liveSeconds = data.exoPlayerPositionSeconds != null
-      ? data.exoPlayerPositionSeconds
+      ? data.exoPlayerPositionSeconds + advanceS
       : null;
     anchor.at = now();
-    anchor.speed = (data.speed != null) ? data.speed : 1;
-    anchor.isPlaying = data.isPlaying !== false;
+    anchor.speed = speed;
+    anchor.isPlaying = isPlaying;
     if (data.trackName && elTrackName) { elTrackName.textContent = data.trackName; }
     setStatus(anchor.isPlaying, true);
   }

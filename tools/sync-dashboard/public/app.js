@@ -21,11 +21,13 @@ let updates = [];               // arrival timestamps for updates/s
 const $ = (id) => document.getElementById(id);
 const els = {
   connDot: $('conn-dot'), connText: $('conn-text'), stateBadge: $('state-badge'),
+  srcBadge: $('src-badge'),
   driftValue: $('drift-value'), driftRaw: $('drift-raw'), rate: $('rate-value'),
   action: $('action-value'), spd: $('spd-value'),
   wcRtt: $('wc-rtt'), wcRttRange: $('wc-rtt-range'), wcDisp: $('wc-disp'),
   wcReq: $('wc-req'), wcResp: $('wc-resp'), wcRate: $('wc-rate'),
   tsTv: $('ts-tv'), tsPl: $('ts-pl'), tsDelta: $('ts-delta'), tsKind: $('ts-kind'),
+  tsSrc: $('ts-src'),
   hpAge: $('hp-age'), hpUps: $('hp-ups'), hpWc: $('hp-wc'), hpState: $('hp-state'),
   canvas: $('drift-chart'),
 };
@@ -95,6 +97,12 @@ function render() {
   const st = r.st ?? '—';
   els.stateBadge.textContent = st;
   els.stateBadge.className = 'badge ' + (['locked', 'adjusting', 'seeking'].includes(st) ? st : '');
+
+  // Source badge (which controller produced this sample: web player vs native)
+  const src = r.src ?? 'native';
+  els.srcBadge.textContent = src;
+  els.srcBadge.className = 'badge src-' + (src === 'web' ? 'web' : 'native');
+  els.tsSrc.textContent = src;
 
   // WC card
   els.wcRtt.textContent = fmt(num(r.wcRtt), ' ms', 1);

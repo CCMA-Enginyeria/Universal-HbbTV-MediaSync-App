@@ -440,6 +440,11 @@ export class MediaSyncService extends EventEmitter {
       isLive,
       relativePositionSeconds,
       exoPlayerPositionSeconds,
+      // Device wall-clock time (ms) at which this position is valid. Lets
+      // latency-sensitive consumers (e.g. the web player, reached over a
+      // WebView/WebSocket transport) compensate for how stale the sample is by
+      // the time they anchor it. Same device clock on both ends.
+      generatedAt: Date.now(),
       formattedTime: isLive
         ? this.formatLiveOffset(exoPlayerPositionSeconds)
         : this.formatTime(positionSeconds),

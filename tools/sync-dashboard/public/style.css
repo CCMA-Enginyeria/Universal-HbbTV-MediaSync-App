@@ -56,6 +56,8 @@ body {
 .badge.locked { color: var(--good); border-color: var(--good); }
 .badge.adjusting { color: var(--warn); border-color: var(--warn); }
 .badge.seeking { color: var(--bad); border-color: var(--bad); }
+.badge.src-web { color: #c792ea; border-color: #c792ea; }
+.badge.src-native { color: var(--muted); border-color: var(--border); }
 
 main { max-width: 1000px; margin: 0 auto; padding: 20px; display: grid; gap: 16px; }
 
