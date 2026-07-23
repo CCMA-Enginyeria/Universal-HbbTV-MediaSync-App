@@ -11,7 +11,7 @@
 
 ## Download
 
-The Android app is available on Google Play: [Universal MediaSync](https://play.google.com/store/apps/details?id=cat.ccma.universalmediasync&pcampaignid=web_share).
+The Android app is available on Google Play: [Universal MediaSync](https://play.google.com/store/apps/details?id=cat.ccma.lab.universalmediasync&pcampaignid=web_share).
 
 ## Vision
 
