@@ -55,6 +55,11 @@ const TELEMETRY_INTERVAL_MS = 250;
 const SEEK_COOLDOWN_MS = config.MEDIA_SYNC?.SYNC_SEEK_COOLDOWN_MS ?? 1500;
 // Lead (seconds) added to the seek target to compensate for seek+rebuffer latency.
 const SEEK_LEAD_S = config.MEDIA_SYNC?.SYNC_SEEK_LEAD_S ?? 0.4;
+// Drift threshold (seconds) above which a hard seek is performed instead of a
+// smooth rate correction. Higher = fewer disruptive jumps on high-bitrate
+// content (which rebuffers on seek), letting the rate controller absorb drift.
+const SEEK_THRESHOLD_S = config.MEDIA_SYNC?.SYNC_SEEK_THRESHOLD_S ?? 2;
+const SEEK_THRESHOLD_LIVE_S = config.MEDIA_SYNC?.SYNC_SEEK_THRESHOLD_LIVE_S ?? 5;
 
 // Tuning for the predictive sync controller, read from config so the
 // precision/battery trade-off can be adjusted without touching the logic.
@@ -97,6 +102,15 @@ const isDashUrl = (url) =>
   typeof url === 'string' && /\.mpd(\?|#|$)/i.test(url);
 const isHlsUrl = (url) =>
   typeof url === 'string' && /\.m3u8(\?|#|$)/i.test(url);
+
+const getPlaybackErrorDetails = (event) => {
+  const nativeError = event?.error || event || {};
+  return {
+    message: nativeError.errorString || nativeError.errorException || 'Unknown playback error',
+    code: nativeError.errorCode || 'unknown',
+    exception: nativeError.errorException || null,
+  };
+};
 
 export default function TerminalItem({ terminal, onPress, expanded, onToggleExpand }) {
   const { t } = useTranslation();
@@ -391,7 +405,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     const result = controller.update({
       playerTime,
       tvTime,
-      seekThresholdS: isLive ? 5 : 2,
+      seekThresholdS: isLive ? SEEK_THRESHOLD_LIVE_S : SEEK_THRESHOLD_S,
     });
 
     // Publish the controller's real decision for the UI badge (filtered drift +
@@ -1333,7 +1347,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   }, [position?.isPlaying, selectedVideo]);
 
   const handleSelectAudio = useCallback((audio) => {
-    const useWebPlayer = Platform.OS != 'ios' && isDashUrl(mpdUrlRef.current);
+    const useWebPlayer = Platform.OS === 'ios' && isDashUrl(mpdUrlRef.current);
     if (selectedAudio?.representationId === audio.representationId && selectedAudio?.role === audio.role) {
       setSelectedAudio(null);
       setAudioPlaying(false);
@@ -1360,7 +1374,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   }, [closeWebPlayer]);
 
   const handleSelectVideo = useCallback((video) => {
-    const useWebPlayer = Platform.OS != 'ios' && isDashUrl(mpdUrlRef.current);
+    const useWebPlayer = Platform.OS === 'ios' && isDashUrl(mpdUrlRef.current);
     if (selectedVideo?.representationId === video.representationId && selectedVideo?.role === video.role) {
       setSelectedVideo(null);
       setVideoPlaying(false);
@@ -1400,7 +1414,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   // iOS + DASH: playback happens in the dash.js WebView (see openWebPlayer), so
   // the native <Video> players are not mounted. iOS + HLS and Android stay on
   // the native path.
-  const useWebPlayer = Platform.OS != 'ios' && isDashUrl(mpdUrl);
+  const useWebPlayer = Platform.OS === 'ios' && isDashUrl(mpdUrl);
 
   const getAudioLabel = (audio) => {
     if (audio.role === 'main' || !audio.role) return t('discovery.audioMain');
@@ -1772,7 +1786,11 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
                           videoSyncControllerRef.current?.reset();
                         }}
                         onError={(err) => {
-                          console.error('Error reproduint vídeo:', err);
+                          const playbackError = getPlaybackErrorDetails(err);
+                          console.warn(
+                            `Video playback failed [${playbackError.code}]: ${playbackError.message}`,
+                            playbackError.exception || ''
+                          );
                           setVideoPlaying(false);
                         }}
                         progressUpdateInterval={config.MEDIA_SYNC?.PROGRESS_UPDATE_INTERVAL_MS ?? 250}
@@ -1860,7 +1878,11 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
                 audioSyncControllerRef.current?.reset();
               }}
               onError={(err) => {
-                console.error('❌ Error reproduint àudio:', err);
+                const playbackError = getPlaybackErrorDetails(err);
+                console.warn(
+                  `Audio playback failed [${playbackError.code}]: ${playbackError.message}`,
+                  playbackError.exception || ''
+                );
                 setAudioPlaying(false);
               }}
               progressUpdateInterval={config.MEDIA_SYNC?.PROGRESS_UPDATE_INTERVAL_MS ?? 250}

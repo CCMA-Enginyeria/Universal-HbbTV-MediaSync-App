@@ -31,6 +31,17 @@
     text-shadow:0 0 30px rgba(80,120,255,.35);font-variant-numeric:tabular-nums;}
   #timecode .ms{color:#5f7bd6;font-size:.42em;}
   #hint{font-size:14px;color:#7f8db3;}
+  #syncDiag{position:fixed;right:12px;top:12px;z-index:7;display:none;min-width:250px;
+    padding:10px 12px;background:rgba(5,7,13,.82);border:1px solid rgba(120,140,220,.38);
+    color:#dce5ff;font-family:'SFMono-Regular',Consolas,'Roboto Mono',monospace;font-size:12px;
+    line-height:1.5;text-align:left;font-variant-numeric:tabular-nums;pointer-events:none;}
+  #syncDiag.show{display:block;}
+  #syncDiag .diagTitle{color:#8fa6ef;text-transform:uppercase;font-size:10px;}
+  #syncDiag .diagRow{display:flex;justify-content:space-between;gap:18px;}
+  #syncDiag .diagLabel{color:#7f8db3;}
+  #syncDiag .diagGood{color:#39d98a;}
+  #syncDiag .diagWarn{color:#f2c94c;}
+  #syncDiag .diagBad{color:#ff6b7a;}
   #err{position:fixed;left:16px;right:16px;bottom:16px;z-index:6;display:none;
     padding:10px 14px;border-radius:10px;background:rgba(180,40,60,.18);
     border:1px solid rgba(220,80,100,.4);color:#ffd9df;font-size:13px;text-align:center;}
@@ -50,6 +61,19 @@
     <div id="hint" class="pulsing">Waiting for sync from the TV…</div>
   </div>
 </div>
+
+<div id="syncDiag">
+  <div class="diagTitle">Presentation sync</div>
+  <div class="diagRow"><span class="diagLabel">TV target</span><span id="diagTv">—</span></div>
+  <div class="diagRow"><span class="diagLabel">dash.js</span><span id="diagDash">—</span></div>
+  <div class="diagRow"><span class="diagLabel">media.currentTime</span><span id="diagMedia">—</span></div>
+  <div class="diagRow"><span class="diagLabel">presented frame</span><span id="diagFrame">—</span></div>
+  <div class="diagRow"><span class="diagLabel">TV − dash.js</span><span id="diagDashDelta">—</span></div>
+  <div class="diagRow"><span class="diagLabel">TV − frame</span><span id="diagFrameDelta">—</span></div>
+  <div class="diagRow"><span class="diagLabel">feed age</span><span id="diagFeedAge">—</span></div>
+</div>
+
+<div id="err"></div>
 
 <script>
 /**
@@ -71,6 +95,7 @@
  *   role   — track role hint ('main' | 'description' | ...)
  *   volume — initial volume 0..1
  *   live   — '1' for dynamic (live) manifests
+ *   tel    — '1' enables SYNCTEL output and the on-video diagnostics overlay
  */
 (function () {
   'use strict';
@@ -120,6 +145,14 @@
   var elStatusDot = document.getElementById('statusDot');
   var elStatusText = document.getElementById('statusText');
   var elErr = document.getElementById('err');
+  var elSyncDiag = document.getElementById('syncDiag');
+  var elDiagTv = document.getElementById('diagTv');
+  var elDiagDash = document.getElementById('diagDash');
+  var elDiagMedia = document.getElementById('diagMedia');
+  var elDiagFrame = document.getElementById('diagFrame');
+  var elDiagDashDelta = document.getElementById('diagDashDelta');
+  var elDiagFrameDelta = document.getElementById('diagFrameDelta');
+  var elDiagFeedAge = document.getElementById('diagFeedAge');
 
   // For audio mode use an <audio> element (dash.js will not download video);
   // for video mode a <video> element that fills the screen.
@@ -135,6 +168,8 @@
   if (MODE === 'audio') {
     nowplaying.classList.add('show');
     elCover.textContent = TRACK_ROLE === 'description' ? '🗣️' : '🎧';
+  } else if (TELEMETRY) {
+    elSyncDiag.classList.add('show');
   }
 
   // ---- Host messaging -------------------------------------------------------
@@ -156,6 +191,9 @@
   var haveData = false;
   var lastUpdate = 0;
   var streamReady = false;
+  var lastFeedAgeMs = null;
+  var presentedFrameTime = null;
+  var presentedFrameCount = 0;
 
   function now() {
     return (window.performance && performance.now) ? performance.now() : Date.now();
@@ -179,6 +217,44 @@
   function setStatus(isPlaying, connected) {
     elStatusDot.className = 'dot' + (!connected ? '' : (isPlaying ? ' live' : ' paused'));
     elStatusText.textContent = !connected ? 'Waiting' : (isPlaying ? 'Playing' : 'Paused');
+  }
+
+  function formatDiagSeconds(value) {
+    return value == null || !isFinite(value) ? '—' : value.toFixed(3) + ' s';
+  }
+
+  function renderDiagDelta(element, seconds) {
+    if (seconds == null || !isFinite(seconds)) {
+      element.textContent = '—';
+      element.className = '';
+      return;
+    }
+    var millis = seconds * 1000;
+    element.textContent = (millis >= 0 ? '+' : '') + Math.round(millis) + ' ms';
+    var absMillis = Math.abs(millis);
+    element.className = absMillis <= 40 ? 'diagGood' : (absMillis <= 120 ? 'diagWarn' : 'diagBad');
+  }
+
+  // `media.currentTime` / dash.js time describe the logical playhead. A video
+  // can still appear late because decoded frames queue before display.
+  // requestVideoFrameCallback gives us metadata.mediaTime for the frame the
+  // browser actually submitted for presentation, which is the timestamp to
+  // compare with the timecode burned into the picture.
+  function watchPresentedFrames() {
+    if (MODE !== 'video' || typeof media.requestVideoFrameCallback !== 'function') return;
+    media.requestVideoFrameCallback(function (callbackNow, metadata) {
+      if (metadata && isFinite(metadata.mediaTime)) {
+        if (IS_LIVE && player) {
+          var logicalTime = playerCurrentTime();
+          var mediaTime = media.currentTime;
+          presentedFrameTime = metadata.mediaTime + (logicalTime - mediaTime);
+        } else {
+          presentedFrameTime = metadata.mediaTime;
+        }
+        presentedFrameCount = metadata.presentedFrames || (presentedFrameCount + 1);
+      }
+      watchPresentedFrames();
+    });
   }
 
   // ---- dash.js --------------------------------------------------------------
@@ -340,6 +416,7 @@
     // because it measures against this already-offset target.
     var staleMs = (typeof data.generatedAt === 'number') ? (Date.now() - data.generatedAt) : 0;
     if (!isFinite(staleMs) || staleMs < 0 || staleMs > 2000) staleMs = 0;
+    lastFeedAgeMs = staleMs;
     var advanceS = isPlaying ? (staleMs / 1000) * speed : 0;
 
     anchor.seconds = seconds + advanceS;
@@ -369,8 +446,21 @@
       var tc = fmt(s);
       elTimecode.innerHTML = tc.hms + '<span class="ms">.' + tc.ms + '</span>';
     }
+    if (MODE === 'video' && TELEMETRY) {
+      var dashTime = streamReady ? playerCurrentTime() : null;
+      var mediaTime = streamReady && isFinite(media.currentTime) ? media.currentTime : null;
+      elDiagTv.textContent = formatDiagSeconds(s);
+      elDiagDash.textContent = formatDiagSeconds(dashTime);
+      elDiagMedia.textContent = formatDiagSeconds(mediaTime);
+      elDiagFrame.textContent = formatDiagSeconds(presentedFrameTime) +
+        (presentedFrameCount ? '  #' + presentedFrameCount : '');
+      renderDiagDelta(elDiagDashDelta, s != null && dashTime != null ? s - dashTime : null);
+      renderDiagDelta(elDiagFrameDelta, s != null && presentedFrameTime != null ? s - presentedFrameTime : null);
+      elDiagFeedAge.textContent = lastFeedAgeMs == null ? '—' : Math.round(lastFeedAgeMs) + ' ms';
+    }
     requestAnimationFrame(tick);
   }
+  watchPresentedFrames();
   requestAnimationFrame(tick);
   setInterval(correct, CORRECTION_INTERVAL_MS);
 
