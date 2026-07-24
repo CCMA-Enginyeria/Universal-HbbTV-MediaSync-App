@@ -184,7 +184,7 @@ export class MediaSyncService extends EventEmitter {
     });
 
     // Connectar
-    this.ciiService.connect();
+    await this.ciiService.connect();
   }
 
   /**
