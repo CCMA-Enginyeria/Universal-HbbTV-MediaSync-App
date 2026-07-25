@@ -33,6 +33,7 @@ function receiveJson(path, setup) {
 async function run() {
   const nativeCii = await receiveJson('/cii');
   const selectedContent = 'https://example.test/selected.mpd';
+  const companionContent = 'https://example.test/companion.html';
 
   const response = await fetch(`${httpBase}/api/state`, {
     method: 'POST',
@@ -40,6 +41,7 @@ async function run() {
     body: JSON.stringify({
       mode: 'compat',
       contentId: selectedContent,
+      contentIdOverride: companionContent,
       positionSeconds: 42,
       paused: false,
     }),
@@ -51,15 +53,27 @@ async function run() {
     timelineSelector: 'urn:dvb:css:timeline:pts',
   });
 
-  if (compatCii.contentId !== selectedContent) throw new Error('Compatibility CII did not update');
+  if (compatCii.contentId !== companionContent) throw new Error('Compatibility CII did not use the companion override');
   if (!compatCii.wcUrl.endsWith('/app2app/hbbtv-sync-wc')) throw new Error('Invalid compatibility WC URL');
   if (!compatCii.tsUrl.endsWith('/app2app/hbbtv-sync-ts')) throw new Error('Invalid compatibility TS URL');
   if (compatTs.contentTime < 42 * 90000) throw new Error('Compatibility timeline did not use TV position');
   if (compatTs.timelineSpeedMultiplier !== 1) throw new Error('Compatibility timeline is not playing');
 
+  const resetResponse = await fetch(`${httpBase}/api/state`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contentIdOverride: null }),
+  });
+  if (!resetResponse.ok) throw new Error(`Companion URL reset failed with HTTP ${resetResponse.status}`);
+
+  const resetCii = await receiveJson('/app2app/hbbtv-sync-cii');
+  if (resetCii.contentId !== selectedContent) throw new Error('Compatibility CII did not return to TV content');
+
   console.log(JSON.stringify({
     nativeContent: nativeCii.contentId,
-    compatibilityContent: compatCii.contentId,
+    tvContent: selectedContent,
+    overriddenCompanionContent: compatCii.contentId,
+    resetCompanionContent: resetCii.contentId,
     compatibilityWallClock: compatCii.wcUrl,
     compatibilityTimeline: compatCii.tsUrl,
     contentSeconds: compatTs.contentTime / 90000,

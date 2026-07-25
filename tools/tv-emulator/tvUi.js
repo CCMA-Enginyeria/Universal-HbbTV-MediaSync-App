@@ -63,14 +63,18 @@ function createTvUiHandler({ tvState, catalog, getConnections, log = console.log
         .then((patch) => {
           const previous = tvState.getSnapshot();
           const allowed = {};
-          ['contentId', 'mode', 'positionSeconds', 'paused', 'playbackRate'].forEach((key) => {
+          ['contentId', 'contentIdOverride', 'mode', 'positionSeconds', 'paused', 'playbackRate'].forEach((key) => {
             if (Object.prototype.hasOwnProperty.call(patch, key)) allowed[key] = patch[key];
           });
           const snapshot = tvState.update(allowed);
           if (snapshot.mode !== previous.mode ||
               snapshot.contentId !== previous.contentId ||
+              snapshot.announcedContentId !== previous.announcedContentId ||
               snapshot.paused !== previous.paused) {
-            log(`[TV] ${snapshot.mode} | ${snapshot.paused ? 'paused' : 'playing'} | ${snapshot.contentId}`);
+            const announcement = snapshot.contentIdOverride
+              ? ` | companion=${snapshot.announcedContentId}`
+              : '';
+            log(`[TV] ${snapshot.mode} | ${snapshot.paused ? 'paused' : 'playing'} | ${snapshot.contentId}${announcement}`);
           }
           sendJson(res, 200, snapshot);
         })

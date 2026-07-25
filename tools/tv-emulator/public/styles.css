@@ -165,6 +165,12 @@ h2 { margin-bottom: 0; font-size: 18px; }
 .status-panel dd { margin: 0; color: var(--signal); font-family: Consolas, monospace; }
 .connection-status { color: var(--muted); }
 .connection-status.connected { color: var(--signal); }
+.companion-source { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+.companion-source .custom-source { margin-top: 0; }
+.companion-source .secondary-action { width: 100%; margin-top: 8px; border: 1px solid var(--line); color: var(--ink); background: #101314; }
+.companion-source .secondary-action:disabled { color: var(--muted); cursor: default; opacity: 0.55; }
+.source-mode { margin: 14px 0 0; color: var(--accent); font-size: 12px; }
+.field-caption { margin: 14px 0 4px; color: var(--muted); font-size: 11px; text-transform: uppercase; }
 .content-id { overflow-wrap: anywhere; color: var(--muted); font-family: Consolas, monospace; font-size: 11px; line-height: 1.5; }
 
 @media (max-width: 780px) {

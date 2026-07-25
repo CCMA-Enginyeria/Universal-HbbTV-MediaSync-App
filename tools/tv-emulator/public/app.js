@@ -10,6 +10,7 @@
   var connectionStatus = document.getElementById('connection-status');
   var player = null;
   var currentContentId = null;
+  var currentContentIdOverride = null;
   var updateTimer = null;
 
   function request(url, options) {
@@ -35,10 +36,23 @@
     postState({ mode: mode });
   }
 
+  function updateCompanionContent(state) {
+    currentContentIdOverride = state.contentIdOverride || null;
+    contentIdElement.textContent = state.announcedContentId || state.contentId || 'No content selected';
+    document.getElementById('companion-source-mode').textContent = currentContentIdOverride
+      ? 'Using a custom companion URL'
+      : 'Following TV content';
+    document.getElementById('companion-reset').disabled = !currentContentIdOverride;
+  }
+
   function loadContent(contentId, autoPlay, poster) {
     if (!contentId) return;
     currentContentId = contentId;
-    contentIdElement.textContent = contentId;
+    updateCompanionContent({
+      contentId: contentId,
+      contentIdOverride: currentContentIdOverride,
+      announcedContentId: currentContentIdOverride || contentId,
+    });
     emptyState.classList.add('hidden');
     video.poster = poster || '';
     programmePoster.src = poster || '';
@@ -50,7 +64,9 @@
     if (player) player.reset();
     player = dashjs.MediaPlayer().create();
     player.initialize(video, contentId, !!autoPlay);
-    postState({ contentId: contentId, positionSeconds: 0, paused: !autoPlay, playbackRate: 1 });
+    postState({ contentId: contentId, positionSeconds: 0, paused: !autoPlay, playbackRate: 1 })
+      .then(updateCompanionContent)
+      .catch(function () {});
   }
 
   function renderCatalog(items) {
@@ -106,6 +122,23 @@
     loadContent(document.getElementById('custom-url').value.trim(), true, '');
   });
 
+  document.getElementById('companion-form').addEventListener('submit', function (event) {
+    event.preventDefault();
+    var contentIdOverride = document.getElementById('companion-url').value.trim();
+    postState({ contentIdOverride: contentIdOverride })
+      .then(updateCompanionContent)
+      .catch(function () {});
+  });
+
+  document.getElementById('companion-reset').addEventListener('click', function () {
+    postState({ contentIdOverride: null })
+      .then(function (state) {
+        document.getElementById('companion-url').value = '';
+        updateCompanionContent(state);
+      })
+      .catch(function () {});
+  });
+
   setInterval(function () {
     document.getElementById('clock').textContent = new Date().toLocaleTimeString();
   }, 1000);
@@ -114,6 +147,8 @@
     renderCatalog(state.catalog);
     setMode(state.mode);
     updateStatus(state);
+    updateCompanionContent(state);
+    document.getElementById('companion-url').value = state.contentIdOverride || '';
     var selected = state.catalog.find(function (item) { return item.contentId === state.contentId; });
     loadContent(state.contentId, false, selected && selected.poster);
     updateTimer = setInterval(pushPlaybackState, 1000);

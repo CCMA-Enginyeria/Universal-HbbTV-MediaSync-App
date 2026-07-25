@@ -54,7 +54,19 @@
           <div><dt>Timeline</dt><dd id="ts-count">0</dd></div>
         </dl>
         <p id="connection-status" class="connection-status">Waiting for a companion</p>
-        <p id="content-id" class="content-id">No content selected</p>
+        <div class="companion-source">
+          <form id="companion-form" class="custom-source">
+            <label for="companion-url">Content URL sent to the companion</label>
+            <div>
+              <input id="companion-url" type="url" placeholder="https://example.com/companion.html" required>
+              <button type="submit">Apply</button>
+            </div>
+            <button id="companion-reset" class="secondary-action" type="button">Use TV content</button>
+          </form>
+          <p id="companion-source-mode" class="source-mode">Following TV content</p>
+          <p class="field-caption">Announced by CSS-CII</p>
+          <p id="content-id" class="content-id">No content selected</p>
+        </div>
       </aside>
     </section>
   </main>

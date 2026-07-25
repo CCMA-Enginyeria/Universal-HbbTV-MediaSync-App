@@ -7,9 +7,8 @@
  * expects a JSON message describing what the TV is presenting. See
  * src/services/CSSCIIService.js -> handleMessage for the exact fields consumed:
  *
- *   - contentId          : MUST contain ".mpd" — the app only loads the DASH
- *                          manifest when contentId includes ".mpd"
- *                          (src/components/TerminalItem.js).
+ *   - contentId          : DASH manifest or companion web URL presented on the
+ *                          second device (src/components/TerminalItem.js).
  *   - wcUrl              : udp:// URL of the CSS-WC wall clock server.
  *   - tsUrl              : ws:// URL of the CSS-TS timeline server.
  *   - timelines          : advertised timeline options.
@@ -35,7 +34,7 @@ function createCiiConnectionHandler({ tvState, wcUrl, tsUrl, log = console.log }
       const snapshot = tvState.getSnapshot();
       const ciiDocument = {
         protocolVersion: '1.1',
-        contentId: snapshot.contentId,
+        contentId: snapshot.announcedContentId,
         contentIdStatus: 'final',
         presentationStatus: ['okay'],
         mrsUrl: null,
@@ -54,7 +53,7 @@ function createCiiConnectionHandler({ tvState, wcUrl, tsUrl, log = console.log }
 
       try {
         ws.send(JSON.stringify(ciiDocument));
-        log(`[CII] sent CII (contentId=${snapshot.contentId})`);
+        log(`[CII] sent CII (contentId=${snapshot.announcedContentId})`);
       } catch (err) {
         log(`[CII] failed to send CII: ${err.message}`);
       }

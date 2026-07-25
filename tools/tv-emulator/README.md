@@ -15,9 +15,10 @@ stacks supported by the mobile app:
 | Timeline sync | CSS-TS | `ts.js` | `ws://<ip>:7681/ts` |
 | TV screen | HTTP + dash.js | `public/`, `tvUi.js` | `http://<ip>:7681/tv` |
 
-The content selected and played in the browser is the content announced through
-CSS-CII. Its real play, pause, seek and playback-rate state drives the 90 kHz
-CSS-TS timeline in both transport modes.
+By default, the content selected and played in the browser is also announced
+through CSS-CII. The TV screen can instead announce a different URL to the
+companion device while its real play, pause, seek and playback-rate state keeps
+driving the 90 kHz CSS-TS timeline in both transport modes.
 
 ## Requirements
 
@@ -38,8 +39,14 @@ the transport mode. Then open the mobile app and scan for TVs. An entry named
 **"Emulated HbbTV TV (MediaSync)"** should appear; connect to it and the app will
 read the selected manifest, list tracks, and synchronize with the browser video.
 
-The TV screen also accepts a custom DASH `.mpd` URL and shows the active CII,
-wall-clock and timeline clients.
+The **Custom DASH manifest** field changes the content played by the emulated
+TV. The **Content URL sent to the companion** field changes only the `contentId`
+announced through CSS-CII; it may contain a DASH `.mpd` or a companion web page.
+Select **Use TV content** to clear that override and follow the currently played
+manifest again. An active override remains selected when the TV programme
+changes. The wall clock and timeline always continue to describe the TV video.
+
+The TV screen also shows the active CII, wall-clock and timeline clients.
 
 With the emulator running, its live protocol route can be checked separately:
 
@@ -68,7 +75,7 @@ the previous stack, which prevents mixed native/compatibility sessions.
 | `EMU_IP` | auto-detected | Force the LAN IPv4 to advertise |
 | `EMU_HTTP_PORT` | `7681` | HTTP + WebSocket port |
 | `EMU_WC_PORT` | `6677` | UDP wall clock port |
-| `EMU_CONTENT_ID` | Big Buck Bunny MPD | DASH MPD URL to announce (**must contain `.mpd`**) |
+| `EMU_CONTENT_ID` | Big Buck Bunny MPD | Initial DASH MPD URL to play and, unless overridden in the TV screen, announce |
 | `EMU_NAME` | `Emulated HbbTV TV (MediaSync)` | Friendly name shown in the app |
 | `EMU_MODE` | `native` | Initial TV mode: `native` or `compat` |
 | `EMU_COMPAT_PREFIX` | `hbbtv-sync` | App2App compatibility channel prefix |

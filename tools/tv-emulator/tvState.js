@@ -6,10 +6,11 @@ const { wallClockNanos } = require('./clock');
 const PTS_TICK_RATE = 90000;
 
 class TvState extends EventEmitter {
-  constructor({ contentId, mode = 'native' }) {
+  constructor({ contentId, contentIdOverride = null, mode = 'native' }) {
     super();
     this.state = {
       contentId,
+      contentIdOverride: this.normalizeContentIdOverride(contentIdOverride),
       mode: mode === 'compat' ? 'compat' : 'native',
       positionSeconds: 0,
       paused: true,
@@ -20,6 +21,7 @@ class TvState extends EventEmitter {
 
   getSnapshot() {
     const snapshot = { ...this.state };
+    snapshot.announcedContentId = snapshot.contentIdOverride || snapshot.contentId;
     if (!snapshot.paused) {
       const elapsedSeconds = (wallClockNanos() - snapshot.updatedWallClockNanos) / 1e9;
       snapshot.positionSeconds += elapsedSeconds * snapshot.playbackRate;
@@ -29,9 +31,13 @@ class TvState extends EventEmitter {
 
   update(patch) {
     const current = this.getSnapshot();
+    const contentIdOverride = Object.prototype.hasOwnProperty.call(patch, 'contentIdOverride')
+      ? this.normalizeContentIdOverride(patch.contentIdOverride)
+      : current.contentIdOverride;
     const next = {
       ...current,
       ...patch,
+      contentIdOverride,
       mode: patch.mode === 'compat' ? 'compat' : patch.mode === 'native' ? 'native' : current.mode,
       positionSeconds: Number.isFinite(Number(patch.positionSeconds))
         ? Math.max(0, Number(patch.positionSeconds))
@@ -42,15 +48,20 @@ class TvState extends EventEmitter {
       paused: typeof patch.paused === 'boolean' ? patch.paused : current.paused,
       updatedWallClockNanos: wallClockNanos(),
     };
+    delete next.announcedContentId;
 
     this.state = next;
     const snapshot = this.getSnapshot();
-    if (snapshot.contentId !== current.contentId ||
+    if (snapshot.announcedContentId !== current.announcedContentId ||
         snapshot.mode !== current.mode ||
         snapshot.paused !== current.paused) {
       this.emit('change', snapshot);
     }
     return snapshot;
+  }
+
+  normalizeContentIdOverride(value) {
+    return typeof value === 'string' && value.trim() ? value.trim() : null;
   }
 
   buildControlTimestamp() {
