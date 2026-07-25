@@ -38,6 +38,7 @@ function createDialHttpServer({
   friendlyName,
   ciiUrl,
   app2appUrl,
+  onUnhandled,
   log = console.log,
 }) {
   const applicationBaseUrl = `http://${ip}:${port}/dial/apps`;
@@ -74,7 +75,7 @@ function createDialHttpServer({
   const server = http.createServer((req, res) => {
     const url = (req.url || '/').split('?')[0];
 
-    if (req.method === 'GET' && (url === '/dd.xml' || url === '/')) {
+    if (req.method === 'GET' && url === '/dd.xml') {
       res.writeHead(200, {
         'Content-Type': 'application/xml; charset=utf-8',
         // Critical for HbbTV discovery: tells the app where the DIAL apps live.
@@ -91,6 +92,8 @@ function createDialHttpServer({
       log(`[HTTP] served HbbTV app resource to ${req.socket.remoteAddress}`);
       return;
     }
+
+    if (onUnhandled && onUnhandled(req, res)) return;
 
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     res.end('Not Found');

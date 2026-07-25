@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MediaSync TV Emulator</title>
+  <link rel="stylesheet" href="/tv/styles.css">
+  <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
+</head>
+<body>
+  <main class="tv-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Universal MediaSync Lab</p>
+        <h1>TV Emulator</h1>
+      </div>
+      <div class="mode-switch" role="group" aria-label="Synchronization transport">
+        <button type="button" data-mode="native">Native DVB-CSS</button>
+        <button type="button" data-mode="compat">App2App compatibility</button>
+      </div>
+    </header>
+
+    <section class="stage" aria-label="Emulated television">
+      <video id="tv-video" controls playsinline></video>
+      <img id="programme-poster" class="programme-poster hidden" alt="">
+      <div id="video-empty" class="video-empty">Choose a programme to start the TV.</div>
+      <div class="on-air">
+        <span class="signal-dot"></span>
+        <span id="mode-label">Native DVB-CSS</span>
+      </div>
+    </section>
+
+    <section class="control-band">
+      <div class="programme-panel">
+        <div class="section-heading">
+          <h2>Now on TV</h2>
+          <span id="clock">00:00:00</span>
+        </div>
+        <div id="catalog" class="catalog"></div>
+        <form id="custom-form" class="custom-source">
+          <label for="custom-url">Custom DASH manifest</label>
+          <div>
+            <input id="custom-url" type="url" placeholder="https://example.com/content.mpd" required>
+            <button type="submit">Load</button>
+          </div>
+        </form>
+      </div>
+
+      <aside class="status-panel">
+        <div class="section-heading"><h2>Second screen</h2></div>
+        <dl>
+          <div><dt>CII</dt><dd id="cii-count">0</dd></div>
+          <div><dt>Wall clock</dt><dd id="wc-count">0</dd></div>
+          <div><dt>Timeline</dt><dd id="ts-count">0</dd></div>
+        </dl>
+        <p id="connection-status" class="connection-status">Waiting for a companion</p>
+        <p id="content-id" class="content-id">No content selected</p>
+      </aside>
+    </section>
+  </main>
+  <script src="/tv/app.js"></script>
+</body>
+</html>

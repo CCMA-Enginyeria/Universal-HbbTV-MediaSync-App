@@ -6,7 +6,9 @@
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "smoke": "node smoke.js",
+    "test": "node --test test/*.node.js"
   },
   "engines": {
     "node": ">=18"

@@ -21,46 +21,55 @@
 
 /**
  * @param {object} opts
- * @param {string} opts.contentId  DASH MPD URL (must contain ".mpd").
+ * @param {object} opts.tvState    Shared dynamic TV playback state.
  * @param {string} opts.wcUrl      udp://ip:port of the wall clock server.
  * @param {string} opts.tsUrl      ws://ip:port/ts of the timeline server.
  * @param {(msg: string) => void} [opts.log]
  * @returns {(ws: import('ws').WebSocket) => void} onConnection handler.
  */
-function createCiiConnectionHandler({ contentId, wcUrl, tsUrl, log = console.log }) {
-  const ciiDocument = {
-    protocolVersion: '1.1',
-    contentId,
-    contentIdStatus: 'final',
-    presentationStatus: ['okay'],
-    mrsUrl: null,
-    wcUrl,
-    tsUrl,
-    timelines: [
-      {
-        timelineSelector: 'urn:dvb:css:timeline:pts',
-        timelineProperties: {
-          unitsPerTick: 1,
-          unitsPerSecond: 90000,
-        },
-      },
-    ],
-  };
-
+function createCiiConnectionHandler({ tvState, wcUrl, tsUrl, log = console.log }) {
   return function onConnection(ws) {
     log('[CII] client connected');
 
-    try {
-      ws.send(JSON.stringify(ciiDocument));
-      log(`[CII] sent CII (contentId=${contentId})`);
-    } catch (err) {
-      log(`[CII] failed to send CII: ${err.message}`);
-    }
+    const sendCii = () => {
+      const snapshot = tvState.getSnapshot();
+      const ciiDocument = {
+        protocolVersion: '1.1',
+        contentId: snapshot.contentId,
+        contentIdStatus: 'final',
+        presentationStatus: ['okay'],
+        mrsUrl: null,
+        wcUrl,
+        tsUrl,
+        timelines: [
+          {
+            timelineSelector: 'urn:dvb:css:timeline:pts',
+            timelineProperties: {
+              unitsPerTick: 1,
+              unitsPerSecond: 90000,
+            },
+          },
+        ],
+      };
+
+      try {
+        ws.send(JSON.stringify(ciiDocument));
+        log(`[CII] sent CII (contentId=${snapshot.contentId})`);
+      } catch (err) {
+        log(`[CII] failed to send CII: ${err.message}`);
+      }
+    };
+
+    sendCii();
+    tvState.on('change', sendCii);
 
     // A real CII channel is push-only from the TV; ignore anything the client
     // sends but keep the socket open.
     ws.on('message', () => {});
-    ws.on('close', () => log('[CII] client disconnected'));
+    ws.on('close', () => {
+      tvState.off('change', sendCii);
+      log('[CII] client disconnected');
+    });
     ws.on('error', (err) => log(`[CII] socket error: ${err.message}`));
   };
 }

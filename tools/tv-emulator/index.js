@@ -35,11 +35,15 @@ const { createDialHttpServer } = require('./httpServer');
 const { createCiiConnectionHandler } = require('./cii');
 const { startWallClockServer } = require('./wc');
 const { createTsConnectionHandler } = require('./ts');
+const { createCompatWcConnectionHandler } = require('./compat');
+const { TvState } = require('./tvState');
+const { createTvUiHandler } = require('./tvUi');
 
 const IP = getLocalIPv4(process.env.EMU_IP);
 const HTTP_PORT = parseInt(process.env.EMU_HTTP_PORT || '7681', 10);
 const WC_PORT = parseInt(process.env.EMU_WC_PORT || '6677', 10);
 const FRIENDLY_NAME = process.env.EMU_NAME || 'Emulated HbbTV TV (MediaSync)';
+const INITIAL_MODE = process.env.EMU_MODE === 'compat' ? 'compat' : 'native';
 // contentId MUST contain ".mpd" — the app only loads the DASH manifest then.
 const CONTENT_ID =
   process.env.EMU_CONTENT_ID ||
@@ -53,37 +57,90 @@ const TS_URL = `ws://${IP}:${HTTP_PORT}/ts`;
 const APP2APP_URL = `ws://${IP}:${HTTP_PORT}/app2app`;
 const WC_URL = `udp://${IP}:${WC_PORT}`;
 
+// App2App compatibility-mode channels. These mirror the native DVB-CSS trio but
+// run entirely over App2App WebSockets, so a companion can synchronise even
+// when native DVB-CSS is unavailable. Channel names follow the `hbbtv-sync`
+// prefix used by hbbtv-compat/hbbtv-mediasync-compat.js and the mobile
+// MediaSyncService compat client.
+const COMPAT_PREFIX = process.env.EMU_COMPAT_PREFIX || 'hbbtv-sync';
+const COMPAT_CII_PATH = `/app2app/${COMPAT_PREFIX}-cii`;
+const COMPAT_WC_PATH = `/app2app/${COMPAT_PREFIX}-wc`;
+const COMPAT_TS_PATH = `/app2app/${COMPAT_PREFIX}-ts`;
+const COMPAT_CII_URL = `ws://${IP}:${HTTP_PORT}${COMPAT_CII_PATH}`;
+const COMPAT_WC_URL = `ws://${IP}:${HTTP_PORT}${COMPAT_WC_PATH}`;
+const COMPAT_TS_URL = `ws://${IP}:${HTTP_PORT}${COMPAT_TS_PATH}`;
+
+const CONTENT_CATALOG = [
+  {
+    title: 'Big Buck Bunny',
+    description: 'Akamai DASH reference stream',
+    contentId: 'https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd',
+    poster: '/tv/fallback.jpg',
+  },
+  {
+    title: 'Envivio reference',
+    description: 'Multi-bitrate DASH test stream',
+    contentId: 'https://dash.akamaized.net/envivio/EnvivioDash3/manifest.mpd',
+    poster: '/tv/fallback.jpg',
+  },
+  {
+    title: 'DASH-IF test card',
+    description: 'AVC adaptation-set test stream',
+    contentId: 'https://dash.akamaized.net/dash264/TestCases/1a/netflix/exMPD_BIP_TC1.mpd',
+    poster: '/tv/fallback.jpg',
+  },
+];
+
+if (!CONTENT_CATALOG.some((item) => item.contentId === CONTENT_ID)) {
+  CONTENT_CATALOG.unshift({
+    title: 'Configured content',
+    description: 'Loaded from EMU_CONTENT_ID',
+    contentId: CONTENT_ID,
+  });
+}
+
+const tvState = new TvState({ contentId: CONTENT_ID, mode: INITIAL_MODE });
+
 function log(msg) {
   const ts = new Date().toISOString().substring(11, 23);
   console.log(`${ts} ${msg}`);
 }
 
 // --- HTTP + DIAL ------------------------------------------------------------
-const httpServer = createDialHttpServer({
-  ip: IP,
-  port: HTTP_PORT,
-  uuid: UUID,
-  friendlyName: FRIENDLY_NAME,
-  ciiUrl: CII_URL,
-  app2appUrl: APP2APP_URL,
-  log,
-});
-
 // --- WebSocket endpoints (share the HTTP server, routed by path) ------------
 const ciiWss = new WebSocketServer({ noServer: true });
 const tsWss = new WebSocketServer({ noServer: true });
 const app2appWss = new WebSocketServer({ noServer: true });
 
+// App2App compatibility-mode CSS-CII/WC/TS channels.
+const compatCiiWss = new WebSocketServer({ noServer: true });
+const compatWcWss = new WebSocketServer({ noServer: true });
+const compatTsWss = new WebSocketServer({ noServer: true });
 const onCiiConnection = createCiiConnectionHandler({
-  contentId: CONTENT_ID,
+  tvState,
   wcUrl: WC_URL,
   tsUrl: TS_URL,
   log,
 });
-const onTsConnection = createTsConnectionHandler({ log });
+const onTsConnection = createTsConnectionHandler({ tvState, log });
 
 ciiWss.on('connection', onCiiConnection);
 tsWss.on('connection', onTsConnection);
+
+// Compat CII advertises the App2App WC/TS channel URLs instead of the native
+// UDP wall clock and /ts endpoint.
+const onCompatCiiConnection = createCiiConnectionHandler({
+  tvState,
+  wcUrl: COMPAT_WC_URL,
+  tsUrl: COMPAT_TS_URL,
+  log,
+});
+const onCompatWcConnection = createCompatWcConnectionHandler({ log });
+const onCompatTsConnection = createTsConnectionHandler({ tvState, log });
+
+compatCiiWss.on('connection', onCompatCiiConnection);
+compatWcWss.on('connection', onCompatWcConnection);
+compatTsWss.on('connection', onCompatTsConnection);
 // App2App is only required so the app recognizes us as an HbbTV device; we
 // accept the connection and keep it idle.
 app2appWss.on('connection', (ws) => {
@@ -93,12 +150,48 @@ app2appWss.on('connection', (ws) => {
   ws.on('error', () => {});
 });
 
+const getConnections = () => {
+  const mode = tvState.getSnapshot().mode;
+  return mode === 'compat'
+    ? { cii: compatCiiWss.clients.size, wc: compatWcWss.clients.size, ts: compatTsWss.clients.size }
+    : { cii: ciiWss.clients.size, wc: Date.now() - nativeWcLastSeen < 3000 ? 1 : 0, ts: tsWss.clients.size };
+};
+
+let nativeWcLastSeen = 0;
+const onUnhandled = createTvUiHandler({ tvState, catalog: CONTENT_CATALOG, getConnections, log });
+const httpServer = createDialHttpServer({
+  ip: IP,
+  port: HTTP_PORT,
+  uuid: UUID,
+  friendlyName: FRIENDLY_NAME,
+  ciiUrl: CII_URL,
+  app2appUrl: APP2APP_URL,
+  onUnhandled,
+  log,
+});
+
 httpServer.on('upgrade', (req, socket, head) => {
   const path = (req.url || '/').split('?')[0];
-  if (path === '/cii') {
+  const mode = tvState.getSnapshot().mode;
+  if (mode === 'native' && path === '/cii') {
     ciiWss.handleUpgrade(req, socket, head, (ws) => ciiWss.emit('connection', ws, req));
-  } else if (path === '/ts') {
+  } else if (mode === 'native' && path === '/ts') {
     tsWss.handleUpgrade(req, socket, head, (ws) => tsWss.emit('connection', ws, req));
+  } else if (mode === 'compat' && path === COMPAT_CII_PATH) {
+    compatCiiWss.handleUpgrade(req, socket, head, (ws) => {
+      ws.send('pairingcompleted');
+      compatCiiWss.emit('connection', ws, req);
+    });
+  } else if (mode === 'compat' && path === COMPAT_WC_PATH) {
+    compatWcWss.handleUpgrade(req, socket, head, (ws) => {
+      ws.send('pairingcompleted');
+      compatWcWss.emit('connection', ws, req);
+    });
+  } else if (mode === 'compat' && path === COMPAT_TS_PATH) {
+    compatTsWss.handleUpgrade(req, socket, head, (ws) => {
+      ws.send('pairingcompleted');
+      compatTsWss.emit('connection', ws, req);
+    });
   } else if (path === '/app2app') {
     app2appWss.handleUpgrade(req, socket, head, (ws) => app2appWss.emit('connection', ws, req));
   } else {
@@ -111,7 +204,20 @@ httpServer.listen(HTTP_PORT, () => {
 });
 
 // --- CSS-WC (UDP) -----------------------------------------------------------
-const wcSocket = startWallClockServer({ port: WC_PORT, log });
+const wcSocket = startWallClockServer({
+  port: WC_PORT,
+  onRequest: () => { nativeWcLastSeen = Date.now(); },
+  log,
+});
+
+tvState.on('change', (snapshot) => {
+  const staleServers = snapshot.mode === 'compat'
+    ? [ciiWss, tsWss]
+    : [compatCiiWss, compatWcWss, compatTsWss];
+  staleServers.forEach((server) => {
+    server.clients.forEach((client) => client.close(1012, 'TV emulator mode changed'));
+  });
+});
 
 // --- SSDP (UDP multicast) ---------------------------------------------------
 const ssdpSocket = startSsdpResponder({ ip: IP, location: LOCATION, uuid: UUID, log });
@@ -123,10 +229,15 @@ console.log('  HbbTV MediaSync — TV Emulator');
 console.log('==================================================================');
 console.log(`  Friendly name : ${FRIENDLY_NAME}`);
 console.log(`  LAN address   : ${IP}`);
+console.log(`  TV screen     : http://${IP}:${HTTP_PORT}/tv`);
+console.log(`  Initial mode  : ${INITIAL_MODE}`);
 console.log(`  Device desc.  : ${LOCATION}`);
 console.log(`  CSS-CII       : ${CII_URL}`);
 console.log(`  CSS-WC        : ${WC_URL}`);
 console.log(`  CSS-TS        : ${TS_URL}`);
+console.log(`  Compat CII    : ${COMPAT_CII_URL}`);
+console.log(`  Compat WC     : ${COMPAT_WC_URL}`);
+console.log(`  Compat TS     : ${COMPAT_TS_URL}`);
 console.log(`  Content ID    : ${CONTENT_ID}`);
 console.log('------------------------------------------------------------------');
 console.log('  Make sure your phone is on the SAME Wi-Fi network.');

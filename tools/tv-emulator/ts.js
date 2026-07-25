@@ -1,7 +1,5 @@
 'use strict';
 
-const { wallClockNanos } = require('./clock');
-
 /**
  * CSS-TS (Timeline Synchronisation) WebSocket handler.
  *
@@ -20,30 +18,15 @@ const { wallClockNanos } = require('./clock');
  * periodically as a keep-alive.
  */
 
-const PTS_TICK_RATE = 90000; // ticks per second
 const RESEND_INTERVAL_MS = 2000;
 
 /**
- * Build a control timestamp for the PTS timeline at the current wall clock.
- * contentTime advances 1:1 with the wall clock (speed 1.0) from an origin of 0.
- * @returns {{ contentTime: number, wallClockTime: number, timelineSpeedMultiplier: number }}
- */
-function buildPtsControlTimestamp() {
-  const wallNanos = wallClockNanos();
-  const contentTime = Math.round((wallNanos * PTS_TICK_RATE) / 1e9);
-  return {
-    contentTime,
-    wallClockTime: wallNanos,
-    timelineSpeedMultiplier: 1.0,
-  };
-}
-
-/**
  * @param {object} [opts]
+ * @param {object} opts.tvState Shared dynamic TV playback state.
  * @param {(msg: string) => void} [opts.log]
  * @returns {(ws: import('ws').WebSocket) => void} onConnection handler.
  */
-function createTsConnectionHandler({ log = console.log } = {}) {
+function createTsConnectionHandler({ tvState, log = console.log } = {}) {
   return function onConnection(ws) {
     log('[TS] client connected');
     let timer = null;
@@ -58,7 +41,7 @@ function createTsConnectionHandler({ log = console.log } = {}) {
     const sendControlTimestamp = () => {
       if (ws.readyState !== ws.OPEN) return;
       try {
-        ws.send(JSON.stringify(buildPtsControlTimestamp()));
+        ws.send(JSON.stringify(tvState.buildControlTimestamp()));
       } catch (err) {
         log(`[TS] failed to send control timestamp: ${err.message}`);
       }

@@ -47,10 +47,11 @@ const WC_MAX_FREQ_ERROR = 500 * 256;
  * @param {object} opts
  * @param {number} opts.port
  * @param {string} [opts.ip] Interface address to bind to (default: all).
+ * @param {(address: string) => void} [opts.onRequest]
  * @param {(msg: string) => void} [opts.log]
  * @returns {dgram.Socket}
  */
-function startWallClockServer({ port, ip, log = console.log }) {
+function startWallClockServer({ port, ip, onRequest = () => {}, log = console.log }) {
   const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
 
   socket.on('error', (err) => {
@@ -64,6 +65,8 @@ function startWallClockServer({ port, ip, log = console.log }) {
     if (msg.length < WC_PACKET_SIZE) {
       return;
     }
+
+    onRequest(rinfo.address);
 
     // Copy the request so the originate timestamp (bytes 8..15) is preserved.
     const response = Buffer.from(msg.subarray(0, WC_PACKET_SIZE));
