@@ -35,7 +35,7 @@ const { createDialHttpServer } = require('./httpServer');
 const { createCiiConnectionHandler } = require('./cii');
 const { startWallClockServer } = require('./wc');
 const { createTsConnectionHandler } = require('./ts');
-const { createCompatWcConnectionHandler } = require('./compat');
+const { createApp2AppBroker } = require('./app2appBroker');
 const { TvState } = require('./tvState');
 const { createTvUiHandler } = require('./tvUi');
 
@@ -112,10 +112,6 @@ const ciiWss = new WebSocketServer({ noServer: true });
 const tsWss = new WebSocketServer({ noServer: true });
 const app2appWss = new WebSocketServer({ noServer: true });
 
-// App2App compatibility-mode CSS-CII/WC/TS channels.
-const compatCiiWss = new WebSocketServer({ noServer: true });
-const compatWcWss = new WebSocketServer({ noServer: true });
-const compatTsWss = new WebSocketServer({ noServer: true });
 const onCiiConnection = createCiiConnectionHandler({
   tvState,
   wcUrl: WC_URL,
@@ -127,20 +123,12 @@ const onTsConnection = createTsConnectionHandler({ tvState, log });
 ciiWss.on('connection', onCiiConnection);
 tsWss.on('connection', onTsConnection);
 
-// Compat CII advertises the App2App WC/TS channel URLs instead of the native
-// UDP wall clock and /ts endpoint.
-const onCompatCiiConnection = createCiiConnectionHandler({
-  tvState,
-  wcUrl: COMPAT_WC_URL,
-  tsUrl: COMPAT_TS_URL,
+const app2appBroker = createApp2AppBroker({
+  localPrefix: '/app2app-local',
+  remotePrefix: '/app2app',
   log,
 });
-const onCompatWcConnection = createCompatWcConnectionHandler({ log });
-const onCompatTsConnection = createTsConnectionHandler({ tvState, log });
 
-compatCiiWss.on('connection', onCompatCiiConnection);
-compatWcWss.on('connection', onCompatWcConnection);
-compatTsWss.on('connection', onCompatTsConnection);
 // App2App is only required so the app recognizes us as an HbbTV device; we
 // accept the connection and keep it idle.
 app2appWss.on('connection', (ws) => {
@@ -153,7 +141,11 @@ app2appWss.on('connection', (ws) => {
 const getConnections = () => {
   const mode = tvState.getSnapshot().mode;
   return mode === 'compat'
-    ? { cii: compatCiiWss.clients.size, wc: compatWcWss.clients.size, ts: compatTsWss.clients.size }
+    ? {
+      cii: app2appBroker.getRemoteConnectionCount(`${COMPAT_PREFIX}-cii`),
+      wc: app2appBroker.getRemoteConnectionCount(`${COMPAT_PREFIX}-wc`),
+      ts: app2appBroker.getRemoteConnectionCount(`${COMPAT_PREFIX}-ts`),
+    }
     : { cii: ciiWss.clients.size, wc: Date.now() - nativeWcLastSeen < 3000 ? 1 : 0, ts: tsWss.clients.size };
 };
 
@@ -177,21 +169,8 @@ httpServer.on('upgrade', (req, socket, head) => {
     ciiWss.handleUpgrade(req, socket, head, (ws) => ciiWss.emit('connection', ws, req));
   } else if (mode === 'native' && path === '/ts') {
     tsWss.handleUpgrade(req, socket, head, (ws) => tsWss.emit('connection', ws, req));
-  } else if (mode === 'compat' && path === COMPAT_CII_PATH) {
-    compatCiiWss.handleUpgrade(req, socket, head, (ws) => {
-      ws.send('pairingcompleted');
-      compatCiiWss.emit('connection', ws, req);
-    });
-  } else if (mode === 'compat' && path === COMPAT_WC_PATH) {
-    compatWcWss.handleUpgrade(req, socket, head, (ws) => {
-      ws.send('pairingcompleted');
-      compatWcWss.emit('connection', ws, req);
-    });
-  } else if (mode === 'compat' && path === COMPAT_TS_PATH) {
-    compatTsWss.handleUpgrade(req, socket, head, (ws) => {
-      ws.send('pairingcompleted');
-      compatTsWss.emit('connection', ws, req);
-    });
+  } else if (mode === 'compat' && app2appBroker.route(path, req, socket, head)) {
+    return;
   } else if (path === '/app2app') {
     app2appWss.handleUpgrade(req, socket, head, (ws) => app2appWss.emit('connection', ws, req));
   } else {
@@ -213,10 +192,11 @@ const wcSocket = startWallClockServer({
 tvState.on('change', (snapshot) => {
   const staleServers = snapshot.mode === 'compat'
     ? [ciiWss, tsWss]
-    : [compatCiiWss, compatWcWss, compatTsWss];
+    : [];
   staleServers.forEach((server) => {
     server.clients.forEach((client) => client.close(1012, 'TV emulator mode changed'));
   });
+  if (snapshot.mode !== 'compat') app2appBroker.closeAll();
 });
 
 // --- SSDP (UDP multicast) ---------------------------------------------------

@@ -11,6 +11,7 @@
   var player = null;
   var currentContentId = null;
   var currentContentIdOverride = null;
+  var currentMode = null;
   var updateTimer = null;
 
   function request(url, options) {
@@ -28,12 +29,27 @@
     });
   }
 
-  function setMode(mode) {
+  function applyMode(mode, announcedContentId) {
+    currentMode = mode;
     document.querySelectorAll('[data-mode]').forEach(function (button) {
       button.classList.toggle('active', button.getAttribute('data-mode') === mode);
     });
     modeLabel.textContent = mode === 'compat' ? 'App2App compatibility' : 'Native DVB-CSS';
-    postState({ mode: mode });
+    if (mode === 'compat') {
+      window.HbbTVMediaSyncCompat.start(video, {
+        contentId: announcedContentId || currentContentId,
+        app2appLocalBaseUrl: (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/app2app-local',
+        app2appRemoteBaseUrl: (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/app2app',
+      });
+    } else {
+      window.HbbTVMediaSyncCompat.stop();
+    }
+  }
+
+  function setMode(mode) {
+    postState({ mode: mode }).then(function (state) {
+      applyMode(state.mode, state.announcedContentId);
+    }).catch(function () {});
   }
 
   function updateCompanionContent(state) {
@@ -43,6 +59,9 @@
       ? 'Using a custom companion URL'
       : 'Following TV content';
     document.getElementById('companion-reset').disabled = !currentContentIdOverride;
+    if (currentMode === 'compat') {
+      window.HbbTVMediaSyncCompat.setContentId(state.announcedContentId || state.contentId);
+    }
   }
 
   function loadContent(contentId, autoPlay, poster) {
@@ -145,7 +164,7 @@
 
   request('/api/state').then(function (state) {
     renderCatalog(state.catalog);
-    setMode(state.mode);
+    applyMode(state.mode, state.announcedContentId);
     updateStatus(state);
     updateCompanionContent(state);
     document.getElementById('companion-url').value = state.contentIdOverride || '';
