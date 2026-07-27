@@ -28,8 +28,6 @@ import StatusSlot from './StatusSlot';
 import { startForegroundSync, stopForegroundSync, addHeartbeatListener, addStopListener } from '../utils/ForegroundSync';
 import brand from '../brand/brand.config';
 import { requestCameraPermission } from '../utils/CameraPermissions';
-import { startSyncBridge, sendSyncBridge, stopSyncBridge } from '../utils/SyncBridgeServer';
-import * as WebBrowser from 'expo-web-browser';
 
 // Minimum interval (ms) between two drift corrections for the same player. The
 // predictive controller is fed from two paths — the player `onProgress`
@@ -60,6 +58,8 @@ const SEEK_LEAD_S = config.MEDIA_SYNC?.SYNC_SEEK_LEAD_S ?? 0.4;
 // content (which rebuffers on seek), letting the rate controller absorb drift.
 const SEEK_THRESHOLD_S = config.MEDIA_SYNC?.SYNC_SEEK_THRESHOLD_S ?? 2;
 const SEEK_THRESHOLD_LIVE_S = config.MEDIA_SYNC?.SYNC_SEEK_THRESHOLD_LIVE_S ?? 5;
+const COMPAT_SEEK_THRESHOLD_S = config.MEDIA_SYNC?.COMPAT_SYNC_SEEK_THRESHOLD_S ?? 20;
+const COMPAT_SEEK_THRESHOLD_LIVE_S = config.MEDIA_SYNC?.COMPAT_SYNC_SEEK_THRESHOLD_LIVE_S ?? 20;
 
 // Tuning for the predictive sync controller, read from config so the
 // precision/battery trade-off can be adjusted without touching the logic.
@@ -71,6 +71,12 @@ const SYNC_CONTROLLER_OPTIONS = {
   deadTimeS: config.MEDIA_SYNC?.SYNC_DEAD_TIME_S ?? 0.35,
   maxRateDelta: config.MEDIA_SYNC?.SYNC_MAX_RATE_DELTA ?? 0.05,
   rateEps: config.MEDIA_SYNC?.SYNC_RATE_EPS ?? 0.002,
+};
+
+const COMPAT_SYNC_CONTROLLER_OPTIONS = {
+  ...SYNC_CONTROLLER_OPTIONS,
+  enterBandS: config.MEDIA_SYNC?.COMPAT_SYNC_ENTER_BAND_S ?? 0.25,
+  exitBandS: config.MEDIA_SYNC?.COMPAT_SYNC_EXIT_BAND_S ?? 0.08,
 };
 
 // Cadència d'enviament de correccions de sincronització a la web companion. La
@@ -85,14 +91,6 @@ const WEB_FEED_INTERVAL_MS = 1000;
 // parsejar un MPD. Detectem el cas web per l'extensió de la URL.
 const isWebContent = (url) =>
   typeof url === 'string' && /\.html?(\?|#|$)/i.test(url);
-
-// A companion URL is treated as an immersive/WebXR experience when it carries an
-// `xr=1` query flag. WebXR does not work inside the in-app WebView (the Android
-// System WebView lacks it), so on Android such content is opened in an external
-// Chrome Custom Tab, and the DVB-CSS sync is relayed over a loopback WebSocket
-// bridge instead of the WebView's `injectJavaScript`.
-const isXrContent = (url) =>
-  typeof url === 'string' && /[?&]xr=1(?:&|#|$)/i.test(url);
 
 // Content-format detectors for the contentId (MPD manifest URL). iOS AVPlayer
 // cannot play MPEG-DASH natively, so on iOS a DASH (MPD) contentId is played in
@@ -115,6 +113,7 @@ const getPlaybackErrorDetails = (event) => {
 export default function TerminalItem({ terminal, onPress, expanded, onToggleExpand }) {
   const { t } = useTranslation();
   const [syncState, setSyncState] = useState(SyncState.DISCONNECTED);
+  const [syncMode, setSyncMode] = useState(null);
   const [audios, setAudios] = useState([]);
   const [videos, setVideos] = useState([]);
   const [selectedAudio, setSelectedAudio] = useState(null);
@@ -134,7 +133,6 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   // la web a pantalla completa dins d'un WebView alimentat amb la sincronització.
   const [companionWebUrl, setCompanionWebUrl] = useState(null);
   const [webModalVisible, setWebModalVisible] = useState(false);
-  const [xrBridgeActive, setXrBridgeActive] = useState(false);
   // iOS DASH playback: URL of the hosted `sync_webplayer` (dash.js) page shown
   // in a full-screen WebView, since iOS AVPlayer cannot play MPEG-DASH. Fed the
   // DVB-CSS sync via `window.__hbbtvSync` (see feedWebView). Null when inactive.
@@ -205,9 +203,6 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   // run without a fresh closure (feed loop, teardown).
   const webPlayerViewRef = useRef(null);
   const webPlayerVisibleRef = useRef(false);
-  // Whether a WebXR companion is currently open in an external Chrome Custom Tab
-  // and being fed through the loopback WebSocket bridge (Android only).
-  const bridgeActiveRef = useRef(false);
   // Throttle de l'aliment a la web companion (veure WEB_FEED_INTERVAL_MS).
   const lastWebFeedRef = useRef(0);
   const lastWebFeedStateRef = useRef({ isPlaying: null, speed: null });
@@ -399,13 +394,21 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       ? pos.exoPlayerPositionSeconds
       : pos.positionSeconds;
     const playerTime = isLive ? playbackTimeRef.current : currentTimeRef.current;
+    const isCompat = service.getMode?.() === 'compat';
+    // App2App carries more transport jitter than native DVB-CSS. Wider
+    // hysteresis and later hard seeks avoid correcting harmless noise.
+    controller.opts = isCompat
+      ? COMPAT_SYNC_CONTROLLER_OPTIONS
+      : SYNC_CONTROLLER_OPTIONS;
 
     lastRef.current = now;
 
     const result = controller.update({
       playerTime,
       tvTime,
-      seekThresholdS: isLive ? SEEK_THRESHOLD_LIVE_S : SEEK_THRESHOLD_S,
+      seekThresholdS: isCompat
+        ? (isLive ? COMPAT_SEEK_THRESHOLD_LIVE_S : COMPAT_SEEK_THRESHOLD_S)
+        : (isLive ? SEEK_THRESHOLD_LIVE_S : SEEK_THRESHOLD_S),
     });
 
     // Publish the controller's real decision for the UI badge (filtered drift +
@@ -607,10 +610,9 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   // (control timestamp de CSS-TS) es tradueix en un missatge amb el timecode i
   // l'estat de reproducció, però que la web pugui mostrar-los sincronitzats.
   const feedWebView = useCallback((pos) => {
-    const bridgeActive = bridgeActiveRef.current;
     const webVisible = webModalVisibleRef.current && !!webViewRef.current;
     const playerVisible = webPlayerVisibleRef.current && !!webPlayerViewRef.current;
-    if ((!webVisible && !playerVisible && !bridgeActive) || !pos) return;
+    if ((!webVisible && !playerVisible) || !pos) return;
     if (pos.positionSeconds == null) return;
     // La web interpola amb el seu propi rellotge; només l'enviem una correcció
     // cada WEB_FEED_INTERVAL_MS, o immediatament si canvia l'estat de
@@ -656,10 +658,6 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
         // ignore
       }
     }
-    // External Custom Tab transport (loopback WebSocket bridge).
-    if (bridgeActive) {
-      sendSyncBridge(payload);
-    }
   }, []);
 
   // Obre la web companion a pantalla completa i desbloqueja l'orientació perquè
@@ -670,42 +668,9 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     lastWebFeedStateRef.current = { isPlaying: null, speed: null };
     setWebNoContent(false);
 
-    // WebXR content: open in an external Chrome Custom Tab (Android) so WebXR
-    // works, relaying sync over a loopback WebSocket bridge. Falls back to the
-    // in-app WebView if the bridge cannot start or on non-Android platforms.
-    const url = companionWebUrlRef.current;
-    if (Platform.OS === 'android' && isXrContent(url)) {
-      const port = await startSyncBridge(0);
-      if (port > 0) {
-        bridgeActiveRef.current = true;
-        setXrBridgeActive(true);
-        startForegroundSync(
-          terminal.getFriendlyName(),
-          t('discovery.syncingWithTv', { defaultValue: 'Sincronizando con la TV' }),
-          t('discovery.stopSync', { defaultValue: 'Detener' })
-        );
-        const sep = url.includes('?') ? '&' : '?';
-        const bridgedUrl = `${url}${sep}syncBridge=${encodeURIComponent(`ws://127.0.0.1:${port}`)}`;
-        // Seed the bridge with the last known position before the tab opens.
-        if (positionRef.current) feedWebView(positionRef.current);
-        try {
-          await WebBrowser.openBrowserAsync(bridgedUrl);
-        } catch (e) {
-          console.warn('Custom Tab open failed:', e?.message);
-        } finally {
-          // openBrowserAsync resolves when the user dismisses the tab.
-          bridgeActiveRef.current = false;
-          setXrBridgeActive(false);
-          stopSyncBridge();
-        }
-        return;
-      }
-      console.warn('Sync bridge unavailable; falling back to in-app WebView');
-    }
-
     setWebModalVisible(true);
     ScreenOrientation.unlockAsync().catch(() => {});
-  }, [feedWebView, terminal, t]);
+  }, []);
 
   // Tanca la web companion i restaura l'orientació vertical de l'app.
   const closeWebModal = useCallback(() => {
@@ -804,11 +769,6 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   const stopEverything = useCallback(() => {
     isActiveRef.current = false;
     stopActivePlayers();
-    if (bridgeActiveRef.current) {
-      bridgeActiveRef.current = false;
-      setXrBridgeActive(false);
-      stopSyncBridge();
-    }
     if (webPlayerVisibleRef.current) {
       webPlayerVisibleRef.current = false;
       setWebPlayerVisible(false);
@@ -873,7 +833,10 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     lastContentIdRef.current = null;
 
     const interDevSyncUrl = terminal.getInterDevSyncURL();
-    if (!interDevSyncUrl) {
+    const app2appUrl = terminal.getApp2AppURL?.() || null;
+    // We can synchronize via native DVB-CSS (InterDevSync) and/or the App2App
+    // compatibility channel. Only bail out if neither transport is available.
+    if (!interDevSyncUrl && !app2appUrl) {
       setError(t('discovery.terminalNoSyncUrl'));
       setIsLoading(false);
       return;
@@ -892,6 +855,15 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       // estado actual sin depender del ciclo de render.
       syncStateRef.current = newState;
       setSyncState(newState);
+      if (newState === SyncState.SYNCHRONIZED) {
+        setSyncMode(service.getMode?.() || null);
+      }
+    });
+
+    service.on('transport-selected', ({ mode }) => {
+      if (!isActiveRef.current) return;
+      if (syncServiceRef.current !== service) return;
+      setSyncMode(mode);
     });
 
     service.on('cii-change', ({ state }) => {
@@ -998,6 +970,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       stopActivePlayers();
       syncStateRef.current = SyncState.DISCONNECTED;
       setSyncState(SyncState.DISCONNECTED);
+      setSyncMode(null);
       setIsLoading(false);
       setAudioPlaying(false);
       setVideoPlaying(false);
@@ -1032,6 +1005,9 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       service.connect(interDevSyncUrl, {
         timelineSelector: config.MEDIA_SYNC?.TIMELINE_SELECTOR || 'urn:dvb:css:timeline:pts',
         tickRate: config.MEDIA_SYNC?.TICK_RATE || 90000,
+        // App2App compatibility mode: if the HbbTV app raised the compat sync
+        // channel, prefer it over native DVB-CSS (and fall back automatically).
+        app2appUrl: app2appUrl,
       });
     } catch (err) {
       console.error('Error iniciant connexió MediaSync:', err);
@@ -1069,8 +1045,6 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
 
     return () => {
       isActiveRef.current = false;
-      bridgeActiveRef.current = false;
-      stopSyncBridge();
       stopForegroundSync();
       if (connectTimeoutRef.current) {
         clearTimeout(connectTimeoutRef.current);
@@ -1101,7 +1075,6 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       lastContentIdRef.current = null;
       setCompanionWebUrl(null);
       setWebModalVisible(false);
-      setXrBridgeActive(false);
       setWebNoContent(false);
       companionWebUrlRef.current = null;
       webModalVisibleRef.current = false;
@@ -1205,7 +1178,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   // seleccionar el componente (estando en primer plano) y aquí solo evitamos
   // detenerlo durante la ventana de reconexión.
   useEffect(() => {
-    if (audioPlaying || videoPlaying || playbackIntent || xrBridgeActive) {
+    if (audioPlaying || videoPlaying || playbackIntent) {
       startForegroundSync(
         terminal.getFriendlyName(),
         t('discovery.syncingWithTv', { defaultValue: 'Sincronizando con la TV' }),
@@ -1214,7 +1187,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     } else {
       stopForegroundSync();
     }
-  }, [audioPlaying, videoPlaying, playbackIntent, xrBridgeActive, terminal, t]);
+  }, [audioPlaying, videoPlaying, playbackIntent, terminal, t]);
 
   // Acción "Detener" de la notificación del foreground service: permite al
   // usuario parar el reproductor y la sincronización con la app en segundo
@@ -1410,6 +1383,9 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   };
 
   const isConnected = syncState === SyncState.SYNCHRONIZED;
+  const connectedStatusLabel = syncMode === 'compat'
+    ? t('discovery.statusConnectedCompat')
+    : t('discovery.statusConnected');
 
   // iOS + DASH: playback happens in the dash.js WebView (see openWebPlayer), so
   // the native <Video> players are not mounted. iOS + HLS and Android stay on
@@ -1548,7 +1524,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
             <Text style={styles.name}>{terminal.getFriendlyName()}</Text>
             {hasMediaSync && (
               <Text style={[styles.status, isConnected && styles.statusConnected]}>
-                {isConnected ? t('discovery.statusConnected') : t('discovery.statusStandby')}
+                {isConnected ? connectedStatusLabel : t('discovery.statusStandby')}
               </Text>
             )}
           </View>

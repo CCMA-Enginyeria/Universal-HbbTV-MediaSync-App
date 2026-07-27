@@ -5,6 +5,7 @@
 <title>DASH.js Media Sync Viewer</title>
 <script src="js/hbbtvlib.js"></script>
 <script src="js/hbbtv-manager-polyfill.js"></script>
+<script src="http://ccma-erst-projects.s3-website-eu-west-1.amazonaws.com/hbbtv-compat/hbbtv-mediasync-compat.js"></script>
 <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
 <style>
 html,body{height:100%;margin:0;padding:0;overflow:hidden;background:#000;}
@@ -99,6 +100,9 @@ function initPlayer(){
 
 function initSync(){
   try{
+    if(window.HbbTVMediaSyncCompat){
+      window.HbbTVMediaSyncCompat.start(v,{contentId:DASH_URL});
+    }
     if(typeof oipfObjectFactory==='undefined'){log('No oipfObjectFactory');return;}
     ms=oipfObjectFactory.createMediaSynchroniser();
     if(!ms){log('createMediaSynchroniser failed');return;}
@@ -125,6 +129,10 @@ function initSync(){
     log('MediaSynchroniser ready');
   }catch(e){log('Sync init error: '+e.message);}
 }
+
+window.addEventListener('unload',function(){
+  if(window.HbbTVMediaSyncCompat){window.HbbTVMediaSyncCompat.stop();}
+});
 </script>
 </body>
 </html>

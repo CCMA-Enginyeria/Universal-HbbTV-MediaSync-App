@@ -6,6 +6,7 @@
   <title>Basic Media Sync Viewer</title>
   <script src="js/hbbtvlib.js"></script>
   <script src="js/hbbtv-manager-polyfill.js"></script>
+  <script src="http://ccma-erst-projects.s3-website-eu-west-1.amazonaws.com/hbbtv-compat/hbbtv-mediasync-compat.js"></script>
   <style>
     html,
     body {
@@ -183,6 +184,9 @@
     }
 
     function destroySync() {
+      if (window.HbbTVMediaSyncCompat) {
+        window.HbbTVMediaSyncCompat.stop();
+      }
       if (!ms) { return; }
       try {
         removeMsListeners(ms);
@@ -205,6 +209,9 @@
 
     function initSync(contentUrl) {
       try {
+        if (window.HbbTVMediaSyncCompat) {
+          window.HbbTVMediaSyncCompat.start(v, { contentId: contentUrl });
+        }
         if (typeof oipfObjectFactory === 'undefined') { log('No oipfObjectFactory'); return; }
         ms = oipfObjectFactory.createMediaSynchroniser();
         if (!ms) { log('createMediaSynchroniser failed'); return; }
@@ -234,6 +241,8 @@
         log('MediaSynchroniser ready');
       } catch (e) { log('Sync init error: ' + e.message); }
     }
+
+    window.addEventListener('unload', destroySync);
   </script>
 </body>
 

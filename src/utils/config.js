@@ -41,6 +41,10 @@ export const config = {
   MEDIA_SYNC: {
     // Acceptable synchronization tolerance in milliseconds.
     TOLERANCE_MS: 100,
+    // App2App compatibility mode adds WebSocket/bridge latency and is expected
+    // to be less accurate than native DVB-CSS. Accept a noisier wall-clock
+    // correlation so synchronization can still become operational.
+    COMPAT_TOLERANCE_MS: 500,
     // Wall-clock synchronization interval.
     WC_SYNC_INTERVAL_MS: 1000,
     // Player progress callback sampling interval (ms). ExoPlayer updates its
@@ -69,6 +73,15 @@ export const config = {
     SYNC_ENTER_BAND_S: 0.1,
     // Return to normal speed (lock) when the filtered drift drops below this (seconds).
     SYNC_EXIT_BAND_S: 0.02,
+    // Compatibility mode deliberately corrects less often: App2App timestamps
+    // carry more jitter, so wider hysteresis avoids reacting to transport noise.
+    COMPAT_SYNC_ENTER_BAND_S: 0.25,
+    COMPAT_SYNC_EXIT_BAND_S: 0.08,
+    // App2App timestamps are intentionally corrected with playback-rate changes
+    // unless drift exceeds 20 seconds, avoiding disruptive seeks caused by
+    // compatibility-transport jitter.
+    COMPAT_SYNC_SEEK_THRESHOLD_S: 20,
+    COMPAT_SYNC_SEEK_THRESHOLD_LIVE_S: 20,
     // Time budget over which the predicted drift is nulled (seconds). Larger =
     // gentler corrections; smaller = faster but nearer the overshoot edge.
     SYNC_HORIZON_S: 3.0,

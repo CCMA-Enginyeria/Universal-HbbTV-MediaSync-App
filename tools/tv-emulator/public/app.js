@@ -12,6 +12,7 @@
   var currentContentId = null;
   var currentContentIdOverride = null;
   var currentMode = null;
+  var compatStarted = false;
   var updateTimer = null;
 
   function request(url, options) {
@@ -35,14 +36,13 @@
       button.classList.toggle('active', button.getAttribute('data-mode') === mode);
     });
     modeLabel.textContent = mode === 'compat' ? 'App2App compatibility' : 'Native DVB-CSS';
-    if (mode === 'compat') {
+    if (!compatStarted) {
       window.HbbTVMediaSyncCompat.start(video, {
         contentId: announcedContentId || currentContentId,
         app2appLocalBaseUrl: (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/app2app-local',
         app2appRemoteBaseUrl: (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/app2app',
       });
-    } else {
-      window.HbbTVMediaSyncCompat.stop();
+      compatStarted = true;
     }
   }
 
@@ -112,6 +112,20 @@
     connectionStatus.classList.toggle('connected', connected);
   }
 
+  function reconcileState(state) {
+    updateStatus(state);
+    if (state.mode !== currentMode) {
+      applyMode(state.mode, state.announcedContentId);
+    }
+    if (state.mode === 'compat') {
+      window.HbbTVMediaSyncCompat.setContentId(state.announcedContentId || state.contentId);
+    }
+    if (state.contentIdOverride !== currentContentIdOverride ||
+        state.contentId !== currentContentId) {
+      updateCompanionContent(state);
+    }
+  }
+
   function pushPlaybackState() {
     if (!currentContentId) return;
     postState({
@@ -172,7 +186,7 @@
     loadContent(state.contentId, false, selected && selected.poster);
     updateTimer = setInterval(pushPlaybackState, 1000);
     setInterval(function () {
-      request('/api/state').then(updateStatus).catch(function () {});
+      request('/api/state').then(reconcileState).catch(function () {});
     }, 1500);
   }).catch(function (err) {
     emptyState.textContent = 'Could not load emulator state: ' + err.message;

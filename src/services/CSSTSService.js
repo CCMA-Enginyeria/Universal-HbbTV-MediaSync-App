@@ -353,6 +353,13 @@ export class CSSTSService extends EventEmitter {
    * - Timeline Unavailable: { timelineSpeedMultiplier: null }
    */
   handleMessage(data) {
+    // The App2App bridge emits this transport control frame after pairing. It
+    // is not a CSS-TS control timestamp and must not reach the JSON parser.
+    if (data === 'pairingcompleted') {
+      console.log('🔗 TS: App2App pairing completed');
+      return;
+    }
+
     try {
       const message = JSON.parse(data);
       console.log('📨 TS: Missatge rebut', message);

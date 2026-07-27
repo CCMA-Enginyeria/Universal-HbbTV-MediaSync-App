@@ -56,7 +56,7 @@ export class CSSCIIService extends EventEmitter {
   /**
    * Connecta al servidor CSS-CII
    */
-  connect() {
+  async connect() {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       console.warn('⚠️  CII: Ja hi ha una connexió activa');
       return;
@@ -68,31 +68,44 @@ export class CSSCIIService extends EventEmitter {
       return;
     }
 
-    console.log('🔌 CII: Connectant a', this.interDevSyncUrl);
+    console.log('🔌 CII: Connecting to', this.interDevSyncUrl);
+    console.log('🔌 CII: URL breakdown — protocol:', this.interDevSyncUrl.split('://')[0],
+      '| host:', this.interDevSyncUrl.split('://')[1]?.split('/')[0],
+      '| path:', '/' + (this.interDevSyncUrl.split('://')[1]?.split('/').slice(1).join('/') || ''));
 
     try {
       this.ws = new WebSocket(this.interDevSyncUrl);
 
       this.ws.onopen = () => {
-        console.log('✅ CII: Connexió establerta');
+        console.log('✅ CII: Connection established to', this.interDevSyncUrl);
         this.isConnected = true;
         this.reconnectAttempts = 0;
         this.emit('connected');
       };
 
       this.ws.onclose = (event) => {
-        console.log('🔌 CII: Connexió tancada', event.code, event.reason);
+        console.log('🔌 CII: Connection closed — code:', event.code,
+          '| reason:', event.reason || '(empty)',
+          '| wasClean:', event.wasClean,
+          '| url:', this.interDevSyncUrl);
+        if (event.code === 1006) {
+          console.warn('⚠️  CII: Code 1006 = abnormal closure (no close frame received).',
+            'Common causes: server rejected the WebSocket upgrade (403 = wrong URL or auth required),',
+            'server not reachable, or CORS/network issue.');
+          console.warn('⚠️  CII: Verify that the InterDevSync URL from DIAL is correct and the TV CII endpoint is accessible.');
+        }
         this.isConnected = false;
         this.emit('disconnected', { code: event.code, reason: event.reason });
 
-        // Reconnexió automàtica si no és un tancament intencionat
+        // Auto-reconnect if not an intentional close
         if (!event.wasClean && this.reconnectAttempts < this.maxReconnectAttempts) {
           this.scheduleReconnect();
         }
       };
 
       this.ws.onerror = (error) => {
-        console.error('❌ CII: Error de WebSocket', error);
+        console.error('❌ CII: WebSocket error — url:', this.interDevSyncUrl,
+          '| message:', error.message || JSON.stringify(error));
         this.emit('error', error);
       };
 
@@ -117,7 +130,7 @@ export class CSSCIIService extends EventEmitter {
     
     setTimeout(() => {
       if (!this.isConnected) {
-        this.connect();
+        this.connect(); // fire-and-forget on reconnect is fine
       }
     }, delay);
   }
@@ -126,6 +139,13 @@ export class CSSCIIService extends EventEmitter {
    * Processa missatges CII rebuts
    */
   handleMessage(data) {
+    // The HbbTV App2App bridge sends this control frame to both peers when the
+    // channel is paired. It is transport metadata, not a CSS-CII JSON message.
+    if (data === 'pairingcompleted') {
+      console.log('🔗 CII: App2App pairing completed');
+      return;
+    }
+
     try {
       const message = JSON.parse(data);
       console.log('📨 CII: Missatge rebut', message);

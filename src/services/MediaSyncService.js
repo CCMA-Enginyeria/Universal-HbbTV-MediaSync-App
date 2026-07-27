@@ -63,6 +63,18 @@ export class MediaSyncService extends EventEmitter {
     // Timer per actualitzacions periòdiques
     this.updateTimer = null;
     this.updateInterval = mediaSyncConfig?.MEDIA_SYNC?.POSITION_UPDATE_INTERVAL_MS ?? 250; // ms
+
+    // Selecció de transport (mode compatibilitat App2App vs DVB-CSS natiu).
+    // `candidates` és una llista ordenada d'URLs d'entrada CSS-CII a provar. El
+    // primer que respongui amb un missatge CII vàlid dins del `probeTimeoutMs`
+    // es queda seleccionat; si no respon, es prova el següent (fallback).
+    this.candidates = [];
+    this.candidateIndex = 0;
+    this.probeTimer = null;
+    this.probeTimeoutMs = 12000;
+    this.probing = false; // cert fins que un candidat dóna un CII vàlid
+    this.mode = null; // 'compat' | 'native' un cop seleccionat
+    this.compatChannelPrefix = 'hbbtv-sync';
   }
 
   /**
@@ -76,21 +88,171 @@ export class MediaSyncService extends EventEmitter {
       return;
     }
 
-    this.interDevSyncUrl = interDevSyncUrl;
     this.timelineSelector = options.timelineSelector || DEFAULT_TIMELINE_SELECTOR;
     this.tickRate = options.tickRate || DEFAULT_TICK_RATE;
     this.realIP = options.realIP || null; // IP real per substituir 0.0.0.0
+    this.probeTimeoutMs = options.compatProbeTimeoutMs || 2000;
+    this.compatChannelPrefix = options.compatChannelPrefix || 'hbbtv-sync';
 
-    // Corregir la IP de la URL inicial si cal
-    this.interDevSyncUrl = this.fixInvalidIP(interDevSyncUrl);
+    // URL DVB-CSS nativa (X_HbbTV_InterDevSyncURL) i URL del mode compatibilitat
+    // (canal App2App CSS-CII), totes dues amb la IP corregida si cal.
+    const nativeUrl = interDevSyncUrl ? this.fixInvalidIP(interDevSyncUrl) : null;
+    const app2appUrl = options.app2appUrl ? this.fixInvalidIP(options.app2appUrl) : null;
+    const compatUrl = this.buildCompatCiiUrl(app2appUrl);
+    // Per defecte preferim el canal de compatibilitat quan està disponible: si
+    // l'app HbbTV l'ha aixecat, hi connectem directament sense provar DVB-CSS.
+    const preferCompat = options.preferCompat !== false;
+
+    const ordered = preferCompat ? [compatUrl, nativeUrl] : [nativeUrl, compatUrl];
+    const seen = new Set();
+    this.candidates = [];
+    ordered.forEach((url) => {
+      if (!url || seen.has(url)) return;
+      seen.add(url);
+      this.candidates.push({ url, mode: url === compatUrl ? 'compat' : 'native' });
+    });
+
+    if (this.candidates.length === 0) {
+      console.error('❌ MediaSync: cap URL de sincronització disponible (ni nativa ni compat)');
+      this.setState(SyncState.ERROR);
+      this.emit('error', { service: 'cii', error: new Error('No sync URL available') });
+      return;
+    }
 
     console.log('🎬 MediaSync: Iniciant connexió...');
-    console.log(`   InterDevSync URL: ${this.interDevSyncUrl}`);
     console.log(`   Timeline: ${this.timelineSelector}`);
+    console.log(`   Candidats de transport: ${this.candidates.map((c) => `${c.mode}`).join(' → ')}`);
 
-    // Pas 1: Connectar a CSS-CII
+    this.candidateIndex = 0;
+    this.mode = null;
+    this.tryNextCandidate();
+  }
+
+  /**
+   * Construeix l'URL del canal App2App CSS-CII del mode compatibilitat a partir
+   * de la URL base App2App (X_HbbTV_App2AppURL) del terminal.
+   * @param {string|null} app2appUrl - URL base App2App remota
+   * @returns {string|null} URL del canal CSS-CII de compatibilitat
+   */
+  buildCompatCiiUrl(app2appUrl) {
+    if (!app2appUrl) return null;
+    const base = app2appUrl.replace(/\/+$/, '');
+    return `${base}/${this.compatChannelPrefix}-cii`;
+  }
+
+  /**
+   * Checks that a service URL belongs to the selected App2App compatibility
+   * transport. Compatibility mode is all-or-nothing: CII, WC and TS must all
+   * use the WebSocket channels exposed by the same compatibility profile.
+   */
+  isCompatServiceUrl(url, service) {
+    if (typeof url !== 'string' || !/^wss?:\/\//i.test(url)) return false;
+    const expectedSuffix = `/${this.compatChannelPrefix}-${service}`;
+    return url.replace(/\/+$/, '').endsWith(expectedSuffix);
+  }
+
+  /**
+   * Prova el següent candidat de transport de la llista. Si s'esgoten, emet error.
+   */
+  tryNextCandidate() {
+    if (this.candidateIndex >= this.candidates.length) {
+      console.error('❌ MediaSync: tots els transports han fallat');
+      this.setState(SyncState.ERROR);
+      this.emit('error', { service: 'cii', error: new Error('All sync transports failed') });
+      return;
+    }
+
+    const candidate = this.candidates[this.candidateIndex];
+    const hasNext = this.candidateIndex < this.candidates.length - 1;
+    this.interDevSyncUrl = candidate.url;
+    this.mode = candidate.mode;
+    // Només fem "probe" (amb fallback) si hi ha un altre candidat de reserva.
+    this.probing = hasNext;
+
+    console.log(`🔀 MediaSync: provant transport '${candidate.mode}' → ${candidate.url}`);
     this.setState(SyncState.CONNECTING_CII);
-    await this.connectCII();
+    this.connectCII();
+
+    if (hasNext) {
+      this.startProbeTimer();
+    }
+  }
+
+  /**
+   * Inicia el temporitzador de probe: si el transport actual no dóna un CII
+   * vàlid a temps, passa al següent candidat.
+   */
+  startProbeTimer() {
+    this.clearProbeTimer();
+    this.probeTimer = setTimeout(() => {
+      if (this.probing) {
+        console.warn(`⏱️  MediaSync: transport '${this.mode}' sense resposta CII; provant el següent`);
+        this.advanceCandidate();
+      }
+    }, this.probeTimeoutMs);
+  }
+
+  clearProbeTimer() {
+    if (this.probeTimer) {
+      clearTimeout(this.probeTimer);
+      this.probeTimer = null;
+    }
+  }
+
+  /**
+   * Marca el transport actual com a vàlid (ha arribat un CII real) i cancel·la
+   * qualsevol fallback pendent.
+   */
+  markProbeSuccess() {
+    if (!this.probing) return;
+    this.probing = false;
+    this.clearProbeTimer();
+    console.log(`✅ MediaSync: transport '${this.mode}' seleccionat`);
+    this.emit('transport-selected', { mode: this.mode, url: this.interDevSyncUrl });
+  }
+
+  /**
+   * Descarta el candidat actual i prova el següent, sense notificar
+   * desconnexió als consumidors (encara estem seleccionant transport).
+   */
+  advanceCandidate() {
+    this.clearProbeTimer();
+    this.probing = false;
+    this.cleanupServices();
+    this.candidateIndex += 1;
+    this.tryNextCandidate();
+  }
+
+  /**
+   * Allibera els serveis CSS actius sense canviar l'estat públic. S'usa durant
+   * la selecció de transport (fallback entre candidats).
+   */
+  cleanupServices() {
+    this.stopUpdateTimer();
+    if (this.tsService) {
+      this.tsService.destroy();
+      this.tsService = null;
+    }
+    if (this.wcService) {
+      this.wcService.destroy();
+      this.wcService = null;
+    }
+    if (this.ciiService) {
+      this.ciiService.destroy();
+      this.ciiService = null;
+    }
+    this.syncQuality = {
+      wcDispersion: Infinity,
+      tsAvailable: false,
+      lastUpdate: null,
+    };
+  }
+
+  /**
+   * Retorna el mode de transport seleccionat ('compat' | 'native' | null).
+   */
+  getMode() {
+    return this.mode;
   }
 
   /**
@@ -130,6 +292,20 @@ export class MediaSyncService extends EventEmitter {
   async connectCII() {
     this.ciiService = new CSSCIIService(this.interDevSyncUrl);
 
+    // A compatibility transport is selected only after CII has advertised
+    // valid App2App endpoints for BOTH downstream protocols. This prevents a
+    // mixed session such as compat CII + native WC or TS.
+    this.ciiService.on('message', () => {
+      if (this.mode === 'compat') {
+        const wcUrl = this.fixInvalidIP(this.ciiService.getWallClockUrl());
+        const tsUrl = this.fixInvalidIP(this.ciiService.getTimelineSyncUrl());
+        if (!this.isCompatServiceUrl(wcUrl, 'wc') || !this.isCompatServiceUrl(tsUrl, 'ts')) {
+          return;
+        }
+      }
+      this.markProbeSuccess();
+    });
+
     // Escoltar events CII
     this.ciiService.on('connected', () => {
       console.log('✅ MediaSync: CII connectat');
@@ -138,11 +314,21 @@ export class MediaSyncService extends EventEmitter {
     });
 
     this.ciiService.on('disconnected', () => {
+      if (this.probing) {
+        console.warn('🔀 MediaSync: CII caigut durant la selecció de transport; provant el següent');
+        this.advanceCandidate();
+        return;
+      }
       console.log('🔌 MediaSync: CII desconnectat');
       this.handleDisconnection('cii');
     });
 
     this.ciiService.on('error', (error) => {
+      if (this.probing) {
+        console.warn('🔀 MediaSync: error CII durant la selecció de transport; provant el següent', error?.message);
+        this.advanceCandidate();
+        return;
+      }
       console.error('❌ MediaSync: Error CII', error);
       this.emit('error', { service: 'cii', error });
     });
@@ -154,6 +340,12 @@ export class MediaSyncService extends EventEmitter {
       if (fixedWcUrl !== wcUrl) {
         console.log('📡 MediaSync: WC URL corregida', fixedWcUrl);
       }
+      if (this.mode === 'compat' && !this.isCompatServiceUrl(fixedWcUrl, 'wc')) {
+        console.warn('🔀 MediaSync: compat CII advertised a non-compat WC endpoint; rejecting the whole transport');
+        if (this.probing) this.advanceCandidate();
+        else this.emit('error', { service: 'wc', error: new Error('Invalid compatibility WC URL') });
+        return;
+      }
       this.connectWC(fixedWcUrl);
     });
 
@@ -164,8 +356,14 @@ export class MediaSyncService extends EventEmitter {
       if (fixedTsUrl !== tsUrl) {
         console.log('📡 MediaSync: TS URL corregida', fixedTsUrl);
       }
+      if (this.mode === 'compat' && !this.isCompatServiceUrl(fixedTsUrl, 'ts')) {
+        console.warn('🔀 MediaSync: compat CII advertised a non-compat TS endpoint; rejecting the whole transport');
+        if (this.probing) this.advanceCandidate();
+        else this.emit('error', { service: 'ts', error: new Error('Invalid compatibility TS URL') });
+        return;
+      }
       // Esperarem que WC estigui sincronitzat abans de connectar TS
-      if (this.wcService && this.wcService.isSynchronized()) {
+      if (this.wcService && this.wcService.isSynchronized(this.getWcToleranceMs())) {
         this.connectTS(fixedTsUrl);
       }
     });
@@ -231,7 +429,7 @@ export class MediaSyncService extends EventEmitter {
       this.emit('wc-sync', syncInfo);
 
       // Quan WC està sincronitzat, connectar TS si tenim la URL
-      if (this.wcService.isSynchronized() && this.ciiService) {
+      if (this.wcService.isSynchronized(this.getWcToleranceMs()) && this.ciiService) {
         const tsUrl = this.ciiService.getTimelineSyncUrl();
         if (tsUrl && !this.tsService) {
           this.setState(SyncState.WAITING_TS);
@@ -409,10 +607,22 @@ export class MediaSyncService extends EventEmitter {
   }
 
   /**
+   * Obté la dispersió màxima de Wall Clock acceptada pel transport actual.
+   * App2App passa per un bridge WebSocket i, per tant, és menys precís que el
+   * DVB-CSS natiu; el mode compatibilitat usa un marge més ampli.
+   */
+  getWcToleranceMs() {
+    if (this.mode === 'compat') {
+      return mediaSyncConfig.MEDIA_SYNC?.COMPAT_TOLERANCE_MS ?? 500;
+    }
+    return mediaSyncConfig.MEDIA_SYNC?.TOLERANCE_MS ?? 100;
+  }
+
+  /**
    * Comprova si està completament sincronitzat
    */
   isSynchronized() {
-    const wcSynced = this.wcService?.isSynchronized(mediaSyncConfig.MEDIA_SYNC?.TOLERANCE_MS || 100);
+    const wcSynced = this.wcService?.isSynchronized(this.getWcToleranceMs());
     const tsAvailable = this.tsService?.isTimelineAvailable();
     return wcSynced && tsAvailable;
   }
@@ -549,7 +759,10 @@ export class MediaSyncService extends EventEmitter {
    */
   disconnect() {
     console.log('🔌 MediaSync: Desconnectant...');
-    
+
+    this.clearProbeTimer();
+    this.probing = false;
+
     this.stopUpdateTimer();
 
     if (this.tsService) {

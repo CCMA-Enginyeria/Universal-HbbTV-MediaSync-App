@@ -60,7 +60,7 @@ const WC_URL = `udp://${IP}:${WC_PORT}`;
 // App2App compatibility-mode channels. These mirror the native DVB-CSS trio but
 // run entirely over App2App WebSockets, so a companion can synchronise even
 // when native DVB-CSS is unavailable. Channel names follow the `hbbtv-sync`
-// prefix used by hbbtv-compat/hbbtv-mediasync-compat.js and the mobile
+// prefix used by www/hbbtv-compat/hbbtv-mediasync-compat.js and the mobile
 // MediaSyncService compat client.
 const COMPAT_PREFIX = process.env.EMU_COMPAT_PREFIX || 'hbbtv-sync';
 const COMPAT_CII_PATH = `/app2app/${COMPAT_PREFIX}-cii`;
@@ -169,7 +169,8 @@ httpServer.on('upgrade', (req, socket, head) => {
     ciiWss.handleUpgrade(req, socket, head, (ws) => ciiWss.emit('connection', ws, req));
   } else if (mode === 'native' && path === '/ts') {
     tsWss.handleUpgrade(req, socket, head, (ws) => tsWss.emit('connection', ws, req));
-  } else if (mode === 'compat' && app2appBroker.route(path, req, socket, head)) {
+  } else if ((mode === 'compat' || path.startsWith('/app2app-local/')) &&
+             app2appBroker.route(path, req, socket, head)) {
     return;
   } else if (path === '/app2app') {
     app2appWss.handleUpgrade(req, socket, head, (ws) => app2appWss.emit('connection', ws, req));
@@ -196,7 +197,7 @@ tvState.on('change', (snapshot) => {
   staleServers.forEach((server) => {
     server.clients.forEach((client) => client.close(1012, 'TV emulator mode changed'));
   });
-  if (snapshot.mode !== 'compat') app2appBroker.closeAll();
+  if (snapshot.mode !== 'compat') app2appBroker.closeRemote();
 });
 
 // --- SSDP (UDP multicast) ---------------------------------------------------

@@ -98,13 +98,11 @@ function createApp2AppBroker({ localPrefix, remotePrefix, log = console.log }) {
     return count;
   }
 
-  function closeAll(reason = 'TV emulator mode changed') {
-    [localWss, remoteWss].forEach((server) => {
-      server.clients.forEach((client) => client.close(1012, reason));
-    });
+  function closeRemote(reason = 'TV emulator mode changed') {
+    remoteWss.clients.forEach((client) => client.close(1012, reason));
   }
 
-  return { closeAll, getRemoteConnectionCount, route };
+  return { closeRemote, getRemoteConnectionCount, route };
 }
 
 module.exports = { createApp2AppBroker };

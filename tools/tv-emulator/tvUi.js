@@ -10,7 +10,7 @@ const STATIC_FILES = {
   '/tv/app.js': ['app.js', 'application/javascript; charset=utf-8'],
   '/tv/styles.css': ['styles.css', 'text/css; charset=utf-8'],
   '/tv/fallback.jpg': ['../../../assets/preview.jpg', 'image/jpeg'],
-  '/tv/hbbtv-mediasync-compat.js': ['../../../hbbtv-compat/hbbtv-mediasync-compat.js', 'application/javascript; charset=utf-8'],
+  '/tv/hbbtv-mediasync-compat.js': ['../../../www/hbbtv-compat/hbbtv-mediasync-compat.js', 'application/javascript; charset=utf-8'],
 };
 
 function sendJson(res, status, body) {

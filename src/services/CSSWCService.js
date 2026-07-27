@@ -265,6 +265,13 @@ export class CSSWCService extends EventEmitter {
    * }
    */
   handleResponse(data) {
+    // App2App pairing metadata is delivered on the same socket as CSS-WC data.
+    // Ignore it before parsing the JSON wall-clock response.
+    if (data === 'pairingcompleted') {
+      console.log('🔗 WC: App2App pairing completed');
+      return;
+    }
+
     const receiveTime = this.wallClock.getLocalTimeNanos();
     
     try {
