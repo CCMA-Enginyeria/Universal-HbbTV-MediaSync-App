@@ -68,6 +68,11 @@ the mobile app:
 Only the selected stack accepts connections. Changing mode closes clients from
 the previous stack, which prevents mixed native/compatibility sessions.
 
+Compatibility CII, wall clock and timeline messages are generated in the TV
+page by the reusable `www/hbbtv-compat/hbbtv-mediasync-compat.js` module. The Node
+emulator only provides the App2App local/remote pairing relay, so this mode tests
+the same browser-side code intended for a real HbbTV application.
+
 ## Options (environment variables)
 
 | Variable | Default | Description |
