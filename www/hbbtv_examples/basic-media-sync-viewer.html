@@ -4,9 +4,78 @@
 <head>
   <meta charset="UTF-8">
   <title>Basic Media Sync Viewer</title>
+  <script>
+    (function () {
+      var entries = [];
+      var MAX_ENTRIES = 100;
+      var methods = ['log', 'info', 'warn', 'error', 'debug'];
+
+      function format(value) {
+        if (value instanceof Error) {
+          return value.stack || value.message || String(value);
+        }
+        if (typeof value === 'string') { return value; }
+        if (typeof value === 'undefined') { return 'undefined'; }
+        try { return JSON.stringify(value); }
+        catch (error) { return String(value); }
+      }
+
+      function render() {
+        var output = document.getElementById('s');
+        if (!output) { return; }
+        output.textContent = entries.join('\n');
+        output.scrollTop = output.scrollHeight;
+      }
+
+      for (var i = 0; i < methods.length; i++) {
+        (function (method) {
+          var original = typeof console[method] === 'function' ? console[method] : null;
+          console[method] = function () {
+            var parts = [];
+            for (var j = 0; j < arguments.length; j++) {
+              parts.push(format(arguments[j]));
+            }
+            entries.push('[' + method.toUpperCase() + '] ' + parts.join(' '));
+            if (entries.length > MAX_ENTRIES) { entries.shift(); }
+            render();
+            if (original) { original.apply(console, arguments); }
+          };
+        })(methods[i]);
+      }
+
+      window.mediaSyncCompatScriptState = 'pending';
+      window.onMediaSyncCompatLoad = function () {
+        window.mediaSyncCompatScriptState = 'loaded';
+        console.log('MediaSyncCompat script loaded; global=' +
+          (typeof window.HbbTVMediaSyncCompat) +
+          '; start=' + !!(window.HbbTVMediaSyncCompat && window.HbbTVMediaSyncCompat.start));
+      };
+      window.onMediaSyncCompatError = function () {
+        window.mediaSyncCompatScriptState = 'load-error';
+        console.error('MediaSyncCompat script load failed; pageProtocol=' + window.location.protocol);
+      };
+      window.addEventListener('error', function (event) {
+        console.error('Window error: ' + (event.message || 'unknown') +
+          '; source=' + (event.filename || 'unknown') +
+          '; line=' + (event.lineno || 0) + ':' + (event.colno || 0));
+      });
+
+      window.addEventListener('DOMContentLoaded', function () {
+        render();
+        var compatScript = document.getElementById('mediasync-compat-script');
+        console.log('MediaSyncCompat diagnostic: state=' + window.mediaSyncCompatScriptState +
+          '; global=' + (typeof window.HbbTVMediaSyncCompat) +
+          '; pageProtocol=' + window.location.protocol +
+          '; scriptSrc=' + (compatScript ? compatScript.src : 'missing'));
+      });
+    })();
+  </script>
   <script src="js/hbbtvlib.js"></script>
   <script src="js/hbbtv-manager-polyfill.js"></script>
-  <script src="http://ccma-erst-projects.s3-website-eu-west-1.amazonaws.com/hbbtv-compat/hbbtv-mediasync-compat.js"></script>
+  <script id="mediasync-compat-script"
+    src="../hbbtv-compat/hbbtv-mediasync-compat.js"
+    onload="onMediaSyncCompatLoad()"
+    onerror="onMediaSyncCompatError()"></script>
   <style>
     html,
     body {
@@ -31,6 +100,9 @@
       position: fixed;
       top: 10px;
       left: 10px;
+      right: 10px;
+      max-height: 35%;
+      overflow: hidden;
       color: #0f0;
       font-family: monospace;
       font-size: 12px;
@@ -38,7 +110,8 @@
       padding: 6px 10px;
       border-radius: 4px;
       z-index: 10;
-      white-space: pre-line;
+      white-space: pre-wrap;
+      word-break: break-word;
     }
   </style>
 </head>
@@ -76,7 +149,7 @@
       }
       return c ? c.url : '';
     }
-    function log(m) { console.log(m); s.textContent = m; }
+    function log(m) { console.log(m); }
 
     window.onload = function () {
       if (typeof hbbtvlib_initialize !== 'undefined') { hbbtvlib_initialize(); hbbtvlib_show(); }
@@ -209,6 +282,7 @@
 
     function initSync(contentUrl) {
       try {
+        log('Initialising MediaSynchroniser with contentIdOverride: ' + contentUrl + ' exist polyfill ' + !!window.HbbTVMediaSyncCompat);
         if (window.HbbTVMediaSyncCompat) {
           window.HbbTVMediaSyncCompat.start(v, { contentId: contentUrl });
         }
@@ -230,7 +304,7 @@
           var code = (arg && arg.type) ? ms.lastError : arg;
           log('Sync error: ' + code);
         });
-        ms.initMediaSynchroniser(v, 'urn:dvb:css:timeline:pts');
+        ms.initMediaSynchroniser(v, 'urn:dvb:css:timeline:mpd:period:rel:1000');
         var en = (typeof ms.enableInterDeviceSync === 'function') ? ms.enableInterDeviceSync :
           (typeof ms.enableInterDevSync === 'function') ? ms.enableInterDevSync : null;
         if (en) {

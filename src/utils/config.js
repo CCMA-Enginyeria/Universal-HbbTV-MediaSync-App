@@ -72,11 +72,11 @@ export const config = {
     // never engages the controller; the audio then stays glued at rate 1.0.
     SYNC_ENTER_BAND_S: 0.1,
     // Return to normal speed (lock) when the filtered drift drops below this (seconds).
-    SYNC_EXIT_BAND_S: 0.02,
+    SYNC_EXIT_BAND_S: 0.01,
     // Compatibility mode deliberately corrects less often: App2App timestamps
     // carry more jitter, so wider hysteresis avoids reacting to transport noise.
     COMPAT_SYNC_ENTER_BAND_S: 0.25,
-    COMPAT_SYNC_EXIT_BAND_S: 0.08,
+    COMPAT_SYNC_EXIT_BAND_S: 0.02,
     // App2App timestamps are intentionally corrected with playback-rate changes
     // unless drift exceeds 20 seconds, avoiding disruptive seeks caused by
     // compatibility-transport jitter.
