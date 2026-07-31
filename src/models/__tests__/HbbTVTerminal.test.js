@@ -30,6 +30,11 @@ describe('HbbTVTerminal', () => {
     expect(terminal.getApp2AppURL()).toBe('ws://0.0.0.0:8001/app2app');
     expect(terminal.getInterDevSyncURL()).toBe('udp://:6677');
     expect(terminal.getUserAgent()).toBe('HbbTV UA');
+    expect(terminal.getModelIdentity()).toEqual({
+      manufacturer: 'Example',
+      modelName: 'HbbTV-1',
+      deviceDescriptionUrl: 'http://192.168.1.10/device.xml',
+    });
     expect(terminal.hasMediaSyncCapability()).toBe(true);
   });
 
@@ -67,6 +72,13 @@ describe('HbbTVTerminal', () => {
     expect(terminal.getApp2AppURL()).toBe('ws://192.168.1.20:8001/app2app');
     expect(terminal.getInterDevSyncURL()).toBe('udp://192.168.1.20:6677');
     expect(terminal.hasAnyInvalidIP()).toBe(false);
+  });
+
+  it('supports compatibility-only terminals', () => {
+    const terminal = createTerminal({
+      additionalData: { X_HbbTV_InterDevSyncURL: null },
+    });
+    expect(terminal.hasMediaSyncCapability()).toBe(true);
   });
 
   it('updates lastSeen without changing discoveredAt', () => {

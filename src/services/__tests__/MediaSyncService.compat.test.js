@@ -282,6 +282,60 @@ describe('MediaSyncService — App2App compatibility transport selection', () =>
     });
   });
 
+  describe('strict transport mode', () => {
+    it('uses only native DVB-CSS when native mode is requested', async () => {
+      const svc = createService();
+      const onError = jest.fn();
+      svc.on('error', onError);
+      await svc.connect(NATIVE_URL, { app2appUrl: APP2APP_URL, mode: 'native' });
+
+      expect(CSSCIIService.instances).toHaveLength(1);
+      expect(CSSCIIService.instances[0].url).toBe(NATIVE_URL);
+      expect(svc.getMode()).toBe('native');
+      expect(svc.probing).toBe(false);
+
+      CSSCIIService.instances[0].emit('error', new Error('native down'));
+      expect(CSSCIIService.instances).toHaveLength(1);
+      expect(onError).toHaveBeenCalled();
+    });
+
+    it('uses only App2App when compatibility mode is requested', async () => {
+      jest.useFakeTimers();
+      const svc = createService();
+      await svc.connect(NATIVE_URL, { app2appUrl: APP2APP_URL, mode: 'compat' });
+
+      expect(CSSCIIService.instances).toHaveLength(1);
+      expect(CSSCIIService.instances[0].url).toBe(COMPAT_CII_URL);
+      expect(svc.getMode()).toBe('compat');
+      expect(svc.probing).toBe(false);
+
+      jest.advanceTimersByTime(5000);
+      expect(CSSCIIService.instances).toHaveLength(1);
+    });
+
+    it.each([
+      ['native', null, APP2APP_URL],
+      ['compat', NATIVE_URL, null],
+    ])('errors when the URL required by %s mode is missing', async (mode, nativeUrl, app2appUrl) => {
+      const svc = createService();
+      const onError = jest.fn();
+      svc.on('error', onError);
+
+      await svc.connect(nativeUrl, { app2appUrl, mode });
+
+      expect(CSSCIIService.instances).toHaveLength(0);
+      expect(svc.state).toBe('error');
+      expect(onError).toHaveBeenCalled();
+    });
+
+    it('rejects invalid mode values', async () => {
+      const svc = createService();
+      await expect(svc.connect(NATIVE_URL, { mode: 'automatic' })).rejects.toThrow(
+        'Invalid MediaSync mode'
+      );
+    });
+  });
+
   describe('preferCompat=false', () => {
     it('tries native first and falls back to compat on failure', async () => {
       const svc = createService();

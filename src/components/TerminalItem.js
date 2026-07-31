@@ -28,6 +28,12 @@ import StatusSlot from './StatusSlot';
 import { startForegroundSync, stopForegroundSync, addHeartbeatListener, addStopListener } from '../utils/ForegroundSync';
 import brand from '../brand/brand.config';
 import { requestCameraPermission } from '../utils/CameraPermissions';
+import {
+  DEFAULT_MEDIA_SYNC_MODE,
+  MediaSyncMode,
+  getMediaSyncMode,
+  setMediaSyncMode as persistMediaSyncMode,
+} from '../utils/MediaSyncModePreferences';
 
 // Minimum interval (ms) between two drift corrections for the same player. The
 // predictive controller is fed from two paths — the player `onProgress`
@@ -66,7 +72,7 @@ const COMPAT_SEEK_THRESHOLD_LIVE_S = config.MEDIA_SYNC?.COMPAT_SYNC_SEEK_THRESHO
 const SYNC_CONTROLLER_OPTIONS = {
   emaAlpha: config.MEDIA_SYNC?.SYNC_EMA_ALPHA ?? 0.4,
   enterBandS: config.MEDIA_SYNC?.SYNC_ENTER_BAND_S ?? 0.06,
-  exitBandS: config.MEDIA_SYNC?.SYNC_EXIT_BAND_S ?? 0.02,
+  exitBandS: config.MEDIA_SYNC?.SYNC_EXIT_BAND_S ?? 0.01,
   horizonS: config.MEDIA_SYNC?.SYNC_HORIZON_S ?? 3.0,
   deadTimeS: config.MEDIA_SYNC?.SYNC_DEAD_TIME_S ?? 0.35,
   maxRateDelta: config.MEDIA_SYNC?.SYNC_MAX_RATE_DELTA ?? 0.05,
@@ -76,7 +82,7 @@ const SYNC_CONTROLLER_OPTIONS = {
 const COMPAT_SYNC_CONTROLLER_OPTIONS = {
   ...SYNC_CONTROLLER_OPTIONS,
   enterBandS: config.MEDIA_SYNC?.COMPAT_SYNC_ENTER_BAND_S ?? 0.25,
-  exitBandS: config.MEDIA_SYNC?.COMPAT_SYNC_EXIT_BAND_S ?? 0.08,
+  exitBandS: config.MEDIA_SYNC?.COMPAT_SYNC_EXIT_BAND_S ?? 0.02,
 };
 
 // Cadència d'enviament de correccions de sincronització a la web companion. La
@@ -114,6 +120,9 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   const { t } = useTranslation();
   const [syncState, setSyncState] = useState(SyncState.DISCONNECTED);
   const [syncMode, setSyncMode] = useState(null);
+  const [mediaSyncMode, setMediaSyncMode] = useState(DEFAULT_MEDIA_SYNC_MODE);
+  const [isMediaSyncModeReady, setIsMediaSyncModeReady] = useState(false);
+  const [isSavingMediaSyncMode, setIsSavingMediaSyncMode] = useState(false);
   const [audios, setAudios] = useState([]);
   const [videos, setVideos] = useState([]);
   const [selectedAudio, setSelectedAudio] = useState(null);
@@ -155,6 +164,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   const [playbackIntent, setPlaybackIntent] = useState(null);
 
   const syncServiceRef = useRef(null);
+  const mediaSyncModeRef = useRef(DEFAULT_MEDIA_SYNC_MODE);
   const audioPlayerRef = useRef(null);
   const videoPlayerRef = useRef(null);
   const audioCurrentTimeRef = useRef(0);
@@ -799,6 +809,29 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   const stopEverythingRef = useRef(stopEverything);
   stopEverythingRef.current = stopEverything;
 
+  useEffect(() => {
+    let cancelled = false;
+    setIsMediaSyncModeReady(false);
+    getMediaSyncMode(terminal)
+      .then((mode) => {
+        if (cancelled) return;
+        mediaSyncModeRef.current = mode;
+        setMediaSyncMode(mode);
+      })
+      .catch((loadError) => {
+        console.warn('MediaSync: could not load the saved mode', loadError);
+        if (cancelled) return;
+        mediaSyncModeRef.current = DEFAULT_MEDIA_SYNC_MODE;
+        setMediaSyncMode(DEFAULT_MEDIA_SYNC_MODE);
+      })
+      .finally(() => {
+        if (!cancelled) setIsMediaSyncModeReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [terminal]);
+
 
   // Funció de connexió amb timeout i reintents infinits
   setupAndConnectRef.current = () => {
@@ -1005,9 +1038,8 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       service.connect(interDevSyncUrl, {
         timelineSelector: config.MEDIA_SYNC?.TIMELINE_SELECTOR || 'urn:dvb:css:timeline:pts',
         tickRate: config.MEDIA_SYNC?.TICK_RATE || 90000,
-        // App2App compatibility mode: if the HbbTV app raised the compat sync
-        // channel, prefer it over native DVB-CSS (and fall back automatically).
-        app2appUrl: app2appUrl,
+        app2appUrl,
+        mode: mediaSyncModeRef.current,
       });
     } catch (err) {
       console.error('Error iniciant connexió MediaSync:', err);
@@ -1038,7 +1070,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
 
   // Conectar MediaSync al expandir
   useEffect(() => {
-    if (!expanded || !hasMediaSync) return;
+    if (!expanded || !hasMediaSync || !isMediaSyncModeReady) return;
 
     isActiveRef.current = true;
     setupAndConnectRef.current();
@@ -1085,7 +1117,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       // Restaurar l'orientació vertical si la web companion estava oberta.
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     };
-  }, [expanded, hasMediaSync, terminal]);
+  }, [expanded, hasMediaSync, isMediaSyncModeReady, mediaSyncMode, terminal]);
 
   // Mantener la sincronización al volver de background. La reproducción y los
   // timers de sync siguen vivos gracias al foreground service / background audio,
@@ -1382,6 +1414,21 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     }
   };
 
+  const handleMediaSyncModeChange = async (mode) => {
+    if (mode === mediaSyncMode || isSavingMediaSyncMode) return;
+    setIsSavingMediaSyncMode(true);
+    try {
+      await persistMediaSyncMode(terminal, mode);
+      mediaSyncModeRef.current = mode;
+      setMediaSyncMode(mode);
+    } catch (saveError) {
+      console.error('MediaSync: could not save the selected mode', saveError);
+      setError(t('discovery.modeSaveError'));
+    } finally {
+      setIsSavingMediaSyncMode(false);
+    }
+  };
+
   const isConnected = syncState === SyncState.SYNCHRONIZED;
   const connectedStatusLabel = syncMode === 'compat'
     ? t('discovery.statusConnectedCompat')
@@ -1540,6 +1587,41 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
 
       {expanded && hasMediaSync && (
         <View style={styles.mediaSection}>
+          <View style={styles.modeSection}>
+            <Text style={styles.sectionLabel}>{t('discovery.modeTitle')}</Text>
+            <View style={styles.modeSelector} accessibilityRole="radiogroup">
+              {[
+                { mode: MediaSyncMode.NATIVE, icon: 'gps-fixed', label: t('discovery.modeNative') },
+                { mode: MediaSyncMode.COMPAT, icon: 'devices', label: t('discovery.modeCompat') },
+              ].map((option) => {
+                const selected = mediaSyncMode === option.mode;
+                return (
+                  <TouchableOpacity
+                    key={option.mode}
+                    style={[styles.modeOption, selected && styles.modeOptionSelected]}
+                    onPress={() => handleMediaSyncModeChange(option.mode)}
+                    disabled={!isMediaSyncModeReady || isSavingMediaSyncMode}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: selected, disabled: !isMediaSyncModeReady || isSavingMediaSyncMode }}
+                  >
+                    <MaterialIcons
+                      name={option.icon}
+                      size={18}
+                      color={selected ? theme.colors.onPrimary : theme.colors.onSurfaceVariant}
+                    />
+                    <Text style={[styles.modeOptionText, selected && styles.modeOptionTextSelected]}>
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <Text style={styles.modeDescription}>
+              {t(mediaSyncMode === MediaSyncMode.NATIVE
+                ? 'discovery.modeNativeDescription'
+                : 'discovery.modeCompatDescription')}
+            </Text>
+          </View>
           {(isLoading || (!companionWebUrl && audios.length === 0 && videos.length === 0)) && (
             <View style={styles.statusRegion}>
                 <Text style={styles.emptyText}>{t('discovery.waitingForContent')} <ActivityIndicator color={theme.colors.primary} /></Text>
@@ -2038,6 +2120,45 @@ const styles = StyleSheet.create({
   mediaSection: {
     paddingHorizontal: theme.spacing.md,
     paddingBottom: theme.spacing.md,
+  },
+  modeSection: {
+    paddingBottom: theme.spacing.md,
+  },
+  modeSelector: {
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+    borderRadius: theme.radius.md,
+    overflow: 'hidden',
+  },
+  modeOption: {
+    flex: 1,
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.sm,
+    backgroundColor: theme.colors.surfaceContainerHigh,
+  },
+  modeOptionSelected: {
+    backgroundColor: theme.colors.primary,
+  },
+  modeOptionText: {
+    color: theme.colors.onSurfaceVariant,
+    fontSize: 13,
+    fontWeight: '600',
+    fontFamily: theme.typography.bodyMd.fontFamily,
+  },
+  modeOptionTextSelected: {
+    color: theme.colors.onPrimary,
+  },
+  modeDescription: {
+    color: theme.colors.onSurfaceVariant,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: theme.spacing.sm,
+    fontFamily: theme.typography.bodyMd.fontFamily,
   },
   emptyText: {
     color: theme.colors.onSurfaceVariant,

@@ -166,6 +166,17 @@ export class HbbTVTerminal {
   }
 
   /**
+   * Returns a stable identity for preferences shared by TVs of the same model.
+   */
+  getModelIdentity() {
+    return {
+      manufacturer: this.manufacturer,
+      modelName: this.modelName,
+      deviceDescriptionUrl: this.deviceDescriptionUrl,
+    };
+  }
+
+  /**
    * Obté l'URL per llançar aplicacions
    */
   getAppLaunchURL() {
@@ -256,7 +267,7 @@ export class HbbTVTerminal {
    * Comprova si el terminal suporta sincronització de media inter-dispositiu
    */
   hasMediaSyncCapability() {
-    return !!this.interDevSyncURL;
+    return !!(this.interDevSyncURL || this.app2AppURL);
   }
 
   /**

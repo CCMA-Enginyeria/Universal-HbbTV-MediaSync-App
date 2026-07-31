@@ -94,16 +94,26 @@ export class MediaSyncService extends EventEmitter {
     this.probeTimeoutMs = options.compatProbeTimeoutMs || 2000;
     this.compatChannelPrefix = options.compatChannelPrefix || 'hbbtv-sync';
 
-    // URL DVB-CSS nativa (X_HbbTV_InterDevSyncURL) i URL del mode compatibilitat
-    // (canal App2App CSS-CII), totes dues amb la IP corregida si cal.
+    // Native DVB-CSS URL and compatibility App2App CSS-CII URL, both with any
+    // invalid host placeholder replaced before selecting a transport.
     const nativeUrl = interDevSyncUrl ? this.fixInvalidIP(interDevSyncUrl) : null;
     const app2appUrl = options.app2appUrl ? this.fixInvalidIP(options.app2appUrl) : null;
     const compatUrl = this.buildCompatCiiUrl(app2appUrl);
-    // Per defecte preferim el canal de compatibilitat quan està disponible: si
-    // l'app HbbTV l'ha aixecat, hi connectem directament sense provar DVB-CSS.
-    const preferCompat = options.preferCompat !== false;
+    const requestedMode = options.mode;
+    if (requestedMode && requestedMode !== 'native' && requestedMode !== 'compat') {
+      throw new Error(`Invalid MediaSync mode: ${requestedMode}`);
+    }
 
-    const ordered = preferCompat ? [compatUrl, nativeUrl] : [nativeUrl, compatUrl];
+    // An explicit mode is strict: retries stay on that transport and never
+    // fall back. Calls without a mode retain the legacy ordered fallback.
+    const preferCompat = options.preferCompat !== false;
+    const ordered = requestedMode === 'native'
+      ? [nativeUrl]
+      : requestedMode === 'compat'
+      ? [compatUrl]
+      : preferCompat
+      ? [compatUrl, nativeUrl]
+      : [nativeUrl, compatUrl];
     const seen = new Set();
     this.candidates = [];
     ordered.forEach((url) => {
@@ -113,9 +123,13 @@ export class MediaSyncService extends EventEmitter {
     });
 
     if (this.candidates.length === 0) {
-      console.error('❌ MediaSync: cap URL de sincronització disponible (ni nativa ni compat)');
+      const missingTransport = requestedMode ? ` for '${requestedMode}' mode` : '';
+      console.error(`❌ MediaSync: no synchronization URL available${missingTransport}`);
       this.setState(SyncState.ERROR);
-      this.emit('error', { service: 'cii', error: new Error('No sync URL available') });
+      this.emit('error', {
+        service: 'cii',
+        error: new Error(`No sync URL available${missingTransport}`),
+      });
       return;
     }
 
