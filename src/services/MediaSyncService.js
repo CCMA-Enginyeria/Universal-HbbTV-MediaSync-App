@@ -14,6 +14,7 @@ import CSSCIIService from './CSSCIIService';
 import CSSWCService from './CSSWCService';
 import CSSWCServiceUDP, { parseWCUrl } from './CSSWCServiceUDP';
 import CSSTSService from './CSSTSService';
+import App2AppChannelService, { buildAppChannelUrl } from './App2AppChannelService';
 import mediaSyncConfig from '../utils/config';
 
 // Estats de sincronització
@@ -44,6 +45,10 @@ export class MediaSyncService extends EventEmitter {
     this.ciiService = null;
     this.wcService = null;
     this.tsService = null;
+
+    // Generic App2App application channel (independent of DVB-CSS).
+    this.appChannelService = null;
+    this.app2appUrl = null;
     
     // Configuració
     this.interDevSyncUrl = null;
@@ -136,6 +141,11 @@ export class MediaSyncService extends EventEmitter {
     console.log('🎬 MediaSync: Iniciant connexió...');
     console.log(`   Timeline: ${this.timelineSelector}`);
     console.log(`   Candidats de transport: ${this.candidates.map((c) => `${c.mode}`).join(' → ')}`);
+
+    // The application channel does not depend on the DVB-CSS transport, so it
+    // is opened as soon as an App2App base URL is known.
+    this.app2appUrl = app2appUrl;
+    this.startAppChannel();
 
     this.candidateIndex = 0;
     this.mode = null;
@@ -768,6 +778,71 @@ export class MediaSyncService extends EventEmitter {
     return this.ciiService?.getContentId();
   }
 
+  // ----------------------------------------- App2App application channel
+
+  /**
+   * Obre el canal d'aplicació App2App si el terminal n'exposa la URL base.
+   * És independent del transport DVB-CSS escollit.
+   */
+  startAppChannel() {
+    if (this.appChannelService) return;
+
+    const channelUrl = buildAppChannelUrl(this.app2appUrl, this.compatChannelPrefix);
+    if (!channelUrl) {
+      console.log('ℹ️  MediaSync: no App2App base URL, application channel disabled');
+      return;
+    }
+
+    this.appChannelService = new App2AppChannelService(channelUrl);
+    this.appChannelService.on('paired', () => this.emit('app-channel-ready'));
+    this.appChannelService.on('message', (message) => this.emit('app-message', message));
+    this.appChannelService.on('error', (error) => {
+      // Non-fatal: media synchronisation works without the application channel.
+      console.warn('⚠️  MediaSync: application channel error', error?.message || error);
+    });
+    this.appChannelService.connect();
+  }
+
+  /**
+   * Envia un missatge d'aplicació a l'app HbbTV. Si el canal encara no està
+   * aparellat, el missatge es posa a la cua i s'envia en aparellar-se.
+   * @param {string} type - Tipus de missatge definit per l'aplicació
+   * @param {*} [payload] - Contingut serialitzable a JSON
+   * @param {string} [id] - Id de correlació, en respondre una petició de la TV
+   * @returns {boolean}
+   */
+  sendAppMessage(type, payload, id) {
+    if (!this.appChannelService) return false;
+    return this.appChannelService.send(type, payload, id);
+  }
+
+  /**
+   * Envia una petició i espera la resposta correlacionada de l'app HbbTV.
+   * @param {string} type
+   * @param {*} [payload]
+   * @returns {Promise<Object>}
+   */
+  requestApp(type, payload) {
+    if (!this.appChannelService) {
+      return Promise.reject(new Error('MediaSync: application channel unavailable'));
+    }
+    return this.appChannelService.request(type, payload);
+  }
+
+  /**
+   * Últim estat retingut rebut pel canal d'aplicació per a un tipus.
+   * @param {string} type
+   * @returns {*}
+   */
+  getAppState(type) {
+    return this.appChannelService?.getRetainedState(type) ?? null;
+  }
+
+  /** @returns {boolean} si el canal d'aplicació està aparellat i operatiu */
+  isAppChannelReady() {
+    return this.appChannelService?.isReady() ?? false;
+  }
+
   /**
    * Desconnecta tots els serveis
    */
@@ -793,6 +868,12 @@ export class MediaSyncService extends EventEmitter {
       this.ciiService.destroy();
       this.ciiService = null;
     }
+
+    if (this.appChannelService) {
+      this.appChannelService.destroy();
+      this.appChannelService = null;
+    }
+    this.app2appUrl = null;
 
     this.setState(SyncState.DISCONNECTED);
     this.syncQuality = {

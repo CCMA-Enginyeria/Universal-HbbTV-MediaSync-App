@@ -13,13 +13,18 @@
  * it over three App2App channels so a companion app can synchronise even when
  * the native DVB-CSS endpoints fail.
  *
- * A companion app connects to three App2App channels (defaults):
+ * A companion app connects to four App2App channels (defaults):
  *   - "<prefix>-cii"  Content Identification and Information (contentId, timelines)
  *   - "<prefix>-wc"   Wall Clock (request/response time correlation)
  *   - "<prefix>-ts"   Timeline Synchronisation (media control timestamps)
+ *   - "<prefix>-app"  Application channel (free-form bidirectional messaging)
  *
  * The CII channel advertises the WC and TS channel URLs, so the companion only
- * needs to know the CII channel name to bootstrap the whole session.
+ * needs to know the CII channel name to bootstrap the whole session. The
+ * application channel is derived from the same prefix and is independent of the
+ * DVB-CSS services: it carries whatever the HbbTV application and its companion
+ * agree on (commands, chat, application state), so it works the same whether the
+ * companion synchronises over this compatibility mode or over native DVB-CSS.
  *
  * USAGE (in any HbbTV application):
  *   <script src="hbbtv-mediasync-compat.js"></script>
@@ -27,7 +32,7 @@
  *   var video = document.querySelector('video');
  *   window.HbbTVMediaSyncCompat.start(video, {
  *     contentId: 'https://example.com/stream.mpd', // DASH MPD or companion web URL
- *     timelineSelector: 'urn:dvb:css:timeline:pts',
+ *     timelineSelector: 'urn:dvb:css:timeline:mpd:period:rel:1000',
  *   });
  *   // later, when playback ends / on teardown:
  *   window.HbbTVMediaSyncCompat.stop();
@@ -40,8 +45,9 @@
 
   // Default PTS tick rate (90 kHz) used for MPEG-DASH content timelines.
   var DEFAULT_TICK_RATE = 90000;
-  // Default timeline selector (MPEG-DASH PTS).
-  var DEFAULT_TIMELINE_SELECTOR = 'urn:dvb:css:timeline:pts';
+  // Default timeline selector: milliseconds relative to the start of the first
+  // MPEG-DASH period, which is what browser media elements report directly.
+  var DEFAULT_TIMELINE_SELECTOR = 'urn:dvb:css:timeline:mpd:period:rel:1000';
   // Default App2App channel prefix. Kept distinct from the polyfill's own
   // "dvbcss-*" channels so this module can coexist with a running polyfill
   // MediaSynchroniser on devices without native DVB-CSS.
@@ -49,6 +55,8 @@
   // How often (ms) to push a fresh control timestamp to TS clients even when no
   // media event fired, so the companion can re-anchor and detect stalls.
   var TS_HEARTBEAT_MS = 10000;
+  // Envelope version of the application channel protocol.
+  var APP_MESSAGE_VERSION = 1;
 
   /**
    * Parses the launch hash parameters (port / hostname) exactly like the FOKUS
@@ -156,13 +164,20 @@
       cii: this.channelPrefix + '-cii',
       wc: this.channelPrefix + '-wc',
       ts: this.channelPrefix + '-ts',
+      app: this.channelPrefix + '-app',
     };
 
     this.urls = null;
     this.running = false;
     this.connectedClients = []; // [{ ws, type }]
+    this.deviceCountListeners = [];
     this.tsHeartbeatTimer = null;
     this.mediaListeners = null;
+
+    // Application channel: retained state by message type, replayed to every
+    // newly paired companion, plus listeners for companion-originated messages.
+    this.appState = {};
+    this.appMessageListeners = [];
 
     // Current CII state broadcast to CII clients.
     this.ciiState = {
@@ -224,6 +239,7 @@
       cii: this.channels.cii,
       wc: this.ciiState.wcUrl,
       ts: this.ciiState.tsUrl,
+      app: this.channels.app,
     });
 
     this.running = true;
@@ -231,6 +247,7 @@
     this.startCIIServer();
     this.startWCServer();
     this.startTSServer();
+    this.startAppServer();
     this.startTSHeartbeat();
     return true;
   };
@@ -253,6 +270,31 @@
       } catch (e) { /* ignore */ }
     }
     this.connectedClients = [];
+    this.notifyConnectedDeviceCount();
+  };
+
+  MediaSyncCompatServer.prototype.getConnectedDeviceCount = function () {
+    var count = 0;
+    for (var i = 0; i < this.connectedClients.length; i++) {
+      if (this.connectedClients[i].type === 'ts') count++;
+    }
+    return count;
+  };
+
+  MediaSyncCompatServer.prototype.notifyConnectedDeviceCount = function () {
+    var count = this.getConnectedDeviceCount();
+    var listeners = this.deviceCountListeners.slice();
+    for (var i = 0; i < listeners.length; i++) listeners[i](count);
+  };
+
+  MediaSyncCompatServer.prototype.onConnectedDeviceCountChange = function (listener) {
+    this.deviceCountListeners.push(listener);
+    listener(this.getConnectedDeviceCount());
+    var self = this;
+    return function () {
+      var index = self.deviceCountListeners.indexOf(listener);
+      if (index >= 0) self.deviceCountListeners.splice(index, 1);
+    };
   };
 
   /** Updates the announced contentId and re-broadcasts CII on change. */
@@ -268,6 +310,54 @@
   MediaSyncCompatServer.prototype.setPrivateState = function (privateState) {
     this.ciiState.private = privateState || {};
     this.broadcastCII();
+  };
+
+  // -------------------------------------------------------- application channel
+
+  /** Broadcasts a one-off application message to every paired companion. */
+  MediaSyncCompatServer.prototype.sendAppMessage = function (type, payload, id) {
+    if (!type) return;
+    this.broadcastAppMessage({
+      version: APP_MESSAGE_VERSION,
+      type: type,
+      id: id || null,
+      payload: typeof payload === 'undefined' ? null : payload,
+    });
+  };
+
+  /**
+   * Publishes retained application state. Unlike sendAppMessage, the last value
+   * per type is replayed to companions that pair later. A null payload clears it.
+   */
+  MediaSyncCompatServer.prototype.setAppState = function (type, payload) {
+    if (!type) return;
+    if (payload === null || typeof payload === 'undefined') {
+      delete this.appState[type];
+    } else {
+      this.appState[type] = payload;
+    }
+    this.broadcastAppMessage({
+      version: APP_MESSAGE_VERSION,
+      type: type,
+      id: null,
+      payload: typeof payload === 'undefined' ? null : payload,
+      retained: true,
+    });
+  };
+
+  /**
+   * Subscribes to companion-originated application messages. The listener gets
+   * `(message, respond)`; calling `respond(payload)` answers that companion only,
+   * correlating on the request id.
+   * @returns {function} unsubscribe
+   */
+  MediaSyncCompatServer.prototype.onAppMessage = function (listener) {
+    this.appMessageListeners.push(listener);
+    var self = this;
+    return function () {
+      var index = self.appMessageListeners.indexOf(listener);
+      if (index >= 0) self.appMessageListeners.splice(index, 1);
+    };
   };
 
   // ------------------------------------------------------------------ servers
@@ -323,6 +413,70 @@
   };
 
   /**
+   * Free-form application channel. Companion messages are dispatched to the
+   * registered listeners; every retained state entry is replayed on pairing.
+   */
+  MediaSyncCompatServer.prototype.startAppServer = function () {
+    var self = this;
+    this.createServerEndpoint(this.channels.app, 'app', function (ws, data) {
+      if (data === null) {
+        self.sendRetainedAppState(ws);
+        return;
+      }
+      self.handleAppMessage(ws, data);
+    });
+  };
+
+  /** Replays every retained application state entry to a single companion. */
+  MediaSyncCompatServer.prototype.sendRetainedAppState = function (ws) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    var types = Object.keys(this.appState);
+    for (var i = 0; i < types.length; i++) {
+      ws.send(JSON.stringify({
+        version: APP_MESSAGE_VERSION,
+        type: types[i],
+        id: null,
+        payload: this.appState[types[i]],
+        retained: true,
+      }));
+    }
+  };
+
+  /** Parses and dispatches a companion-originated application message. */
+  MediaSyncCompatServer.prototype.handleAppMessage = function (ws, data) {
+    var message;
+    try {
+      message = JSON.parse(data);
+    } catch (e) {
+      console.warn('MediaSyncCompat app: ignoring non-JSON message', e && e.message);
+      return;
+    }
+    if (!message || typeof message.type !== 'string') {
+      console.warn('MediaSyncCompat app: ignoring message without type');
+      return;
+    }
+
+    var respond = function (payload) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      ws.send(JSON.stringify({
+        version: APP_MESSAGE_VERSION,
+        type: message.type,
+        id: message.id || null,
+        payload: typeof payload === 'undefined' ? null : payload,
+      }));
+    };
+
+    var listeners = this.appMessageListeners.slice();
+    for (var i = 0; i < listeners.length; i++) {
+      try {
+        listeners[i](message, respond);
+      } catch (e) {
+        console.error('MediaSyncCompat app: listener failed', e && e.message);
+      }
+    }
+  };
+
+  /**
    * Creates an App2App server endpoint that accepts multiple paired companion
    * clients. Mirrors the FOKUS polyfill pairing handshake.
    */
@@ -349,6 +503,7 @@
         var idx = self.indexOfClient(ws);
         if (idx >= 0) {
           self.connectedClients.splice(idx, 1);
+          self.notifyConnectedDeviceCount();
         }
         // Recreate the listener so more clients can pair.
         if (self.running) {
@@ -364,6 +519,7 @@
         if (evt.data === 'pairingcompleted') {
           console.log('MediaSyncCompat ' + type + ': client paired');
           self.connectedClients.push({ ws: ws, type: type });
+          self.notifyConnectedDeviceCount();
 
           // Switch to the per-client message handler once paired.
           ws.onmessage = function (evt2) {
@@ -402,6 +558,16 @@
       var client = this.connectedClients[i];
       if (client.type === 'cii' && client.ws.readyState === WebSocket.OPEN) {
         client.ws.send(message);
+      }
+    }
+  };
+
+  MediaSyncCompatServer.prototype.broadcastAppMessage = function (message) {
+    var payload = JSON.stringify(message);
+    for (var i = 0; i < this.connectedClients.length; i++) {
+      var client = this.connectedClients[i];
+      if (client.type === 'app' && client.ws.readyState === WebSocket.OPEN) {
+        client.ws.send(payload);
       }
     }
   };
@@ -510,6 +676,10 @@
   // ------------------------------------------------------------ public API
 
   var currentServer = null;
+  // Application-channel state and listeners registered before start(), so callers
+  // do not have to care about the server lifecycle.
+  var pendingAppState = {};
+  var pendingAppListeners = [];
 
   var HbbTVMediaSyncCompat = {
     /**
@@ -520,7 +690,8 @@
      * @param {Object} [options]
      * @param {string} [options.contentId] Content identifier (DASH MPD URL or
      *   companion web URL) announced over CSS-CII.
-     * @param {string} [options.timelineSelector] Timeline selector (default PTS).
+     * @param {string} [options.timelineSelector] Timeline selector (defaults to
+     *   "urn:dvb:css:timeline:mpd:period:rel:1000").
      * @param {number} [options.tickRate] Timeline tick rate (default 90000).
      * @param {string} [options.channelPrefix] App2App channel name prefix.
      * @returns {boolean} true if the servers started.
@@ -538,6 +709,14 @@
       var ok = server.start();
       if (ok) {
         currentServer = server;
+        // Replay whatever was registered before the servers were up.
+        var types = Object.keys(pendingAppState);
+        for (var i = 0; i < types.length; i++) {
+          server.setAppState(types[i], pendingAppState[types[i]]);
+        }
+        for (var j = 0; j < pendingAppListeners.length; j++) {
+          server.onAppMessage(pendingAppListeners[j]);
+        }
       }
       return ok;
     },
@@ -554,6 +733,74 @@
       if (currentServer) {
         currentServer.setPrivateState(privateState);
       }
+    },
+
+    /** Subscribes to the number of fully paired companion devices. */
+    onConnectedDeviceCountChange: function (listener) {
+      if (!currentServer) {
+        listener(null);
+        return function () {};
+      }
+      return currentServer.onConnectedDeviceCountChange(listener);
+    },
+
+    /** @returns {number|null} paired devices, or null while not running. */
+    getConnectedDeviceCount: function () {
+      return currentServer ? currentServer.getConnectedDeviceCount() : null;
+    },
+
+    /**
+     * Sends a one-off application message to every paired companion over the
+     * "<prefix>-app" channel. Dropped if no companion is connected.
+     *
+     * @param {string} type Application-defined message type.
+     * @param {*} [payload] JSON-serialisable payload.
+     * @param {string} [id] Correlation id, when answering a companion request.
+     */
+    sendAppMessage: function (type, payload, id) {
+      if (currentServer) {
+        currentServer.sendAppMessage(type, payload, id);
+      }
+    },
+
+    /**
+     * Publishes retained application state on the "<prefix>-app" channel: the
+     * last value per type is replayed to companions that pair later, so a
+     * device joining mid-session immediately gets the current state.
+     *
+     * @param {string} type Application-defined state key.
+     * @param {*} payload JSON-serialisable value, or null to clear it.
+     */
+    setAppState: function (type, payload) {
+      if (payload === null || typeof payload === 'undefined') {
+        delete pendingAppState[type];
+      } else {
+        pendingAppState[type] = payload;
+      }
+      if (currentServer) {
+        currentServer.setAppState(type, payload);
+      }
+    },
+
+    /**
+     * Subscribes to companion-originated application messages. The listener is
+     * called with `(message, respond)`, where message is
+     * `{ version, type, id, payload }` and `respond(payload)` answers that
+     * companion only, reusing the request id.
+     *
+     * @param {function} listener
+     * @returns {function} unsubscribe
+     */
+    onAppMessage: function (listener) {
+      pendingAppListeners.push(listener);
+      var unsubscribeFromServer = currentServer
+        ? currentServer.onAppMessage(listener)
+        : null;
+      return function () {
+        var index = pendingAppListeners.indexOf(listener);
+        if (index >= 0) pendingAppListeners.splice(index, 1);
+        if (unsubscribeFromServer) unsubscribeFromServer();
+      };
     },
 
     /** Stops the App2App compatibility sync servers. */

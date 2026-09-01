@@ -76,6 +76,13 @@ a UDP wall‑clock channel. Three protocols matter:
 `MediaSyncService` is the **orchestrator**: it connects all three, emits a
 unified `position-update`, and exposes `getCurrentPosition()`.
 
+Alongside them it opens a fourth, **non‑DVB‑CSS application channel**
+(`App2AppChannelService`, `<X_HbbTV_App2AppURL>/<prefix>-app`) for free‑form
+bidirectional messaging with the HbbTV application. It is available in both
+native and compatibility mode, and its payloads are opaque to this app: they are
+relayed verbatim to the companion web page over the Chrome Custom Tabs channel.
+See [www/hbbtv-compat/README.md](www/hbbtv-compat/README.md) for the protocol.
+
 ```mermaid
 sequenceDiagram
   participant App as DiscoveryScreen / TerminalItem
