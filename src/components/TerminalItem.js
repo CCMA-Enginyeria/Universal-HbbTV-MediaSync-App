@@ -22,12 +22,28 @@ import MpdParserService from '../services/MpdParserService';
 import config from '../utils/config';
 import SyncController from '../utils/SyncController';
 import { fetchWebMetadata } from '../utils/webMetadata';
+import {
+  buildCustomTabsSyncUrl,
+  getCompanionOrigin,
+  isExternalSyncWebContent,
+} from '../utils/companionWebLaunch';
 import theme from '../theme';
 import { MaterialIcons } from '@expo/vector-icons';
 import StatusSlot from './StatusSlot';
 import { startForegroundSync, stopForegroundSync, addHeartbeatListener, addStopListener } from '../utils/ForegroundSync';
 import brand from '../brand/brand.config';
 import { requestCameraPermission } from '../utils/CameraPermissions';
+import {
+  addCustomTabChannelReadyListener,
+  addCustomTabErrorListener,
+  addCustomTabMessageListener,
+  addCustomTabPageLoadedListener,
+  addCustomTabHiddenListener,
+  closeCustomTabSession,
+  isCustomTabsMessagingAvailable,
+  openCustomTab,
+  postCustomTabMessage,
+} from '../utils/CustomTabsMessaging';
 import {
   DEFAULT_MEDIA_SYNC_MODE,
   MediaSyncMode,
@@ -215,7 +231,10 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   const webPlayerVisibleRef = useRef(false);
   // Throttle de l'aliment a la web companion (veure WEB_FEED_INTERVAL_MS).
   const lastWebFeedRef = useRef(0);
-  const lastWebFeedStateRef = useRef({ isPlaying: null, speed: null });
+  const lastWebFeedStateRef = useRef({ isPlaying: null, speed: null, privateSignature: null });
+  const customTabOpenRef = useRef(false);
+  const customTabChannelReadyRef = useRef(false);
+  const lastCustomTabPayloadRef = useRef(null);
   // Momento del último intento de reconexión disparado por el heartbeat nativo
   // (para no reintentar más a menudo que RETRY_DELAY en segundo plano).
   const lastReconnectAttemptRef = useRef(0);
@@ -614,27 +633,30 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     }
   }, []);
 
-  // Reenvia la informació de sincronització a la web companion carregada al
-  // WebView, injectant una crida a `window.__hbbtvSync(payload)`. Només actua si
-  // el modal amb la web està obert. És el pont TV -> web: cada `position-update`
-  // (control timestamp de CSS-TS) es tradueix en un missatge amb el timecode i
-  // l'estat de reproducció, però que la web pugui mostrar-los sincronitzats.
+  // Forward TV synchronization to the active WebView or verified Custom Tab.
   const feedWebView = useCallback((pos) => {
     const webVisible = webModalVisibleRef.current && !!webViewRef.current;
     const playerVisible = webPlayerVisibleRef.current && !!webPlayerViewRef.current;
-    if ((!webVisible && !playerVisible) || !pos) return;
+    const customTabVisible = customTabOpenRef.current;
+    if ((!webVisible && !playerVisible && !customTabVisible) || !pos) return;
     if (pos.positionSeconds == null) return;
     // La web interpola amb el seu propi rellotge; només l'enviem una correcció
     // cada WEB_FEED_INTERVAL_MS, o immediatament si canvia l'estat de
     // reproducció (play/pausa) o la velocitat, per corregir de seguida.
     const now = Date.now();
+    // Service-specific CSS-CII extension block, forwarded verbatim: the app must
+    // stay agnostic of whatever the TV application publishes in it.
+    const ciiPrivate = syncServiceRef.current?.getCIIState?.()?.private ?? null;
+    const privateSignature = ciiPrivate ? JSON.stringify(ciiPrivate) : null;
     const stateChanged =
       pos.isPlaying !== lastWebFeedStateRef.current.isPlaying ||
-      pos.speed !== lastWebFeedStateRef.current.speed;
+      pos.speed !== lastWebFeedStateRef.current.speed ||
+      privateSignature !== lastWebFeedStateRef.current.privateSignature;
     if (!stateChanged && now - lastWebFeedRef.current < WEB_FEED_INTERVAL_MS) return;
     lastWebFeedRef.current = now;
-    lastWebFeedStateRef.current = { isPlaying: pos.isPlaying, speed: pos.speed };
+    lastWebFeedStateRef.current = { isPlaying: pos.isPlaying, speed: pos.speed, privateSignature };
     const payload = {
+      version: 1,
       type: 'position',
       positionSeconds: pos.positionSeconds,
       positionMillis: pos.positionMillis,
@@ -642,12 +664,14 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       isPlaying: pos.isPlaying,
       speed: pos.speed,
       isLive: pos.isLive,
+      private: ciiPrivate,
       // When the position was valid (device wall clock). The web player uses it
       // to compensate the feed latency so it locks to where the TV IS now, not
       // where it was when we sampled it.
       generatedAt: pos.generatedAt,
       formattedTime: pos.formattedTime,
     };
+    lastCustomTabPayloadRef.current = payload;
     // In-app WebView transport (injectJavaScript).
     if (webVisible) {
       try {
@@ -668,6 +692,63 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
         // ignore
       }
     }
+    if (customTabVisible && customTabChannelReadyRef.current) {
+      const result = postCustomTabMessage(JSON.stringify(payload));
+      if (result !== 0) console.warn('Custom Tab postMessage failed with result:', result);
+    }
+  }, []);
+
+  useEffect(() => {
+    const readySubscription = addCustomTabChannelReadyListener(() => {
+      console.log('Custom Tab messaging channel ready');
+      customTabChannelReadyRef.current = true;
+      const payload = lastCustomTabPayloadRef.current || positionRef.current;
+      if (payload) {
+        const message = payload.type === 'position' ? payload : {
+          version: 1,
+          type: 'position',
+          ...payload,
+        };
+        const result = postCustomTabMessage(JSON.stringify(message));
+        console.log('Custom Tab initial synchronization payload sent:', result);
+      }
+    });
+    const errorSubscription = addCustomTabErrorListener(({ message }) => {
+      customTabOpenRef.current = false;
+      customTabChannelReadyRef.current = false;
+      lastCustomTabPayloadRef.current = null;
+      closeCustomTabSession();
+      stopForegroundSync();
+      console.warn('Custom Tabs messaging error:', message);
+    });
+    const messageSubscription = addCustomTabMessageListener(({ message }) => {
+      try {
+        const payload = JSON.parse(message);
+        if (payload?.version === 1 && payload?.type === 'sync-ack') {
+          console.log('Custom Tab synchronization acknowledged by web:', payload);
+        }
+      } catch (error) {
+        console.warn('Custom Tab returned an invalid message:', message);
+      }
+    });
+    const pageLoadedSubscription = addCustomTabPageLoadedListener(() => {
+      customTabChannelReadyRef.current = false;
+      console.log('Custom Tab page loaded; waiting for renewed messaging channel');
+    });
+    const hiddenSubscription = addCustomTabHiddenListener(() => {
+      customTabOpenRef.current = false;
+      customTabChannelReadyRef.current = false;
+      lastCustomTabPayloadRef.current = null;
+      closeCustomTabSession();
+      stopForegroundSync();
+    });
+    return () => {
+      readySubscription.remove();
+      errorSubscription.remove();
+      messageSubscription.remove();
+      pageLoadedSubscription.remove();
+      hiddenSubscription.remove();
+    };
   }, []);
 
   // Obre la web companion a pantalla completa i desbloqueja l'orientació perquè
@@ -675,12 +756,47 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   // el primer aliment (a onLoadEnd) s'enviï immediatament.
   const openWebModal = useCallback(async () => {
     lastWebFeedRef.current = 0;
-    lastWebFeedStateRef.current = { isPlaying: null, speed: null };
+    lastWebFeedStateRef.current = { isPlaying: null, speed: null, privateSignature: null };
     setWebNoContent(false);
 
     setWebModalVisible(true);
     ScreenOrientation.unlockAsync().catch(() => {});
   }, []);
+
+  const openCompanionWeb = useCallback(async () => {
+    if (!isExternalSyncWebContent(companionWebUrl)) {
+      await openWebModal();
+      return;
+    }
+    try {
+      if (Platform.OS === 'android' && isCustomTabsMessagingAvailable) {
+        const launchUrl = buildCustomTabsSyncUrl(companionWebUrl);
+        const origin = getCompanionOrigin(launchUrl);
+        customTabOpenRef.current = true;
+        customTabChannelReadyRef.current = false;
+        lastCustomTabPayloadRef.current = null;
+        startForegroundSync(
+          terminal.getFriendlyName(),
+          t('discovery.syncingWithTv', { defaultValue: 'Synchronizing with TV' }),
+          t('discovery.stopSync', { defaultValue: 'Stop' })
+        );
+        await openCustomTab(launchUrl, origin);
+        console.log('Custom Tab launched:', launchUrl);
+        return;
+      }
+
+      // The companion page only supports the Chrome Custom Tabs post-message
+      // transport, so there is no usable fallback on other platforms.
+      setError(t('discovery.terminalNoSyncUrl'));
+    } catch (err) {
+      customTabOpenRef.current = false;
+      customTabChannelReadyRef.current = false;
+      closeCustomTabSession();
+      stopForegroundSync();
+      console.error('Failed to open synchronized companion page:', err);
+      setError(t('discovery.connectionError'));
+    }
+  }, [companionWebUrl, openWebModal, t, terminal]);
 
   // Tanca la web companion i restaura l'orientació vertical de l'app.
   const closeWebModal = useCallback(() => {
@@ -720,7 +836,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     const url = `${base}${base.includes('?') ? '&' : '?'}${query}`;
     // Reset the feed throttle so the first __hbbtvSync reaches the page at once.
     lastWebFeedRef.current = 0;
-    lastWebFeedStateRef.current = { isPlaying: null, speed: null };
+    lastWebFeedStateRef.current = { isPlaying: null, speed: null, privateSignature: null };
     setWebPlayerUrl(url);
     setWebPlayerVisible(true);
     webPlayerVisibleRef.current = true;
@@ -1110,6 +1226,10 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       setWebNoContent(false);
       companionWebUrlRef.current = null;
       webModalVisibleRef.current = false;
+      customTabOpenRef.current = false;
+      customTabChannelReadyRef.current = false;
+      lastCustomTabPayloadRef.current = null;
+      closeCustomTabSession();
       // Tear down the iOS dash.js player WebView too.
       setWebPlayerUrl(null);
       setWebPlayerVisible(false);
@@ -1652,7 +1772,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
                 </View>
                 <TouchableOpacity
                   style={styles.webOpenButton}
-                  onPress={openWebModal}
+                  onPress={openCompanionWeb}
                 >
                   <MaterialIcons name="open-in-full" size={16} color={theme.colors.onPrimary} />
                   <Text style={styles.webOpenButtonText}>{t('discovery.webOpen')}</Text>

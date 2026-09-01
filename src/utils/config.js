@@ -109,10 +109,10 @@ export const config = {
     // `tools/sync-dashboard` dev tool to render a live web dashboard from
     // `adb logcat`. Cheap enough (~4 lines/s) to leave on during development.
     SYNC_TELEMETRY: true,
-    // Default timeline selector (MPEG-DASH PTS).
-    TIMELINE_SELECTOR: 'urn:dvb:css:timeline:pts',
-    // Tick rate for PTS (90kHz).
-    TICK_RATE: 90000,
+    // Timeline registered by the Eclipse HbbTV MediaSynchroniser.
+    TIMELINE_SELECTOR: 'urn:dvb:css:timeline:mpd:period:rel:1000',
+    // MPD period-relative timeline uses milliseconds.
+    TICK_RATE: 1000,
     // Optional fallback content URL, used only when the TV announces no
     // contentId via DVB-CSS CII. Null for the standard HbbTV flow.
     DEFAULT_CONTENT_URL: brand.defaultContentUrl,

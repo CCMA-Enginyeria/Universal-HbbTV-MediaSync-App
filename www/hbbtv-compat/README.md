@@ -62,6 +62,11 @@ window.HbbTVMediaSyncCompat.start(video, {
 // When the content id changes (e.g. new stream):
 window.HbbTVMediaSyncCompat.setContentId('https://example.com/other.mpd');
 
+// Publish application state in the standard CII private field:
+window.HbbTVMediaSyncCompat.setPrivateState({
+  eclipsi: { chapter: 'fases', location: 'barcelona' },
+});
+
 // On teardown / navigation away:
 window.HbbTVMediaSyncCompat.stop();
 ```
@@ -72,6 +77,7 @@ window.HbbTVMediaSyncCompat.stop();
 |--------|-------------|
 | `start(video, options)` | Starts the App2App sync servers for a media element. Returns `true` on success. Stops any previous instance first. |
 | `setContentId(contentId)` | Updates the announced contentId and re-broadcasts CSS-CII. |
+| `setPrivateState(privateState)` | Replaces the application-specific `private` CII field and re-broadcasts CSS-CII. |
 | `stop()` | Stops the servers and releases resources. |
 | `isRunning()` | Whether the servers are currently running. |
 

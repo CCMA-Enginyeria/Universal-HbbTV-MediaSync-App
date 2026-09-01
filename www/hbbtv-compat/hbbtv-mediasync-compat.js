@@ -264,6 +264,12 @@
     this.broadcastCII();
   };
 
+  /** Replaces application-specific CII private state and re-broadcasts it. */
+  MediaSyncCompatServer.prototype.setPrivateState = function (privateState) {
+    this.ciiState.private = privateState || {};
+    this.broadcastCII();
+  };
+
   // ------------------------------------------------------------------ servers
 
   MediaSyncCompatServer.prototype.startCIIServer = function () {
@@ -540,6 +546,13 @@
     setContentId: function (contentId) {
       if (currentServer) {
         currentServer.setContentId(contentId);
+      }
+    },
+
+    /** Replaces application-specific CII private state and re-broadcasts it. */
+    setPrivateState: function (privateState) {
+      if (currentServer) {
+        currentServer.setPrivateState(privateState);
       }
     },
 
