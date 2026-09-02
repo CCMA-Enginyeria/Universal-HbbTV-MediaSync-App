@@ -27,6 +27,13 @@ import {
   getCompanionOrigin,
   isExternalSyncWebContent,
 } from '../utils/companionWebLaunch';
+import {
+  buildAppMessage,
+  buildInitMessage,
+  buildPositionMessage,
+  buildWebViewInjection,
+  parseCompanionMessage,
+} from '../utils/companionProtocol';
 import theme from '../theme';
 import { MaterialIcons } from '@expo/vector-icons';
 import StatusSlot from './StatusSlot';
@@ -160,7 +167,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   const [webModalVisible, setWebModalVisible] = useState(false);
   // iOS DASH playback: URL of the hosted `sync_webplayer` (dash.js) page shown
   // in a full-screen WebView, since iOS AVPlayer cannot play MPEG-DASH. Fed the
-  // DVB-CSS sync via `window.__hbbtvSync` (see feedWebView). Null when inactive.
+  // DVB-CSS sync via the companion protocol (see feedWebView). Null when inactive.
   const [webPlayerUrl, setWebPlayerUrl] = useState(null);
   const [webPlayerVisible, setWebPlayerVisible] = useState(false);
   // Metadata (title + favicon) of the companion web page, fetched from its HTML
@@ -234,11 +241,11 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   const lastWebFeedStateRef = useRef({ isPlaying: null, speed: null });
   const customTabOpenRef = useRef(false);
   const customTabChannelReadyRef = useRef(false);
-  const lastCustomTabPayloadRef = useRef(null);
+  const lastCompanionPayloadRef = useRef(null);
   // Last retained application-channel state received from the TV, keyed by
-  // message type. Replayed to the companion page whenever the Custom Tab
-  // messaging channel is (re)established, since the page may load after the TV
-  // published it. Contents are opaque to this app.
+  // message type. Replayed to the companion page whenever a companion transport
+  // is (re)established, since the page may load after the TV published it.
+  // Contents are opaque to this app.
   const retainedAppStateRef = useRef({});
   // Momento del último intento de reconexión disparado por el heartbeat nativo
   // (para no reintentar más a menudo que RETRY_DELAY en segundo plano).
@@ -638,7 +645,34 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     }
   }, []);
 
-  // Forward TV synchronization to the active WebView or verified Custom Tab.
+  /**
+   * Fans a protocol envelope out to every companion transport that is currently
+   * usable. All of them speak the same versioned JSON protocol; only the way the
+   * bytes travel differs (verified Custom Tabs channel vs. WebView injection).
+   */
+  const sendToCompanion = useCallback((envelope) => {
+    if (!envelope) return;
+    if (customTabOpenRef.current && customTabChannelReadyRef.current) {
+      const result = postCustomTabMessage(JSON.stringify(envelope));
+      if (result !== 0) {
+        console.warn(`Custom Tab ${envelope.type} postMessage failed with result:`, result);
+      }
+    }
+    let injection = null;
+    const inject = (ref, visible) => {
+      if (!visible || !ref.current) return;
+      if (injection === null) injection = buildWebViewInjection(envelope);
+      try {
+        ref.current.injectJavaScript(injection);
+      } catch (e) {
+        // ignore
+      }
+    };
+    inject(webViewRef, webModalVisibleRef.current);
+    inject(webPlayerViewRef, webPlayerVisibleRef.current);
+  }, []);
+
+  // Forward TV synchronization to every active companion transport.
   const feedWebView = useCallback((pos) => {
     const webVisible = webModalVisibleRef.current && !!webViewRef.current;
     const playerVisible = webPlayerVisibleRef.current && !!webPlayerViewRef.current;
@@ -655,108 +689,73 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     if (!stateChanged && now - lastWebFeedRef.current < WEB_FEED_INTERVAL_MS) return;
     lastWebFeedRef.current = now;
     lastWebFeedStateRef.current = { isPlaying: pos.isPlaying, speed: pos.speed };
-    const payload = {
-      version: 1,
-      type: 'position',
-      positionSeconds: pos.positionSeconds,
-      positionMillis: pos.positionMillis,
-      exoPlayerPositionSeconds: pos.exoPlayerPositionSeconds,
-      isPlaying: pos.isPlaying,
-      speed: pos.speed,
-      isLive: pos.isLive,
-      // When the position was valid (device wall clock). The web player uses it
-      // to compensate the feed latency so it locks to where the TV IS now, not
-      // where it was when we sampled it.
-      generatedAt: pos.generatedAt,
-      formattedTime: pos.formattedTime,
-    };
-    lastCustomTabPayloadRef.current = payload;
-    // In-app WebView transport (injectJavaScript).
-    if (webVisible) {
-      try {
-        webViewRef.current.injectJavaScript(
-          `window.__hbbtvSync && window.__hbbtvSync(${JSON.stringify(payload)}); true;`
-        );
-      } catch (e) {
-        // ignore
-      }
-    }
-    // iOS dash.js media player WebView (same __hbbtvSync protocol).
-    if (playerVisible) {
-      try {
-        webPlayerViewRef.current.injectJavaScript(
-          `window.__hbbtvSync && window.__hbbtvSync(${JSON.stringify(payload)}); true;`
-        );
-      } catch (e) {
-        // ignore
-      }
-    }
-    if (customTabVisible && customTabChannelReadyRef.current) {
-      const result = postCustomTabMessage(JSON.stringify(payload));
-      if (result !== 0) console.warn('Custom Tab postMessage failed with result:', result);
-    }
-  }, []);
+    const payload = buildPositionMessage(pos);
+    lastCompanionPayloadRef.current = payload;
+    sendToCompanion(payload);
+  }, [sendToCompanion]);
 
   /**
-   * Forwards an App2App application message to the companion page over the
-   * Custom Tab channel. The message body is opaque to this app: it only wraps
-   * it so the page can tell it apart from position updates.
+   * Forwards an App2App application message to the companion page. The message
+   * body is opaque to this app: it only wraps it so the page can tell it apart
+   * from position updates.
    */
-  const postAppMessageToCustomTab = useCallback((message) => {
-    if (!customTabOpenRef.current || !customTabChannelReadyRef.current) return;
-    const result = postCustomTabMessage(JSON.stringify({
-      version: 1,
-      type: 'app-message',
-      message,
-    }));
-    if (result !== 0) console.warn('Custom Tab app-message postMessage failed with result:', result);
+  const postAppMessageToCompanion = useCallback((message) => {
+    sendToCompanion(buildAppMessage(message));
+  }, [sendToCompanion]);
+
+  /**
+   * Pushes everything the page needs as soon as a transport becomes usable: the
+   * content it is synchronized to, the last known position and the retained
+   * application state, which the TV may have published before the page existed.
+   */
+  const seedCompanion = useCallback(() => {
+    sendToCompanion(buildInitMessage(companionWebUrlRef.current));
+    const payload = lastCompanionPayloadRef.current ||
+      (positionRef.current?.positionSeconds != null
+        ? buildPositionMessage(positionRef.current)
+        : null);
+    if (payload) sendToCompanion(payload);
+    Object.values(retainedAppStateRef.current).forEach((appMessage) => {
+      postAppMessageToCompanion(appMessage);
+    });
+  }, [sendToCompanion, postAppMessageToCompanion]);
+
+  /** Handles a raw companion-page message, whatever transport delivered it. */
+  const handleCompanionMessage = useCallback((raw) => {
+    const payload = parseCompanionMessage(raw);
+    if (!payload) return false;
+    if (payload.type === 'sync-ack') {
+      console.log('Companion page acknowledged synchronization:', payload);
+      return true;
+    }
+    if (payload.type === 'app-message' && payload.message?.type) {
+      // Companion page -> HbbTV application, forwarded verbatim.
+      syncServiceRef.current?.sendAppMessage?.(
+        payload.message.type,
+        payload.message.payload,
+        payload.message.id
+      );
+      return true;
+    }
+    return false;
   }, []);
 
   useEffect(() => {
     const readySubscription = addCustomTabChannelReadyListener(() => {
       console.log('Custom Tab messaging channel ready');
       customTabChannelReadyRef.current = true;
-      const payload = lastCustomTabPayloadRef.current || positionRef.current;
-      if (payload) {
-        const message = payload.type === 'position' ? payload : {
-          version: 1,
-          type: 'position',
-          ...payload,
-        };
-        const result = postCustomTabMessage(JSON.stringify(message));
-        console.log('Custom Tab initial synchronization payload sent:', result);
-      }
-      // The page may have loaded after the TV published its application state,
-      // so replay whatever we retained for it.
-      Object.values(retainedAppStateRef.current).forEach((appMessage) => {
-        postAppMessageToCustomTab(appMessage);
-      });
+      seedCompanion();
     });
     const errorSubscription = addCustomTabErrorListener(({ message }) => {
       customTabOpenRef.current = false;
       customTabChannelReadyRef.current = false;
-      lastCustomTabPayloadRef.current = null;
+      lastCompanionPayloadRef.current = null;
       closeCustomTabSession();
       stopForegroundSync();
       console.warn('Custom Tabs messaging error:', message);
     });
     const messageSubscription = addCustomTabMessageListener(({ message }) => {
-      try {
-        const payload = JSON.parse(message);
-        if (payload?.version !== 1) return;
-        if (payload.type === 'sync-ack') {
-          console.log('Custom Tab synchronization acknowledged by web:', payload);
-          return;
-        }
-        if (payload.type === 'app-message' && payload.message?.type) {
-          // Companion page -> HbbTV application, forwarded verbatim.
-          syncServiceRef.current?.sendAppMessage?.(
-            payload.message.type,
-            payload.message.payload,
-            payload.message.id
-          );
-        }
-      } catch (error) {
+      if (!handleCompanionMessage(message)) {
         console.warn('Custom Tab returned an invalid message:', message);
       }
     });
@@ -767,7 +766,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     const hiddenSubscription = addCustomTabHiddenListener(() => {
       customTabOpenRef.current = false;
       customTabChannelReadyRef.current = false;
-      lastCustomTabPayloadRef.current = null;
+      lastCompanionPayloadRef.current = null;
       closeCustomTabSession();
       stopForegroundSync();
     });
@@ -778,7 +777,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       pageLoadedSubscription.remove();
       hiddenSubscription.remove();
     };
-  }, []);
+  }, [handleCompanionMessage, seedCompanion]);
 
   // Obre la web companion a pantalla completa i desbloqueja l'orientació perquè
   // l'usuari pugui girar el telèfon mentre la mira. Reinicia el throttle perquè
@@ -803,7 +802,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
         const origin = getCompanionOrigin(launchUrl);
         customTabOpenRef.current = true;
         customTabChannelReadyRef.current = false;
-        lastCustomTabPayloadRef.current = null;
+        lastCompanionPayloadRef.current = null;
         startForegroundSync(
           terminal.getFriendlyName(),
           t('discovery.syncingWithTv', { defaultValue: 'Synchronizing with TV' }),
@@ -830,14 +829,18 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   // Tanca la web companion i restaura l'orientació vertical de l'app.
   const closeWebModal = useCallback(() => {
     setWebModalVisible(false);
+    webModalVisibleRef.current = false;
+    lastCompanionPayloadRef.current = null;
+    lastWebFeedRef.current = 0;
+    lastWebFeedStateRef.current = { isPlaying: null, speed: null };
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
   }, []);
 
   // iOS DASH playback: open the hosted dash.js `sync_webplayer` page in a
   // full-screen WebView for the given track. iOS AVPlayer cannot play MPEG-DASH,
   // so the WebView renders the audio/video via dash.js and follows the TV via
-  // the same `window.__hbbtvSync` feed as the companion pages. `media` is the
-  // parsed audio/video descriptor; `mode` is 'audio' | 'video'.
+  // the same companion protocol as the companion pages. `media` is the parsed
+  // audio/video descriptor; `mode` is 'audio' | 'video'.
   const openWebPlayer = useCallback((media, mode) => {
     const base = config.SYNC_WEBPLAYER_URL;
     if (!base || !mpdUrlRef.current) return false;
@@ -863,7 +866,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       `tel=${SYNC_TELEMETRY ? '1' : '0'}`,
     ].join('&');
     const url = `${base}${base.includes('?') ? '&' : '?'}${query}`;
-    // Reset the feed throttle so the first __hbbtvSync reaches the page at once.
+    // Reset the feed throttle so the first correction reaches the page at once.
     lastWebFeedRef.current = 0;
     lastWebFeedStateRef.current = { isPlaying: null, speed: null };
     setWebPlayerUrl(url);
@@ -878,6 +881,8 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     setWebPlayerVisible(false);
     webPlayerVisibleRef.current = false;
     setWebPlayerUrl(null);
+    lastWebFeedRef.current = 0;
+    lastWebFeedStateRef.current = { isPlaying: null, speed: null };
     setSelectedAudio(null);
     setSelectedVideo(null);
     setAudioPlaying(false);
@@ -1051,7 +1056,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       if (message?.retained && message.type) {
         retainedAppStateRef.current[message.type] = message;
       }
-      postAppMessageToCustomTab(message);
+      postAppMessageToCompanion(message);
     });
 
     service.on('cii-change', ({ state }) => {
@@ -1267,7 +1272,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       webModalVisibleRef.current = false;
       customTabOpenRef.current = false;
       customTabChannelReadyRef.current = false;
-      lastCustomTabPayloadRef.current = null;
+      lastCompanionPayloadRef.current = null;
       retainedAppStateRef.current = {};
       closeCustomTabSession();
       // Tear down the iOS dash.js player WebView too.
@@ -2111,8 +2116,9 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       )}
 
       {/* Web companion a pantalla completa. Es carrega la URL rebuda per CII i
-          s'alimenta amb la sincronitzaci\u00f3 via window.__hbbtvSync (feedWebView).
-          Si arriba un contentId sense web mentre est\u00e0 obert, mostrem l'av\u00eds
+          s'alimenta amb la sincronització pel mateix protocol que el Custom Tab
+          (envelopes JSON via window `message`, veure companionProtocol).
+          Si arriba un contentId sense web mentre està obert, mostrem l'avís
           `webNoContent` i l'usuari pot tancar. */}
       <Modal
         visible={webModalVisible}
@@ -2141,18 +2147,13 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
               // request the OS camera permission on-demand (only now, when the
               // page needs it) and grant just the camera resource.
               onPermissionRequest={handleWebViewPermissionRequest}
+              onMessage={(event) => {
+                handleCompanionMessage(event?.nativeEvent?.data);
+              }}
               onLoadEnd={() => {
-                // Missatge inicial + darrera posici\u00f3 coneguda, per\u00f2 que la web
-                // tingui context i mostri de seguida el timecode.
-                const initPayload = { type: 'init', contentId: companionWebUrlRef.current };
-                try {
-                  webViewRef.current?.injectJavaScript(
-                    `window.__hbbtvSync && window.__hbbtvSync(${JSON.stringify(initPayload)}); true;`
-                  );
-                } catch (e) {
-                  // ignore
-                }
-                if (positionRef.current) feedWebView(positionRef.current);
+                // La pàgina ja pot rebre missatges: li donem context (init),
+                // l'última posició coneguda i l'estat d'aplicació retingut.
+                seedCompanion();
               }}
             />
           ) : (
@@ -2173,8 +2174,8 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       </Modal>
 
       {/* iOS DASH player: dash.js `sync_webplayer` page in a full-screen WebView,
-          since iOS AVPlayer cannot play MPEG-DASH. Fed the DVB-CSS sync via
-          window.__hbbtvSync (feedWebView), like the companion pages. */}
+          since iOS AVPlayer cannot play MPEG-DASH. Fed the DVB-CSS sync with the
+          same companion protocol as the companion pages. */}
       <Modal
         visible={webPlayerVisible}
         animationType="slide"
@@ -2194,9 +2195,11 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
               javaScriptEnabled
               domStorageEnabled
               onMessage={(event) => {
+                const raw = event?.nativeEvent?.data;
+                if (handleCompanionMessage(raw)) return;
                 let data = null;
                 try {
-                  data = JSON.parse(event?.nativeEvent?.data ?? '');
+                  data = JSON.parse(raw ?? '');
                 } catch (e) {
                   return;
                 }
@@ -2211,7 +2214,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
               }}
               onLoadEnd={() => {
                 // Seed the page with the last known position immediately.
-                if (positionRef.current) feedWebView(positionRef.current);
+                seedCompanion();
               }}
             />
           ) : null}

@@ -78,7 +78,8 @@
 <script>
 /**
  * Sync Web Player — plays a DASH (MPD) stream with dash.js and follows the TV
- * timeline received from the host app via `window.__hbbtvSync(payload)`.
+ * timeline received from the host app via the companion protocol (`message`
+ * event; the legacy `window.__hbbtvSync(payload)` entry point still works).
  *
  * Used on iOS, where AVPlayer cannot play MPEG-DASH natively. The host app
  * (Universal HbbTV MediaSync) opens this page in a full-screen WebView, passes
@@ -430,13 +431,14 @@
     setStatus(anchor.isPlaying, true);
   }
 
-  window.__hbbtvSync = handleSync;
   window.addEventListener('message', function (ev) {
     var d = ev && ev.data;
     if (d == null) return;
     if (typeof d === 'string' && d.indexOf('positionSeconds') === -1 && d.indexOf('"type"') === -1) return;
     handleSync(d);
   });
+  // Deprecated entry point kept for older app versions.
+  window.__hbbtvSync = handleSync;
   document.addEventListener('message', function (ev) { handleSync(ev && ev.data); });
 
   // ---- Render + correction ticks -------------------------------------------

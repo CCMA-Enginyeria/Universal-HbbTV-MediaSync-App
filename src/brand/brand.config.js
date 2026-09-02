@@ -58,8 +58,9 @@ const brand = {
 
   // URL of the hosted `sync_webplayer` page (dash.js). Used on iOS to play DASH
   // (MPD) content, since iOS AVPlayer cannot play MPEG-DASH natively: the app
-  // opens this page in a full-screen WebView and feeds it the DVB-CSS sync via
-  // `window.__hbbtvSync`. Host it like the companion `sync_app` page (per fork).
+  // opens this page in a full-screen WebView and feeds it the DVB-CSS sync with
+  // the companion protocol (see `src/utils/companionProtocol.js`). Host it like
+  // the companion `sync_app` page (per fork).
   // When the TV announces HLS (M3U8) instead, iOS uses the native player and
   // ignores this. The repo source lives at
   // `www/hbbtv_examples/sync_webplayer/index.html`.

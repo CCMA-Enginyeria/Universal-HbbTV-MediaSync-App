@@ -80,8 +80,11 @@ Alongside them it opens a fourth, **non‑DVB‑CSS application channel**
 (`App2AppChannelService`, `<X_HbbTV_App2AppURL>/<prefix>-app`) for free‑form
 bidirectional messaging with the HbbTV application. It is available in both
 native and compatibility mode, and its payloads are opaque to this app: they are
-relayed verbatim to the companion web page over the Chrome Custom Tabs channel.
-See [www/hbbtv-compat/README.md](www/hbbtv-compat/README.md) for the protocol.
+relayed verbatim to the companion web page over whichever companion transport is
+open (verified Chrome Custom Tabs channel or in-app WebView), both of which speak
+the same versioned envelope protocol defined in
+[src/utils/companionProtocol.js](../src/utils/companionProtocol.js).
+See [www/hbbtv-compat/README.md](../www/hbbtv-compat/README.md) for the protocol.
 
 ```mermaid
 sequenceDiagram

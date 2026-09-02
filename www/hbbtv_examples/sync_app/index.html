@@ -144,10 +144,8 @@
     requestAnimationFrame(tick);
   }
 
-  // API principal: la app mòbil injecta window.__hbbtvSync(payload).
-  window.__hbbtvSync=handleSync;
-
-  // Fallback: alguns hosts (WebView / iframe) envien via postMessage.
+  // API principal: la app mòbil envia envelopes JSON del protocol companion,
+  // que arriben com a esdeveniment `message` (tant al Custom Tab com al WebView).
   window.addEventListener('message',function(ev){
     var d=ev&&ev.data;
     if(d==null){return;}
@@ -157,6 +155,9 @@
     }
     handleSync(d);
   });
+  // Punt d'entrada obsolet, mantingut per compatibilitat amb versions antigues
+  // de l'app que injectaven directament la crida.
+  window.__hbbtvSync=handleSync;
   // React Native WebView (Android) pot enviar a document.
   document.addEventListener('message',function(ev){handleSync(ev&&ev.data);});
 

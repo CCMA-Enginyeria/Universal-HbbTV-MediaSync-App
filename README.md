@@ -73,19 +73,25 @@ ms.enableInterDeviceSync(function () {
 });
 ```
 
-Inside the companion web, receive the synchronization messages by defining a global
-handler that the mobile app calls on every timeline update:
+Inside the companion web, receive the synchronization messages by listening for the
+same `message` event on every transport (Chrome Custom Tab or in-app WebView):
 
 ```js
-// Called by the mobile app on each sync update.
-window.__hbbtvSync = function (msg) {
-  // msg = { type:'init', contentId } on load, then
-  // msg = { type:'position', positionSeconds, positionMillis, isPlaying, speed, isLive, formattedTime }
+window.addEventListener('message', function (event) {
+  var msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+  if (!msg || msg.version !== 1) return;
+  // msg = { version:1, type:'init', contentId } on load, then
+  // msg = { version:1, type:'position', positionSeconds, positionMillis, isPlaying, speed, isLive, generatedAt, formattedTime }
+  // and { version:1, type:'app-message', message } for App2App traffic.
   if (msg.type === 'position') {
     render(msg.positionSeconds); // e.g. show the exact timecode
   }
-};
+});
 ```
+
+The reply path (`sync-ack`, `app-message`) goes back over the Custom Tabs message port
+or `window.ReactNativeWebView.postMessage` inside the in-app WebView. The legacy
+`window.__hbbtvSync(msg)` global is still called for backwards compatibility.
 
 A minimal, ready-to-run demonstrator that displays the exact synchronized timecode
 lives at [`www/hbbtv_examples/sync_app/index.html`](www/hbbtv_examples/sync_app/index.html),
@@ -104,8 +110,9 @@ Additional capabilities:
 - **Background audio**: minimize the app and keep the synchronized audio playing.
 - **Video track** selection (e.g. sign-language / alternate video) with a visible player.
 - **Companion web content**: when the content ID is a web (`.html`), the app opens it
-  full-screen in a WebView and streams the timeline to it via post-messages
-  (`window.__hbbtvSync`) instead of parsing an MPD. If a new content ID arrives with a
+  full-screen in a WebView (or a verified Chrome Custom Tab for external HTTPS pages)
+  and streams the timeline to it with the same versioned post-message protocol instead
+  of parsing an MPD. If a new content ID arrives with a
   different web it reloads it; if it no longer points to a web, the app tells the user
   and lets them close it.
 - 7 UI languages: Catalan, Spanish, Basque, English, German, Italian, French
