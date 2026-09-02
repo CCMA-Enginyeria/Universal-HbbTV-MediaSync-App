@@ -108,6 +108,18 @@ const COMPAT_SYNC_CONTROLLER_OPTIONS = {
   exitBandS: config.MEDIA_SYNC?.COMPAT_SYNC_EXIT_BAND_S ?? 0.02,
 };
 
+const TransportAvailability = Object.freeze({
+  UNKNOWN: 'unknown',
+  CHECKING: 'checking',
+  AVAILABLE: 'available',
+  UNAVAILABLE: 'unavailable',
+});
+
+const UNKNOWN_TRANSPORT_AVAILABILITY = Object.freeze({
+  [MediaSyncMode.NATIVE]: TransportAvailability.UNKNOWN,
+  [MediaSyncMode.COMPAT]: TransportAvailability.UNKNOWN,
+});
+
 // Cadència d'enviament de correccions de sincronització a la web companion. La
 // web porta el seu propi rellotge i interpola entre missatges, de manera que no
 // cal inundar-la amb post-messages: només li enviem una correcció periòdica (o
@@ -146,6 +158,10 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   const [mediaSyncMode, setMediaSyncMode] = useState(DEFAULT_MEDIA_SYNC_MODE);
   const [isMediaSyncModeReady, setIsMediaSyncModeReady] = useState(false);
   const [isSavingMediaSyncMode, setIsSavingMediaSyncMode] = useState(false);
+  const [transportAvailabilityState, setTransportAvailabilityState] = useState({
+    terminal,
+    modes: UNKNOWN_TRANSPORT_AVAILABILITY,
+  });
   const [audios, setAudios] = useState([]);
   const [videos, setVideos] = useState([]);
   const [selectedAudio, setSelectedAudio] = useState(null);
@@ -187,7 +203,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   const [playbackIntent, setPlaybackIntent] = useState(null);
 
   const syncServiceRef = useRef(null);
-  const mediaSyncModeRef = useRef(DEFAULT_MEDIA_SYNC_MODE);
+  const availabilityProbeControllersRef = useRef([]);
   const audioPlayerRef = useRef(null);
   const videoPlayerRef = useRef(null);
   const audioCurrentTimeRef = useRef(0);
@@ -322,6 +338,20 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   const animationRef = useRef(null);
 
   const hasMediaSync = terminal.hasMediaSyncCapability && terminal.hasMediaSyncCapability();
+  const transportAvailability = transportAvailabilityState.terminal === terminal
+    ? transportAvailabilityState.modes
+    : UNKNOWN_TRANSPORT_AVAILABILITY;
+  const fallbackMediaSyncMode = mediaSyncMode === MediaSyncMode.NATIVE
+    ? MediaSyncMode.COMPAT
+    : MediaSyncMode.NATIVE;
+  const effectiveMediaSyncMode = transportAvailability[mediaSyncMode] === TransportAvailability.AVAILABLE
+    ? mediaSyncMode
+    : transportAvailability[mediaSyncMode] === TransportAvailability.UNAVAILABLE
+      && transportAvailability[fallbackMediaSyncMode] === TransportAvailability.AVAILABLE
+      ? fallbackMediaSyncMode
+      : null;
+  const availableMediaSyncModes = [MediaSyncMode.NATIVE, MediaSyncMode.COMPAT]
+    .filter((mode) => transportAvailability[mode] === TransportAvailability.AVAILABLE);
 
   // Function to animate wave bars
   const animateWaveBars = useCallback(() => {
@@ -965,13 +995,11 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     getMediaSyncMode(terminal)
       .then((mode) => {
         if (cancelled) return;
-        mediaSyncModeRef.current = mode;
         setMediaSyncMode(mode);
       })
       .catch((loadError) => {
         console.warn('MediaSync: could not load the saved mode', loadError);
         if (cancelled) return;
-        mediaSyncModeRef.current = DEFAULT_MEDIA_SYNC_MODE;
         setMediaSyncMode(DEFAULT_MEDIA_SYNC_MODE);
       })
       .finally(() => {
@@ -981,6 +1009,71 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       cancelled = true;
     };
   }, [terminal]);
+
+  useEffect(() => {
+    availabilityProbeControllersRef.current.forEach((controller) => controller.abort());
+    availabilityProbeControllersRef.current = [];
+
+    if (!expanded || !hasMediaSync || !isMediaSyncModeReady) return;
+
+    setTransportAvailabilityState({
+      terminal,
+      modes: {
+        [MediaSyncMode.NATIVE]: TransportAvailability.CHECKING,
+        [MediaSyncMode.COMPAT]: TransportAvailability.CHECKING,
+      },
+    });
+
+    const interDevSyncUrl = terminal.getInterDevSyncURL();
+    const app2appUrl = terminal.getApp2AppURL?.() || null;
+    const realIP = terminal.getRealIP?.() || null;
+    const timeoutMs = config.MEDIA_SYNC?.AVAILABILITY_PROBE_TIMEOUT_MS ?? 2000;
+
+    [MediaSyncMode.NATIVE, MediaSyncMode.COMPAT].forEach((mode) => {
+      const controller = new AbortController();
+      availabilityProbeControllersRef.current.push(controller);
+      const probeService = new MediaSyncService();
+      probeService.probeTransportAvailability(mode, interDevSyncUrl, {
+        app2appUrl,
+        realIP,
+        timeoutMs,
+        signal: controller.signal,
+      }).then((available) => {
+        if (controller.signal.aborted) return;
+        setTransportAvailabilityState((current) => current.terminal === terminal
+          ? {
+            terminal,
+            modes: {
+              ...current.modes,
+              [mode]: available
+                ? TransportAvailability.AVAILABLE
+                : TransportAvailability.UNAVAILABLE,
+            },
+          }
+          : current);
+      }).catch((probeError) => {
+        if (controller.signal.aborted) return;
+        console.warn(`MediaSync: ${mode} availability probe failed`, probeError);
+        setTransportAvailabilityState((current) => current.terminal === terminal
+          ? {
+            terminal,
+            modes: {
+              ...current.modes,
+              [mode]: TransportAvailability.UNAVAILABLE,
+            },
+          }
+          : current);
+      });
+    });
+
+    return () => {
+      availabilityProbeControllersRef.current.forEach((controller) => controller.abort());
+      availabilityProbeControllersRef.current = [];
+      setTransportAvailabilityState((current) => current.terminal === terminal
+        ? { terminal, modes: UNKNOWN_TRANSPORT_AVAILABILITY }
+        : current);
+    };
+  }, [expanded, hasMediaSync, isMediaSyncModeReady, terminal]);
 
 
   // Funció de connexió amb timeout i reintents infinits
@@ -1017,6 +1110,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
 
     const interDevSyncUrl = terminal.getInterDevSyncURL();
     const app2appUrl = terminal.getApp2AppURL?.() || null;
+    const realIP = terminal.getRealIP?.() || null;
     // We can synchronize via native DVB-CSS (InterDevSync) and/or the App2App
     // compatibility channel. Only bail out if neither transport is available.
     if (!interDevSyncUrl && !app2appUrl) {
@@ -1199,7 +1293,8 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
         timelineSelector: config.MEDIA_SYNC?.TIMELINE_SELECTOR || 'urn:dvb:css:timeline:pts',
         tickRate: config.MEDIA_SYNC?.TICK_RATE || 90000,
         app2appUrl,
-        mode: mediaSyncModeRef.current,
+        realIP,
+        mode: effectiveMediaSyncMode,
       });
     } catch (err) {
       console.error('Error iniciant connexió MediaSync:', err);
@@ -1230,7 +1325,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
 
   // Conectar MediaSync al expandir
   useEffect(() => {
-    if (!expanded || !hasMediaSync || !isMediaSyncModeReady) return;
+    if (!expanded || !hasMediaSync || !isMediaSyncModeReady || !effectiveMediaSyncMode) return;
 
     isActiveRef.current = true;
     setupAndConnectRef.current();
@@ -1282,7 +1377,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
       // Restaurar l'orientació vertical si la web companion estava oberta.
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     };
-  }, [expanded, hasMediaSync, isMediaSyncModeReady, mediaSyncMode, terminal]);
+  }, [expanded, hasMediaSync, isMediaSyncModeReady, effectiveMediaSyncMode, terminal]);
 
   // Mantener la sincronización al volver de background. La reproducción y los
   // timers de sync siguen vivos gracias al foreground service / background audio,
@@ -1584,7 +1679,6 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
     setIsSavingMediaSyncMode(true);
     try {
       await persistMediaSyncMode(terminal, mode);
-      mediaSyncModeRef.current = mode;
       setMediaSyncMode(mode);
     } catch (saveError) {
       console.error('MediaSync: could not save the selected mode', saveError);
@@ -1752,14 +1846,14 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
 
       {expanded && hasMediaSync && (
         <View style={styles.mediaSection}>
-          <View style={styles.modeSection}>
+          {availableMediaSyncModes.length > 0 && <View style={styles.modeSection}>
             <Text style={styles.sectionLabel}>{t('discovery.modeTitle')}</Text>
             <View style={styles.modeSelector} accessibilityRole="radiogroup">
               {[
                 { mode: MediaSyncMode.NATIVE, icon: 'gps-fixed', label: t('discovery.modeNative') },
                 { mode: MediaSyncMode.COMPAT, icon: 'devices', label: t('discovery.modeCompat') },
-              ].map((option) => {
-                const selected = mediaSyncMode === option.mode;
+              ].filter((option) => availableMediaSyncModes.includes(option.mode)).map((option) => {
+                const selected = effectiveMediaSyncMode === option.mode;
                 return (
                   <TouchableOpacity
                     key={option.mode}
@@ -1782,11 +1876,11 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
               })}
             </View>
             <Text style={styles.modeDescription}>
-              {t(mediaSyncMode === MediaSyncMode.NATIVE
+              {t(effectiveMediaSyncMode === MediaSyncMode.NATIVE
                 ? 'discovery.modeNativeDescription'
                 : 'discovery.modeCompatDescription')}
             </Text>
-          </View>
+          </View>}
           {(isLoading || (!companionWebUrl && audios.length === 0 && videos.length === 0)) && (
             <View style={styles.statusRegion}>
                 <Text style={styles.emptyText}>{t('discovery.waitingForContent')} <ActivityIndicator color={theme.colors.primary} /></Text>

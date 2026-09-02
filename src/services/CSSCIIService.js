@@ -38,6 +38,7 @@ export class CSSCIIService extends EventEmitter {
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 3;
     this.reconnectDelay = 2000;
+    this.reconnectTimer = null;
     
     // Estat CII actual
     this.state = {
@@ -128,7 +129,8 @@ export class CSSCIIService extends EventEmitter {
     const delay = this.reconnectDelay * this.reconnectAttempts;
     console.log(`🔄 CII: Reconnectant en ${delay}ms (intent ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
     
-    setTimeout(() => {
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
       if (!this.isConnected) {
         this.connect(); // fire-and-forget on reconnect is fine
       }
@@ -284,9 +286,13 @@ export class CSSCIIService extends EventEmitter {
    * Tanca la connexió
    */
   close() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.maxReconnectAttempts = 0;
     if (this.ws) {
       console.log('🔌 CII: Tancant connexió...');
-      this.maxReconnectAttempts = 0; // Evitar reconnexió
       // Detach handlers before closing: the OS may still fire a late
       // `onerror`/`onclose` on the closing socket, and if the service has
       // already been destroyed (`removeAllListeners`) that `emit('error')`

@@ -177,6 +177,26 @@ export class HbbTVTerminal {
   }
 
   /**
+   * Returns the host used to discover the terminal so placeholder hosts in
+   * advertised MediaSync URLs can be replaced before connecting.
+   */
+  getRealIP() {
+    const candidates = [this.deviceDescriptionUrl, this.applicationUrl];
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      try {
+        const hostname = new URL(candidate).hostname;
+        if (hostname && !HbbTVTerminal.hasInvalidIP(`ws://${hostname}`)) {
+          return hostname;
+        }
+      } catch (_error) {
+        // Ignore malformed discovery URLs and try the next known endpoint.
+      }
+    }
+    return null;
+  }
+
+  /**
    * Obté l'URL per llançar aplicacions
    */
   getAppLaunchURL() {

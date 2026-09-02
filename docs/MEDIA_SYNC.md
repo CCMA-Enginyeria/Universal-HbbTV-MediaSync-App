@@ -76,6 +76,27 @@ a UDP wall‑clock channel. Three protocols matter:
 `MediaSyncService` is the **orchestrator**: it connects all three, emits a
 unified `position-update`, and exposes `getCurrentPosition()`.
 
+### 2.1 Transport availability and mode selection
+
+Before starting MediaSync, `TerminalItem` probes the native and compatibility
+transports independently and in parallel. A transport is considered available
+only after its CSS-CII service sends a real message that advertises usable
+CSS-WC and CSS-TS endpoints. The probe does not start WC, TS, position updates,
+or the application channel, and it is canceled when the terminal is collapsed,
+changed, or unmounted.
+
+Compatibility additionally requires the advertised endpoints to belong to the
+same App2App profile: `/<prefix>-wc` and `/<prefix>-ts`. Full synchronization is
+not required for availability because that would depend on the TV currently
+presenting content and exposing the selected timeline.
+
+The mode selector remains hidden until at least one transport is confirmed. It
+then lists only the confirmed modes, including a single option when the terminal
+supports only one transport. The saved user preference has priority: the app
+waits for that probe and uses it when available; otherwise it falls back to the
+other confirmed transport without overwriting the saved preference. Only an
+explicit user selection updates the stored preference.
+
 Alongside them it opens a fourth, **non‑DVB‑CSS application channel**
 (`App2AppChannelService`, `<X_HbbTV_App2AppURL>/<prefix>-app`) for free‑form
 bidirectional messaging with the HbbTV application. It is available in both

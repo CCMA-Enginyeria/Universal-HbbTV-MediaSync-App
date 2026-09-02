@@ -88,7 +88,12 @@ jest.mock('../CSSWCServiceUDP', () => {
   return {
     __esModule: true,
     default: MockCSSWCServiceUDP,
-    parseWCUrl: () => ({ protocol: 'ws' }),
+    parseWCUrl: (url) => {
+      const match = /^(?:udp|wss?):\/\/([^/:]+):(\d+)/i.exec(url || '');
+      return match
+        ? { protocol: url.split(':')[0], host: match[1], port: Number(match[2]) }
+        : null;
+    },
   };
 });
 
@@ -184,6 +189,103 @@ describe('MediaSyncService — App2App compatibility transport selection', () =>
       svc.mode = 'native';
 
       expect(svc.getWcToleranceMs()).toBe(100);
+    });
+  });
+
+  describe('transport availability probe', () => {
+    it('confirms compatibility after CII advertises matching WC and TS endpoints', async () => {
+      const svc = createService();
+      const result = svc.probeTransportAvailability('compat', NATIVE_URL, {
+        app2appUrl: APP2APP_URL,
+      });
+
+      const compatCii = CSSCIIService.instances[0];
+      compatCii.wcUrl = COMPAT_WC_URL;
+      compatCii.tsUrl = COMPAT_TS_URL;
+      compatCii.emit('message', { contentId: null });
+
+      await expect(result).resolves.toBe(true);
+      expect(compatCii.destroyed).toBe(true);
+      expect(svc.wcService).toBeNull();
+      expect(svc.tsService).toBeNull();
+      expect(svc.appChannelService).toBeNull();
+    });
+
+    it('confirms native mode after CII advertises usable native endpoints', async () => {
+      const svc = createService();
+      const result = svc.probeTransportAvailability('native', NATIVE_URL);
+
+      const nativeCii = CSSCIIService.instances[0];
+      nativeCii.wcUrl = 'udp://192.168.1.50:6677';
+      nativeCii.tsUrl = 'ws://192.168.1.50:7681/ts';
+      nativeCii.emit('message', { contentId: null });
+
+      await expect(result).resolves.toBe(true);
+      expect(nativeCii.destroyed).toBe(true);
+    });
+
+    it('keeps waiting when CII has not advertised both downstream endpoints', async () => {
+      jest.useFakeTimers();
+      const svc = createService();
+      const result = svc.probeTransportAvailability('compat', NATIVE_URL, {
+        app2appUrl: APP2APP_URL,
+        timeoutMs: 1000,
+      });
+
+      const compatCii = CSSCIIService.instances[0];
+      compatCii.wcUrl = COMPAT_WC_URL;
+      compatCii.emit('message', { contentId: null });
+      jest.advanceTimersByTime(1000);
+
+      await expect(result).resolves.toBe(false);
+      expect(compatCii.destroyed).toBe(true);
+    });
+
+    it('rejects compatibility endpoints outside the selected App2App profile', async () => {
+      jest.useFakeTimers();
+      const svc = createService();
+      const result = svc.probeTransportAvailability('compat', NATIVE_URL, {
+        app2appUrl: APP2APP_URL,
+        timeoutMs: 1000,
+      });
+
+      const compatCii = CSSCIIService.instances[0];
+      compatCii.wcUrl = 'ws://192.168.1.50:7681/app2app/other-wc';
+      compatCii.tsUrl = COMPAT_TS_URL;
+      compatCii.emit('message', { contentId: null });
+      jest.advanceTimersByTime(1000);
+
+      await expect(result).resolves.toBe(false);
+    });
+
+    it('returns false for missing transport URLs without opening CII', async () => {
+      const svc = createService();
+
+      await expect(svc.probeTransportAvailability('native', null)).resolves.toBe(false);
+      await expect(svc.probeTransportAvailability('compat', NATIVE_URL)).resolves.toBe(false);
+      expect(CSSCIIService.instances).toHaveLength(0);
+    });
+
+    it('returns false and cleans up after an error or cancellation', async () => {
+      const errorService = createService();
+      const errorResult = errorService.probeTransportAvailability('native', NATIVE_URL);
+      const failedCii = CSSCIIService.instances[0];
+      failedCii.emit('error', new Error('unreachable'));
+
+      await expect(errorResult).resolves.toBe(false);
+      expect(failedCii.destroyed).toBe(true);
+
+      const controller = new AbortController();
+      const cancelledService = createService();
+      const cancelledResult = cancelledService.probeTransportAvailability('compat', NATIVE_URL, {
+        app2appUrl: APP2APP_URL,
+        signal: controller.signal,
+      });
+      const cancelledCii = CSSCIIService.instances[1];
+      controller.abort();
+
+      await expect(cancelledResult).resolves.toBe(false);
+      expect(cancelledCii.destroyed).toBe(true);
     });
   });
 

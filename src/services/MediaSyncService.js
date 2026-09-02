@@ -176,6 +176,80 @@ export class MediaSyncService extends EventEmitter {
   }
 
   /**
+   * Checks whether a MediaSync transport exposes a usable CII service without
+   * starting the downstream WC/TS services or the application channel.
+   * @param {'native'|'compat'} mode - Transport to probe
+   * @param {string|null} interDevSyncUrl - Native CSS-CII URL
+   * @param {Object} options - Probe options
+   * @returns {Promise<boolean>} Whether the transport advertised usable WC/TS endpoints
+   */
+  probeTransportAvailability(mode, interDevSyncUrl, options = {}) {
+    if (mode !== 'native' && mode !== 'compat') {
+      return Promise.reject(new Error(`Invalid MediaSync mode: ${mode}`));
+    }
+
+    this.realIP = options.realIP || null;
+    this.compatChannelPrefix = options.compatChannelPrefix || 'hbbtv-sync';
+    const nativeUrl = interDevSyncUrl ? this.fixInvalidIP(interDevSyncUrl) : null;
+    const app2appUrl = options.app2appUrl ? this.fixInvalidIP(options.app2appUrl) : null;
+    const ciiUrl = mode === 'compat' ? this.buildCompatCiiUrl(app2appUrl) : nativeUrl;
+    if (!ciiUrl || !/^wss?:\/\//i.test(ciiUrl)) return Promise.resolve(false);
+
+    const timeoutMs = options.timeoutMs ?? 2000;
+    const signal = options.signal;
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let timeout = null;
+      const ciiService = new CSSCIIService(ciiUrl);
+
+      const cleanup = () => {
+        if (timeout) {
+          clearTimeout(timeout);
+          timeout = null;
+        }
+        signal?.removeEventListener?.('abort', handleAbort);
+        ciiService.destroy();
+      };
+
+      const finish = (available) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(available);
+      };
+
+      const hasValidNativeEndpoints = (wcUrl, tsUrl) => {
+        const parsedWc = parseWCUrl(wcUrl);
+        return !!parsedWc?.host && !!parsedWc?.port && /^wss?:\/\//i.test(tsUrl);
+      };
+
+      const handleMessage = () => {
+        const wcUrl = this.fixInvalidIP(ciiService.getWallClockUrl());
+        const tsUrl = this.fixInvalidIP(ciiService.getTimelineSyncUrl());
+        const available = mode === 'compat'
+          ? this.isCompatServiceUrl(wcUrl, 'wc') && this.isCompatServiceUrl(tsUrl, 'ts')
+          : hasValidNativeEndpoints(wcUrl, tsUrl);
+        if (available) finish(true);
+      };
+
+      const handleAbort = () => finish(false);
+      ciiService.on('message', handleMessage);
+      ciiService.on('error', () => finish(false));
+      ciiService.on('disconnected', () => finish(false));
+      signal?.addEventListener?.('abort', handleAbort, { once: true });
+
+      if (signal?.aborted) {
+        finish(false);
+        return;
+      }
+
+      timeout = setTimeout(() => finish(false), timeoutMs);
+      ciiService.connect();
+    });
+  }
+
+  /**
    * Prova el següent candidat de transport de la llista. Si s'esgoten, emet error.
    */
   tryNextCandidate() {

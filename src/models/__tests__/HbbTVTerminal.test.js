@@ -35,6 +35,7 @@ describe('HbbTVTerminal', () => {
       modelName: 'HbbTV-1',
       deviceDescriptionUrl: 'http://192.168.1.10/device.xml',
     });
+    expect(terminal.getRealIP()).toBe('192.168.1.10');
     expect(terminal.hasMediaSyncCapability()).toBe(true);
   });
 
@@ -43,6 +44,7 @@ describe('HbbTVTerminal', () => {
 
     expect(terminal.getFriendlyName()).toBe('Terminal desconegut');
     expect(terminal.getAppLaunchURL()).toBeNull();
+    expect(terminal.getRealIP()).toBeNull();
     expect(terminal.hasMediaSyncCapability()).toBe(false);
     expect(terminal.toJSON()).toMatchObject({
       friendlyName: 'Terminal desconegut',
