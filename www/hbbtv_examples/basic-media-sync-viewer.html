@@ -9,6 +9,7 @@
       var entries = [];
       var MAX_ENTRIES = 100;
       var methods = ['log', 'info', 'warn', 'error', 'debug'];
+      var hasError = false;
 
       function format(value) {
         if (value instanceof Error) {
@@ -24,6 +25,7 @@
         var output = document.getElementById('s');
         if (!output) { return; }
         output.textContent = entries.join('\n');
+        output.style.display = hasError ? 'block' : 'none';
         output.scrollTop = output.scrollHeight;
       }
 
@@ -37,6 +39,7 @@
             }
             entries.push('[' + method.toUpperCase() + '] ' + parts.join(' '));
             if (entries.length > MAX_ENTRIES) { entries.shift(); }
+            if (method === 'error') { hasError = true; }
             render();
             if (original) { original.apply(console, arguments); }
           };
@@ -73,7 +76,7 @@
   <script src="js/hbbtvlib.js"></script>
   <script src="js/hbbtv-manager-polyfill.js"></script>
   <script id="mediasync-compat-script"
-    src="../hbbtv-compat/hbbtv-mediasync-compat.js"
+    src="../hbbtv-compat/hbbtv-mediasync-compat.js?version=1.1"
     onload="onMediaSyncCompatLoad()"
     onerror="onMediaSyncCompatError()"></script>
   <style>
@@ -97,6 +100,7 @@
     }
 
     #s {
+      display: none;
       position: fixed;
       top: 10px;
       left: 10px;
@@ -133,6 +137,8 @@
     //         detecti (per l'extensió .html) que ha d'obrir la web sincronitzada.
     //         La TV continua reproduint `url` per mantenir viu el timeline.
     var CONTENTS = [
+      { name: 'sagrada_familia', url: 'https://ccma-labs-generic.s3.eu-west-1.amazonaws.com/ibc-2026/_dash_Signes_IBC/manifest_signes.mpd' },
+      { name: 'sign_language', url: 'https://ccma-labs-generic.s3.eu-west-1.amazonaws.com/ibc-2026/_dash_Signes_IBC/manifest_signes.mpd' },
       { name: 'Big Buck Bunny', url: 'https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd' },
       { name: 'Envivio', url: 'https://dash.akamaized.net/envivio/EnvivioDash3/manifest.mpd' },
       { name: 'Tears of Steel', url: 'https://dash.akamaized.net/dash264/TestCases/2c/qualcomm/1/MultiResMPEG2.mpd' },
@@ -140,6 +146,22 @@
       { name: 'Web Demo (WebXR)', url: 'https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd', web: 'sync_app/index.html?xr=1' },
     ];
     var contentIndex = 0;
+    var isVideoSelectionLocked = false;
+    function hasVideoQueryParameter() {
+      return /[?&]video(?:=|&|$)/.test(window.location.search);
+    }
+    function getInitialContentIndex() {
+      var match = window.location.search.match(/[?&]video=([^&]*)/);
+      if (!match) { return 0; }
+      var requestedName;
+      try { requestedName = decodeURIComponent(match[1].replace(/\+/g, ' ')); }
+      catch (e) { requestedName = match[1]; }
+      for (var i = 0; i < CONTENTS.length; i++) {
+        if (CONTENTS[i].name === requestedName) { return i; }
+      }
+      log('Unknown video parameter: ' + requestedName + '; using ' + CONTENTS[0].name);
+      return 0;
+    }
     // Resol la URL de la web companion a absoluta (respecte a aquesta pàgina),
     // de manera que el contentIdOverride sigui una URL vàlida per al mòbil.
     function resolveContentId(c) {
@@ -153,11 +175,17 @@
 
     window.onload = function () {
       if (typeof hbbtvlib_initialize !== 'undefined') { hbbtvlib_initialize(); hbbtvlib_show(); }
+      isVideoSelectionLocked = hasVideoQueryParameter();
       registerSeekKeys();
+      contentIndex = getInitialContentIndex();
+      var initialContent = CONTENTS[contentIndex];
+      var source = v.querySelector('source');
+      if (source) { source.src = initialContent.url; }
+      log('Loading: ' + initialContent.name);
       v.addEventListener('canplay', onReady, { once: true });
-      v.addEventListener('error', function () { log('Video error'); });
+      v.addEventListener('error', function () { console.error('Video error'); });
       v.load();
-      v.play().catch(function (e) { log('Autoplay blocked: ' + e.message); });
+      v.play().catch(function (e) { console.error('Autoplay blocked: ' + e.message); });
     };
 
     function registerSeekKeys() {
@@ -173,11 +201,11 @@
           e.preventDefault();
           e.stopPropagation();
         } else if (key === 'ArrowUp' || code === 38) {
-          changeContent(1);
+          if (!isVideoSelectionLocked) { changeContent(1); }
           e.preventDefault();
           e.stopPropagation();
         } else if (key === 'ArrowDown' || code === 40) {
-          changeContent(-1);
+          if (!isVideoSelectionLocked) { changeContent(-1); }
           e.preventDefault();
           e.stopPropagation();
         }
@@ -196,7 +224,7 @@
         initSync(resolveContentId(c));
       }, { once: true });
       v.load();
-      v.play().catch(function (e) { log('Autoplay blocked: ' + e.message); });
+      v.play().catch(function (e) { console.error('Autoplay blocked: ' + e.message); });
     }
 
     function seekBy(deltaSeconds) {
@@ -214,7 +242,7 @@
         v.currentTime = target;
         log('Seek ' + (deltaSeconds > 0 ? '+' : '') + deltaSeconds + 's -> ' + Math.floor(target) + 's');
       } catch (e) {
-        log('Seek error: ' + e.message);
+        console.error('Seek error: ' + e.message);
       }
     }
 
@@ -288,7 +316,7 @@
         }
         if (typeof oipfObjectFactory === 'undefined') { log('No oipfObjectFactory'); return; }
         ms = oipfObjectFactory.createMediaSynchroniser();
-        if (!ms) { log('createMediaSynchroniser failed'); return; }
+        if (!ms) { console.error('createMediaSynchroniser failed'); return; }
         ms.contentIdOverride = contentUrl;
         if (/\.html?(\?|#|$)/i.test(contentUrl)) {
           log('Enviant web companion: ' + contentUrl);
@@ -302,7 +330,7 @@
         });
         addMsListener(ms, 'onError', function (arg) {
           var code = (arg && arg.type) ? ms.lastError : arg;
-          log('Sync error: ' + code);
+          console.error('Sync error: ' + code);
         });
         ms.initMediaSynchroniser(v, 'urn:dvb:css:timeline:mpd:period:rel:1000');
         var en = (typeof ms.enableInterDeviceSync === 'function') ? ms.enableInterDeviceSync :
@@ -313,7 +341,7 @@
           log('No enable method found');
         }
         log('MediaSynchroniser ready');
-      } catch (e) { log('Sync init error: ' + e.message); }
+      } catch (e) { console.error('Sync init error: ' + e.message); }
     }
 
     window.addEventListener('unload', destroySync);

@@ -43,8 +43,9 @@
 (function () {
   'use strict';
 
-  // Default PTS tick rate (90 kHz) used for MPEG-DASH content timelines.
-  var DEFAULT_TICK_RATE = 90000;
+  // The default period-relative timeline uses milliseconds, so one second of
+  // media time must be represented as 1000 ticks.
+  var DEFAULT_TICK_RATE = 1000;
   // Default timeline selector: milliseconds relative to the start of the first
   // MPEG-DASH period, which is what browser media elements report directly.
   var DEFAULT_TIMELINE_SELECTOR = 'urn:dvb:css:timeline:mpd:period:rel:1000';
@@ -692,7 +693,7 @@
      *   companion web URL) announced over CSS-CII.
      * @param {string} [options.timelineSelector] Timeline selector (defaults to
      *   "urn:dvb:css:timeline:mpd:period:rel:1000").
-     * @param {number} [options.tickRate] Timeline tick rate (default 90000).
+      * @param {number} [options.tickRate] Timeline tick rate (default 1000).
      * @param {string} [options.channelPrefix] App2App channel name prefix.
      * @returns {boolean} true if the servers started.
      */
