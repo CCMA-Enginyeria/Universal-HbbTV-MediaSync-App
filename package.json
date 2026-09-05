@@ -1,6 +1,6 @@
 {
   "name": "universal-hbbtv-mediasync-app",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "main": "index.js",
   "scripts": {
     "start": "expo start",
