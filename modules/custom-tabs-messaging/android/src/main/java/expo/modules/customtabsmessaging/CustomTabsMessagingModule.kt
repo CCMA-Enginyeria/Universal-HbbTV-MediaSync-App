@@ -1,8 +1,11 @@
 package expo.modules.customtabsmessaging
 
+import android.app.Activity
 import android.content.ComponentName
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import androidx.browser.customtabs.CustomTabsCallback
 import androidx.browser.customtabs.CustomTabsClient
 import androidx.browser.customtabs.CustomTabsIntent
@@ -16,6 +19,10 @@ import expo.modules.kotlin.modules.ModuleDefinition
 /**
  * Owns the Android Custom Tabs session used to exchange verified postMessages
  * with a web origin while the React Native activity is in the background.
+ *
+ * The tab is only launched once the browser confirms the Digital Asset Links
+ * relationship for the origin; otherwise `open` resolves with `opened = false`
+ * so the caller can fall back to the in-app WebView.
  */
 class CustomTabsMessagingModule : Module() {
     private var client: CustomTabsClient? = null
@@ -25,6 +32,17 @@ class CustomTabsMessagingModule : Module() {
     private var requestedOrigin: Uri? = null
     private var requestedUrl: Uri? = null
     private var openPromise: Promise? = null
+    private var pendingActivity: Activity? = null
+    private var providerPackage: String? = null
+    private var awaitingValidation = false
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val validationTimeout = Runnable {
+        if (!awaitingValidation) return@Runnable
+        awaitingValidation = false
+        settleOpen(false, "DAL_TIMEOUT")
+        closeSession()
+    }
 
     private val callback = object : CustomTabsCallback() {
         override fun onRelationshipValidationResult(
@@ -34,8 +52,14 @@ class CustomTabsMessagingModule : Module() {
             extras: Bundle?
         ) {
             if (relation != CustomTabsService.RELATION_USE_AS_ORIGIN) return
-            if (!result) {
-                sendError("Digital Asset Links validation failed for $requestedOrigin")
+            if (!awaitingValidation) return
+            awaitingValidation = false
+            mainHandler.removeCallbacks(validationTimeout)
+            if (result) {
+                launchVerifiedTab()
+            } else {
+                settleOpen(false, "DAL_FAILED")
+                closeSession()
             }
         }
 
@@ -85,57 +109,64 @@ class CustomTabsMessagingModule : Module() {
             val originUri = Uri.parse(origin)
             if (pageUri.scheme != "https" || originUri.scheme != "https" ||
                 pageUri.host != originUri.host || pageUri.port != originUri.port) {
-                promise.reject("INVALID_ORIGIN", "The page URL and HTTPS origin do not match", null)
+                resolveNotOpened(promise, "INVALID_ORIGIN")
                 return@AsyncFunction
             }
 
-            val packageName = CustomTabsClient.getPackageName(context, null)
-            if (packageName == null) {
-                promise.reject("NO_PROVIDER", "No Custom Tabs provider is installed", null)
+            val tabsPackage = CustomTabsClient.getPackageName(context, null)
+            if (tabsPackage == null) {
+                resolveNotOpened(promise, "NO_PROVIDER")
                 return@AsyncFunction
             }
 
             requestedUrl = pageUri
             requestedOrigin = originUri
+            pendingActivity = activity
             openPromise = promise
             val serviceConnection = object : CustomTabsServiceConnection() {
                 override fun onCustomTabsServiceConnected(name: ComponentName, tabsClient: CustomTabsClient) {
                     client = tabsClient
+                    providerPackage = name.packageName
                     tabsClient.warmup(0L)
                     val tabsSession = tabsClient.newSession(callback)
                     if (tabsSession == null) {
-                        rejectOpen("SESSION_FAILED", "Could not create a Custom Tabs session")
+                        settleOpen(false, "SESSION_FAILED")
+                        closeSession()
                         return
                     }
 
                     session = tabsSession
-                    val accepted = tabsSession.requestPostMessageChannel(
+                    // The tab is launched from onRelationshipValidationResult, never here.
+                    val requested = tabsSession.validateRelationship(
+                        CustomTabsService.RELATION_USE_AS_ORIGIN,
                         originUri,
-                        originUri,
-                        Bundle()
+                        null
                     )
-                    if (!accepted) {
-                        rejectOpen("CHANNEL_REJECTED", "The browser rejected the postMessage channel request")
+                    if (!requested) {
+                        settleOpen(false, "DAL_REQUEST_REJECTED")
+                        closeSession()
                         return
                     }
 
-                    val intent = CustomTabsIntent.Builder(tabsSession).build()
-                    intent.intent.setPackage(name.packageName)
-                    intent.launchUrl(activity, pageUri)
-                    openPromise?.resolve(true)
-                    openPromise = null
+                    awaitingValidation = true
+                    mainHandler.postDelayed(validationTimeout, VALIDATION_TIMEOUT_MS)
                 }
 
                 override fun onServiceDisconnected(name: ComponentName) {
                     channelReady = false
                     client = null
                     session = null
-                    sendError("The Custom Tabs service disconnected")
+                    if (openPromise != null) {
+                        settleOpen(false, "SERVICE_DISCONNECTED")
+                    } else {
+                        sendError("The Custom Tabs service disconnected")
+                    }
                 }
             }
             connection = serviceConnection
-            if (!CustomTabsClient.bindCustomTabsService(context, packageName, serviceConnection)) {
-                rejectOpen("BIND_FAILED", "Could not connect to the Custom Tabs provider")
+            if (!CustomTabsClient.bindCustomTabsService(context, tabsPackage, serviceConnection)) {
+                settleOpen(false, "BIND_FAILED")
+                closeSession()
             }
         }
 
@@ -154,10 +185,39 @@ class CustomTabsMessagingModule : Module() {
         }
     }
 
-    private fun rejectOpen(code: String, message: String) {
-        openPromise?.reject(code, message, null)
+    private fun launchVerifiedTab() {
+        val tabsSession = session
+        val activity = pendingActivity
+        val pageUri = requestedUrl
+        val originUri = requestedOrigin
+        if (tabsSession == null || activity == null || pageUri == null || originUri == null) {
+            settleOpen(false, "SESSION_LOST")
+            closeSession()
+            return
+        }
+
+        if (!tabsSession.requestPostMessageChannel(originUri, originUri, Bundle())) {
+            settleOpen(false, "CHANNEL_REJECTED")
+            closeSession()
+            return
+        }
+
+        val intent = CustomTabsIntent.Builder(tabsSession).build()
+        providerPackage?.let { intent.intent.setPackage(it) }
+        intent.launchUrl(activity, pageUri)
+        settleOpen(true, null)
+    }
+
+    private fun resolveNotOpened(promise: Promise, reason: String) {
+        promise.resolve(mapOf("opened" to false, "reason" to reason))
+    }
+
+    private fun settleOpen(opened: Boolean, reason: String?) {
+        val promise = openPromise ?: return
         openPromise = null
-        closeSession()
+        val payload = mutableMapOf<String, Any>("opened" to opened)
+        reason?.let { payload["reason"] = it }
+        promise.resolve(payload)
     }
 
     private fun sendError(message: String) {
@@ -165,6 +225,8 @@ class CustomTabsMessagingModule : Module() {
     }
 
     private fun closeSession() {
+        mainHandler.removeCallbacks(validationTimeout)
+        awaitingValidation = false
         val context = appContext.reactContext
         val serviceConnection = connection
         if (context != null && serviceConnection != null) {
@@ -174,13 +236,19 @@ class CustomTabsMessagingModule : Module() {
                 // The bind may have failed before Android registered the connection.
             }
         }
-        openPromise?.reject("SESSION_CLOSED", "The Custom Tabs session was closed", null)
-        openPromise = null
+        settleOpen(false, "SESSION_CLOSED")
         channelReady = false
         requestedOrigin = null
         requestedUrl = null
+        pendingActivity = null
+        providerPackage = null
         connection = null
         session = null
         client = null
+    }
+
+    companion object {
+        /** How long to wait for the browser to resolve the Digital Asset Links statement. */
+        private const val VALIDATION_TIMEOUT_MS = 2500L
     }
 }

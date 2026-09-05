@@ -23,9 +23,8 @@ import config from '../utils/config';
 import SyncController from '../utils/SyncController';
 import { fetchWebMetadata } from '../utils/webMetadata';
 import {
-  buildCustomTabsSyncUrl,
+  canAttemptCustomTab,
   getCompanionOrigin,
-  isExternalSyncWebContent,
 } from '../utils/companionWebLaunch';
 import {
   buildAppMessage,
@@ -141,6 +140,10 @@ const isDashUrl = (url) =>
   typeof url === 'string' && /\.mpd(\?|#|$)/i.test(url);
 const isHlsUrl = (url) =>
   typeof url === 'string' && /\.m3u8(\?|#|$)/i.test(url);
+
+// Remembers which origins failed Digital Asset Links validation so reopening them
+// skips the browser round-trip and goes straight to the WebView.
+const unverifiedOrigins = new Set();
 
 const getPlaybackErrorDetails = (event) => {
   const nativeError = event?.error || event || {};
@@ -822,37 +825,42 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
   }, []);
 
   const openCompanionWeb = useCallback(async () => {
-    if (!isExternalSyncWebContent(companionWebUrl)) {
+    // The verified Custom Tabs channel is only possible on Android, over HTTPS and
+    // when the origin publishes a matching Digital Asset Links statement. Anything
+    // else falls back to the in-app WebView, which supports the same protocol.
+    const origin = Platform.OS === 'android' && isCustomTabsMessagingAvailable
+      ? getCompanionOrigin(companionWebUrl)
+      : null;
+    if (!origin || unverifiedOrigins.has(origin)) {
       await openWebModal();
       return;
     }
+
     try {
-      if (Platform.OS === 'android' && isCustomTabsMessagingAvailable) {
-        const launchUrl = buildCustomTabsSyncUrl(companionWebUrl);
-        const origin = getCompanionOrigin(launchUrl);
-        customTabOpenRef.current = true;
-        customTabChannelReadyRef.current = false;
-        lastCompanionPayloadRef.current = null;
-        startForegroundSync(
-          terminal.getFriendlyName(),
-          t('discovery.syncingWithTv', { defaultValue: 'Synchronizing with TV' }),
-          t('discovery.stopSync', { defaultValue: 'Stop' })
-        );
-        await openCustomTab(launchUrl, origin);
-        console.log('Custom Tab launched:', launchUrl);
+      const result = await openCustomTab(companionWebUrl, origin);
+      if (!result?.opened) {
+        if (result?.reason === 'DAL_FAILED') unverifiedOrigins.add(origin);
+        console.log(`Custom Tab unavailable (${result?.reason ?? 'unknown'}); using the WebView`);
+        await openWebModal();
         return;
       }
 
-      // The companion page only supports the Chrome Custom Tabs post-message
-      // transport, so there is no usable fallback on other platforms.
-      setError(t('discovery.terminalNoSyncUrl'));
+      customTabOpenRef.current = true;
+      customTabChannelReadyRef.current = false;
+      lastCompanionPayloadRef.current = null;
+      startForegroundSync(
+        terminal.getFriendlyName(),
+        t('discovery.syncingWithTv', { defaultValue: 'Synchronizing with TV' }),
+        t('discovery.stopSync', { defaultValue: 'Stop' })
+      );
+      console.log('Custom Tab launched:', companionWebUrl);
     } catch (err) {
       customTabOpenRef.current = false;
       customTabChannelReadyRef.current = false;
       closeCustomTabSession();
       stopForegroundSync();
-      console.error('Failed to open synchronized companion page:', err);
-      setError(t('discovery.connectionError'));
+      console.error('Failed to open the companion page in a Custom Tab:', err);
+      await openWebModal();
     }
   }, [companionWebUrl, openWebModal, t, terminal]);
 
@@ -2224,6 +2232,7 @@ export default function TerminalItem({ terminal, onPress, expanded, onToggleExpa
           {companionWebUrl && !webNoContent ? (
             <WebView
               ref={webViewRef}
+              testID="companion-web-modal"
               source={{ uri: companionWebUrl }}
               style={styles.webModalWebView}
               originWhitelist={['*']}

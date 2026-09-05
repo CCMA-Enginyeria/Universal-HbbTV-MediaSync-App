@@ -1,25 +1,16 @@
-/** Return whether a companion content ID targets the external TV-sync entry point. */
-export const isExternalSyncWebContent = (url) =>
-  typeof url === 'string' && /\/synctv\.html(?:[?#]|$)/i.test(url);
-
-/** Build the Android Custom Tabs URL for the synchronized companion page. */
-export const buildCustomTabsSyncUrl = (companionUrl) => {
-  if (!isExternalSyncWebContent(companionUrl)) {
-    throw new Error('The companion URL is not a synchronized external page.');
-  }
-
-  const launchUrl = new URL(companionUrl);
-  if (launchUrl.protocol !== 'https:') {
-    throw new Error('Custom Tabs messaging requires an HTTPS companion URL.');
-  }
-  return launchUrl.toString();
-};
-
-/** Return the exact HTTPS origin that must be verified through Digital Asset Links. */
+/**
+ * Return the exact HTTPS origin that must be verified through Digital Asset Links,
+ * or null when the URL cannot back a verified Custom Tabs postMessage channel.
+ */
 export const getCompanionOrigin = (companionUrl) => {
-  const launchUrl = new URL(companionUrl);
-  if (launchUrl.protocol !== 'https:') {
-    throw new Error('Custom Tabs messaging requires an HTTPS companion URL.');
+  if (typeof companionUrl !== 'string') return null;
+  try {
+    const launchUrl = new URL(companionUrl);
+    return launchUrl.protocol === 'https:' ? launchUrl.origin : null;
+  } catch (error) {
+    return null;
   }
-  return launchUrl.origin;
 };
+
+/** Return whether a companion URL is worth trying to open through Custom Tabs. */
+export const canAttemptCustomTab = (companionUrl) => getCompanionOrigin(companionUrl) !== null;

@@ -74,6 +74,11 @@ jest.mock('../../utils/webMetadata', () => ({
 jest.mock('../../utils/CameraPermissions', () => ({
   requestCameraPermission: jest.fn(() => Promise.resolve(false)),
 }));
+jest.mock('expo-screen-orientation', () => ({
+  lockAsync: jest.fn(() => Promise.resolve()),
+  unlockAsync: jest.fn(() => Promise.resolve()),
+  OrientationLock: { PORTRAIT_UP: 'portrait-up' },
+}));
 jest.mock('../../utils/ForegroundSync', () => ({
   startForegroundSync: jest.fn(),
   stopForegroundSync: jest.fn(),
@@ -89,11 +94,15 @@ jest.mock('../../utils/CustomTabsMessaging', () => {
     addCustomTabPageLoadedListener: jest.fn(subscription),
     addCustomTabHiddenListener: jest.fn(subscription),
     closeCustomTabSession: jest.fn(),
-    isCustomTabsMessagingAvailable: jest.fn(() => false),
+    isCustomTabsMessagingAvailable: true,
     openCustomTab: jest.fn(),
     postCustomTabMessage: jest.fn(),
   };
 });
+
+import { Platform } from 'react-native';
+import { openCustomTab } from '../../utils/CustomTabsMessaging';
+import { startForegroundSync } from '../../utils/ForegroundSync';
 
 import TerminalItem from '../TerminalItem';
 import {
@@ -205,5 +214,69 @@ describe('TerminalItem MediaSync mode availability', () => {
     view.unmount();
 
     expect(mockProbeRequests.every((request) => request.options.signal.aborted)).toBe(true);
+  });
+});
+
+describe('TerminalItem companion transport selection', () => {
+  const originalPlatform = Platform.OS;
+
+  const announceCompanionWeb = async (contentId) => {
+    renderExpanded();
+    await waitFor(() => expect(mockProbeRequests).toHaveLength(2));
+    await resolveProbe('native', true);
+    await resolveProbe('compat', true);
+    await waitFor(() => expect(mockConnections).toHaveLength(1));
+
+    await act(async () => {
+      mockConnections.at(-1).service.emit('cii-change', { state: { contentId } });
+    });
+    const openButton = await screen.findByText('discovery.webOpen');
+    await act(async () => {
+      fireEvent.press(openButton);
+    });
+  };
+
+  beforeEach(() => {
+    mockProbeRequests.length = 0;
+    mockConnections.length = 0;
+    getMediaSyncMode.mockReset();
+    getMediaSyncMode.mockResolvedValue('compat');
+    openCustomTab.mockReset();
+    startForegroundSync.mockClear();
+    Platform.OS = 'android';
+  });
+
+  afterEach(() => {
+    Platform.OS = originalPlatform;
+  });
+
+  it('keeps a verified origin in the Custom Tab', async () => {
+    openCustomTab.mockResolvedValue({ opened: true });
+
+    await announceCompanionWeb('https://verified.example.com/webxr/index.html');
+
+    expect(openCustomTab).toHaveBeenCalledWith(
+      'https://verified.example.com/webxr/index.html',
+      'https://verified.example.com'
+    );
+    expect(startForegroundSync).toHaveBeenCalled();
+    expect(screen.queryByTestId('companion-web-modal')).toBeNull();
+  });
+
+  it('falls back to the WebView when Digital Asset Links validation fails', async () => {
+    openCustomTab.mockResolvedValue({ opened: false, reason: 'DAL_FAILED' });
+
+    await announceCompanionWeb('https://unverified.example.com/webxr/synctv.html');
+
+    expect(openCustomTab).toHaveBeenCalledTimes(1);
+    expect(startForegroundSync).not.toHaveBeenCalled();
+    expect(screen.getByTestId('companion-web-modal')).toBeTruthy();
+  });
+
+  it('uses the WebView for insecure companion URLs without touching Custom Tabs', async () => {
+    await announceCompanionWeb('http://insecure.example.com/webxr/synctv.html');
+
+    expect(openCustomTab).not.toHaveBeenCalled();
+    expect(screen.getByTestId('companion-web-modal')).toBeTruthy();
   });
 });

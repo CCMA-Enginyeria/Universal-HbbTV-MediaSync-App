@@ -1,9 +1,12 @@
 import { NativeModule, requireNativeModule } from 'expo';
 
-import { CustomTabsMessagingModuleEvents } from './CustomTabsMessaging.types';
+import {
+  CustomTabsMessagingModuleEvents,
+  CustomTabsOpenResult,
+} from './CustomTabsMessaging.types';
 
 declare class CustomTabsMessagingModule extends NativeModule<CustomTabsMessagingModuleEvents> {
-  open(url: string, origin: string): Promise<boolean>;
+  open(url: string, origin: string): Promise<CustomTabsOpenResult>;
   postMessage(message: string): number;
   close(): void;
 }

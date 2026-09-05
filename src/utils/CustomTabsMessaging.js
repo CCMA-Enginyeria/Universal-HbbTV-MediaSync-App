@@ -13,7 +13,7 @@ try {
 export const isCustomTabsMessagingAvailable = Platform.OS === 'android' && nativeModule != null;
 
 export const openCustomTab = async (url, origin) => {
-  if (!isCustomTabsMessagingAvailable) return false;
+  if (!isCustomTabsMessagingAvailable) return { opened: false, reason: 'UNAVAILABLE' };
   return nativeModule.open(url, origin);
 };
 
