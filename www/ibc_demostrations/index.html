@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>IBC 2026 · Universal HbbTV MediaSync — Demonstrations</title>
+  <style>
+    :root {
+      --surface: #10131b;
+      --surface-lowest: #0b0e15;
+      --surface-container: #1d1f27;
+      --surface-container-high: #272a32;
+      --on-surface: #e1e2ed;
+      --on-surface-variant: #c2c6d7;
+      --primary: #afc6ff;
+      --secondary: #d0bcff;
+      --tertiary: #ffb68f;
+      --outline-variant: #424754;
+      --font-sans: "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Roboto, Arial, sans-serif;
+      --font-mono: "Cascadia Mono", "JetBrains Mono", Consolas, "SF Mono", Menlo, monospace;
+      /* Single scaling unit driven by the smaller viewport dimension so the kiosk never overflows. */
+      --u: min(1vw, 1.7vh);
+      --footer-h: clamp(72px, calc(11 * var(--u)), 132px);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: var(--surface-lowest);
+      color: var(--on-surface);
+      font-family: var(--font-sans);
+      -webkit-font-smoothing: antialiased;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      cursor: none;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(90vw 70vh at 12% -10%, rgba(82, 141, 255, 0.28), transparent 62%),
+        radial-gradient(70vw 60vh at 96% 108%, rgba(87, 27, 193, 0.34), transparent 60%),
+        linear-gradient(160deg, #10131b 0%, #0b0e15 55%, #10131b 100%);
+      z-index: 0;
+    }
+
+    /* ---------- progress ---------- */
+
+    .progress {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 5px;
+      background: rgba(225, 226, 237, 0.08);
+      z-index: 40;
+    }
+
+    .progress__bar {
+      height: 100%;
+      width: 0;
+      background: linear-gradient(90deg, var(--primary), var(--secondary));
+      box-shadow: 0 0 18px rgba(175, 198, 255, 0.55);
+    }
+
+    .progress.is-paused .progress__bar {
+      background: linear-gradient(90deg, var(--tertiary), var(--tertiary));
+      box-shadow: none;
+    }
+
+    /* ---------- slides ---------- */
+
+    .stage {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1.02fr) minmax(0, 1fr);
+      align-items: center;
+      gap: clamp(20px, calc(4 * var(--u)), 72px);
+      padding: clamp(28px, calc(5 * var(--u)), 88px) clamp(28px, calc(4.5 * var(--u)), 84px) calc(var(--footer-h) + 20px);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 900ms ease;
+    }
+
+    .slide.is-active {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .slide--reverse .slide__media {
+      order: -1;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--font-mono);
+      font-size: clamp(10px, calc(1.05 * var(--u)), 17px);
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--primary);
+      border: 1px solid rgba(175, 198, 255, 0.35);
+      background: rgba(175, 198, 255, 0.08);
+      border-radius: 999px;
+      padding: 0.55em 1.1em;
+    }
+
+    .eyebrow::before {
+      content: "";
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--primary);
+      box-shadow: 0 0 12px var(--primary);
+    }
+
+    .slide__title {
+      margin: clamp(12px, calc(2 * var(--u)), 34px) 0 0;
+      font-size: clamp(24px, calc(3.5 * var(--u)), 62px);
+      font-weight: 700;
+      line-height: 1.08;
+      letter-spacing: -0.02em;
+      background: linear-gradient(100deg, #ffffff 12%, var(--primary) 62%, var(--secondary) 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    .slide__body {
+      margin: clamp(10px, calc(1.7 * var(--u)), 28px) 0 0;
+      max-width: 42ch;
+      font-size: clamp(14px, calc(1.45 * var(--u)), 27px);
+      line-height: 1.55;
+      color: var(--on-surface-variant);
+    }
+
+    .slide__tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: clamp(12px, calc(2 * var(--u)), 34px) 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .slide__tags li {
+      font-family: var(--font-mono);
+      font-size: clamp(9px, calc(0.95 * var(--u)), 15px);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--tertiary);
+      border: 1px solid rgba(255, 182, 143, 0.32);
+      border-radius: 8px;
+      padding: 0.5em 0.8em;
+    }
+
+    .demo-logo {
+      display: block;
+      width: auto;
+      max-width: min(340px, 60%);
+      max-height: clamp(40px, calc(9 * var(--u)), 118px);
+      margin: 0 0 clamp(6px, calc(1.4 * var(--u)), 18px);
+    }
+
+    .eyebrow--fallback {
+      display: none;
+    }
+
+    .slide.is-logo-broken .demo-logo {
+      display: none;
+    }
+
+    .slide.is-logo-broken .eyebrow--fallback {
+      display: inline-flex;
+    }
+
+    /* ---------- media frame ---------- */
+
+    .media-frame {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 10;
+      max-height: 66vh;
+      border-radius: clamp(10px, calc(1.4 * var(--u)), 20px);
+      overflow: hidden;
+      border: 1px solid rgba(225, 226, 237, 0.14);
+      background: var(--surface-container);
+      box-shadow: 0 40px 90px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(175, 198, 255, 0.08);
+    }
+
+    .media-frame img,
+    .media-frame video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .media-frame img {
+      transform: scale(1.02);
+    }
+
+    /* Screen recordings must stay uncropped so their UI remains readable. */
+    .media-frame--contain {
+      background: #05070c;
+    }
+
+    .media-frame--contain video {
+      object-fit: contain;
+    }
+
+    .slide.is-active .media-frame img {
+      animation: kenburns var(--kb, 18s) ease-out forwards;
+    }
+
+    @keyframes kenburns {
+      from {
+        transform: scale(1.02);
+      }
+
+      to {
+        transform: scale(1.11);
+      }
+    }
+
+    /* ---------- hero slide ---------- */
+
+    .stage .slide--hero {
+      grid-template-columns: 1fr;
+      grid-template-rows: minmax(0, 1fr) auto;
+      gap: 24px;
+      justify-items: center;
+      text-align: center;
+      padding-left: clamp(24px, calc(8 * var(--u)), 160px);
+      padding-right: clamp(24px, calc(8 * var(--u)), 160px);
+    }
+
+    .slide--hero .hero__bg {
+      position: relative;
+      order: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+    }
+
+    .slide--hero .hero__content {
+      position: relative;
+      z-index: 1;
+    }
+
+    .slide--hero .hero__bg img {
+      width: auto;
+      height: auto;
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      display: block;
+      -webkit-mask-image: linear-gradient(to right, transparent, #000 7%, #000 93%, transparent), linear-gradient(to bottom, transparent, #000 12%, #000 88%, transparent);
+      -webkit-mask-composite: source-in;
+      mask-image: linear-gradient(to right, transparent, #000 7%, #000 93%, transparent), linear-gradient(to bottom, transparent, #000 12%, #000 88%, transparent);
+      mask-composite: intersect;
+    }
+
+    .slide--hero.is-active .hero__bg img {
+      animation: none;
+    }
+
+    .slide--hero .hero__bg::after {
+      content: none;
+    }
+
+    .hero__title {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
+    .hero__claim {
+      margin: clamp(14px, calc(2.4 * var(--u)), 36px) auto 0;
+      max-width: 76ch;
+      font-size: 20px;
+      line-height: 1.35;
+      font-weight: 300;
+      color: var(--on-surface);
+    }
+
+    .hero__claim em {
+      font-style: normal;
+      font-weight: 700;
+      color: var(--tertiary);
+    }
+
+    .hero__meta {
+      margin: 12px 0 0;
+      font-family: var(--font-mono);
+      font-size: clamp(10px, calc(1.05 * var(--u)), 18px);
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--on-surface-variant);
+    }
+
+    /* ---------- footer ---------- */
+
+    .footer {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: var(--footer-h);
+      z-index: 30;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: clamp(12px, calc(2 * var(--u)), 24px);
+      padding: 0 clamp(18px, calc(3.2 * var(--u)), 56px);
+      background: linear-gradient(180deg, rgba(11, 14, 21, 0) 0%, rgba(11, 14, 21, 0.92) 42%);
+      border-top: 1px solid rgba(225, 226, 237, 0.08);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: clamp(8px, calc(1.4 * var(--u)), 16px);
+      justify-self: start;
+      min-width: 0;
+    }
+
+    .brand__chip {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #ffffff;
+      border-radius: 12px;
+      padding: clamp(6px, calc(0.9 * var(--u)), 10px) clamp(9px, calc(1.4 * var(--u)), 16px);
+    }
+
+    .brand__chip img {
+      display: block;
+      height: clamp(18px, calc(3 * var(--u)), 40px);
+      width: auto;
+    }
+
+    .brand__label {
+      font-family: var(--font-mono);
+      font-size: clamp(8px, calc(0.85 * var(--u)), 14px);
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--on-surface-variant);
+      line-height: 1.5;
+      max-width: 22ch;
+    }
+
+    .dots {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .dots button {
+      appearance: none;
+      border: 0;
+      padding: 0;
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      background: rgba(225, 226, 237, 0.24);
+      cursor: none;
+      transition: width 300ms ease, background 300ms ease;
+    }
+
+    .dots button.is-active {
+      width: 40px;
+      background: linear-gradient(90deg, var(--primary), var(--secondary));
+    }
+
+    .qr {
+      justify-self: end;
+      display: flex;
+      align-items: center;
+      gap: clamp(8px, calc(1.4 * var(--u)), 16px);
+      min-width: 0;
+    }
+
+    .qr__text {
+      text-align: right;
+      font-family: var(--font-mono);
+      font-size: clamp(8px, calc(0.85 * var(--u)), 14px);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--on-surface-variant);
+      line-height: 1.6;
+    }
+
+    .qr__text strong {
+      display: block;
+      color: var(--primary);
+      letter-spacing: 0.1em;
+    }
+
+    .qr__code {
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 7px;
+      line-height: 0;
+    }
+
+    .qr__code img {
+      display: block;
+      width: clamp(48px, calc(7 * var(--u)), 92px);
+      height: auto;
+    }
+
+    /* ---------- counter chip ---------- */
+
+    .counter {
+      position: fixed;
+      top: clamp(14px, calc(2.4 * var(--u)), 34px);
+      right: clamp(18px, calc(3.5 * var(--u)), 60px);
+      z-index: 35;
+      font-family: var(--font-mono);
+      font-size: clamp(9px, calc(0.95 * var(--u)), 16px);
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--on-surface-variant);
+      border: 1px solid rgba(225, 226, 237, 0.14);
+      border-radius: 999px;
+      padding: 0.55em 1.1em;
+      background: rgba(29, 31, 39, 0.6);
+      opacity: 0;
+      transition: opacity 400ms ease;
+    }
+
+    .counter.is-visible {
+      opacity: 1;
+    }
+
+    .paused-badge {
+      position: fixed;
+      top: clamp(14px, calc(2.4 * var(--u)), 34px);
+      left: clamp(18px, calc(3.5 * var(--u)), 60px);
+      z-index: 35;
+      display: none;
+      font-family: var(--font-mono);
+      font-size: clamp(9px, calc(0.95 * var(--u)), 16px);
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--tertiary);
+      border: 1px solid rgba(255, 182, 143, 0.4);
+      border-radius: 999px;
+      padding: 0.55em 1.1em;
+      background: rgba(29, 31, 39, 0.6);
+    }
+
+    body.is-paused .paused-badge {
+      display: block;
+    }
+
+    /* ---------- portrait / tablet ---------- */
+
+    @media (orientation: portrait) {
+      :root {
+        --u: min(1.85vw, 1vh);
+      }
+
+      .slide {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto minmax(0, 1fr);
+        align-content: center;
+        gap: clamp(18px, calc(3 * var(--u)), 44px);
+        padding: clamp(56px, calc(8 * var(--u)), 120px) clamp(24px, calc(4.5 * var(--u)), 64px) calc(var(--footer-h) + 20px);
+      }
+
+      .slide--reverse .slide__media {
+        order: 0;
+      }
+
+      .slide__body {
+        max-width: none;
+      }
+
+      .media-frame {
+        aspect-ratio: 16 / 9;
+        max-height: 40vh;
+      }
+
+      .hero__claim {
+        max-width: 52ch;
+      }
+
+      .brand__label {
+        display: none;
+      }
+
+      .qr__text {
+        display: none;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+
+      .slide,
+      .dots button {
+        transition: none;
+      }
+
+      .slide.is-active .media-frame img,
+      .slide--hero.is-active .hero__bg img {
+        animation: none;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="progress" id="progress">
+    <div class="progress__bar" id="progressBar"></div>
+  </div>
+
+  <div class="counter" id="counter"></div>
+  <div class="paused-badge">Paused</div>
+
+  <main class="stage" id="stage">
+
+    <section class="slide slide--hero" data-duration="12000" style="--kb: 12s">
+      <div class="hero__bg">
+        <img src="universal_mediasync_hero.jpg" alt="Universal MediaSync multi-device media experiences">
+      </div>
+      <div class="hero__content">
+        <span class="eyebrow">IBC 2026 · Showcase</span>
+        <h1 class="hero__title">Universal HbbTV MediaSync</h1>
+        <p class="hero__claim">A showcase of <em>synchronized</em>, immersive and accessible multi-device media
+          experiences that keep the television at the center.</p>
+        <p class="hero__meta">4 live demonstrations · HbbTV Inter-Device Synchronization · DVB-CSS</p>
+      </div>
+    </section>
+
+    <section class="slide" data-duration="15000" style="--kb: 18s">
+      <div class="slide__content">
+        <span class="eyebrow">Companion audio</span>
+        <h2 class="slide__title">Sagrada Família with director's commentary</h2>
+        <p class="slide__body">A synchronised viewing experience enhanced with exclusive commentary from the director,
+          delivered on a companion device while remaining perfectly aligned with the main programme.</p>
+        <ul class="slide__tags">
+          <li>Private listening</li>
+          <li>Frame-accurate sync</li>
+        </ul>
+      </div>
+      <div class="slide__media">
+        <div class="media-frame">
+          <img src="sagrada_familia.png" alt="Sagrada Família documentary with a companion device showing the director's commentary">
+        </div>
+      </div>
+    </section>
+
+    <section class="slide slide--reverse" data-duration="15000" style="--kb: 18s">
+      <div class="slide__content">
+        <span class="eyebrow">Accessibility</span>
+        <h2 class="slide__title">Sign language on a second screen</h2>
+        <p class="slide__body">A television news broadcast accompanied by synchronised sign-language interpretation
+          displayed on a tablet, providing a more flexible and accessible viewing experience.</p>
+        <ul class="slide__tags">
+          <li>Sign language</li>
+          <li>Frame-accurate sync</li>
+        </ul>
+      </div>
+      <div class="slide__media">
+        <div class="media-frame">
+          <video src="video_sign_language.mp4" muted playsinline autoplay preload="auto"
+            aria-label="News broadcast on television with synchronised sign-language interpretation on a tablet"></video>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide" data-duration="24000" style="--kb: 24s">
+      <div class="slide__content">
+        <span class="eyebrow">Shared Immersive XR</span>
+        <h2 class="slide__title">Eclipse XR Experience</h2>
+        <p class="slide__body">An immersive XR experience that explains how a solar eclipse works and how to observe it
+          safely. Viewers watch content on television about the solar eclipse visible from Catalonia on 12 August while
+          a second device — smartphone, tablet or VR headset — delivers synchronised augmented reality: interactive 3D
+          models and volumetric video characters that add visual perspectives and help users understand the eclipse.</p>
+        <ul class="slide__tags">
+          <li>WebXR</li>
+          <li>XR Glasses Ready</li>
+        </ul>
+      </div>
+      <div class="slide__media">
+        <div class="media-frame">
+          <video src="eclipsi_logo.webm" muted playsinline autoplay preload="auto"
+            aria-label="Augmented reality eclipse content synchronised with the television programme"></video>
+        </div>
+      </div>
+    </section>
+
+    <section class="slide slide--reverse" data-duration="15000" style="--kb: 18s">
+      <div class="slide__content">
+        <span class="eyebrow">Conversational TV</span>
+        <h2 class="slide__title">Personal AI agents connected to the television</h2>
+        <p class="slide__body">A demonstration of how a user's personal AI agent can securely interact with television
+          agents to provide information, control the TV and recommend personalised content, while maintaining the
+          highest possible level of privacy.</p>
+        <ul class="slide__tags">
+          <li>Agent to agent</li>
+          <li>Private agent</li>
+          <li>DVB-I</li>
+        </ul>
+      </div>
+      <div class="slide__media">
+        <div class="media-frame media-frame--contain">
+          <video src="chatbot.mp4" muted playsinline autoplay preload="auto"
+            aria-label="Personal AI agent interacting with the television agent"></video>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <div class="brand">
+      <span class="brand__chip"><img src="assets/3cat-logo.png" alt="3Cat"></span>
+      <span class="brand__label">Media innovation<br>by 3Cat Engineering</span>
+    </div>
+    <ul class="dots" id="dots"></ul>
+    <div class="qr">
+      <span class="qr__text"><strong>Get Universal MediaSync</strong>Scan for the app &amp; docs</span>
+      <span class="qr__code"><img src="assets/qr-landing.svg" alt="QR code linking to the Universal HbbTV MediaSync landing page"></span>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+      var dotsList = document.getElementById('dots');
+      var progress = document.getElementById('progress');
+      var progressBar = document.getElementById('progressBar');
+      var counter = document.getElementById('counter');
+      var demoSlides = slides.filter(function (s) { return !s.classList.contains('slide--hero'); });
+
+      var index = 0;
+      var paused = false;
+      var slideStart = 0;
+      var elapsed = 0;
+      var resumeTimer = null;
+      var RESUME_AFTER_MS = 60000;
+
+      var dots = slides.map(function (slide, i) {
+        var li = document.createElement('li');
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.setAttribute('aria-label', 'Go to slide ' + (i + 1));
+        button.addEventListener('click', function () { go(i); deferAutoResume(); });
+        li.appendChild(button);
+        dotsList.appendChild(li);
+        return button;
+      });
+
+      function duration(i) {
+        return parseInt(slides[i].getAttribute('data-duration'), 10) || 18000;
+      }
+
+      // A logo clip the browser cannot decode must not leave a blank gap above the title.
+      slides.forEach(function (slide) {
+        var logo = slide.querySelector('.demo-logo');
+        if (!logo) { return; }
+        logo.addEventListener('error', function () { slide.classList.add('is-logo-broken'); }, true);
+      });
+
+      function syncVideos() {
+        slides.forEach(function (slide, i) {
+          var videos = slide.querySelectorAll('video');
+          Array.prototype.forEach.call(videos, function (video) {
+            if (i === index) {
+              try { video.currentTime = 0; } catch (e) { }
+              var playback = video.play();
+              if (playback && playback.catch) { playback.catch(function () { }); }
+            } else {
+              video.pause();
+            }
+          });
+        });
+      }
+
+      function go(next) {
+        index = (next + slides.length) % slides.length;
+        slides.forEach(function (slide, i) { slide.classList.toggle('is-active', i === index); });
+        dots.forEach(function (dot, i) { dot.classList.toggle('is-active', i === index); });
+        var demoIndex = demoSlides.indexOf(slides[index]);
+        if (demoIndex >= 0) {
+          counter.textContent = 'Demo ' + (demoIndex + 1) + ' / ' + demoSlides.length;
+          counter.classList.add('is-visible');
+        } else {
+          counter.classList.remove('is-visible');
+        }
+        elapsed = 0;
+        slideStart = performance.now();
+        syncVideos();
+      }
+
+      function setPaused(value) {
+        paused = value;
+        document.body.classList.toggle('is-paused', paused);
+        progress.classList.toggle('is-paused', paused);
+        if (!paused) { slideStart = performance.now() - elapsed; }
+      }
+
+      function deferAutoResume() {
+        if (resumeTimer) { clearTimeout(resumeTimer); }
+        resumeTimer = setTimeout(function () { if (paused) { setPaused(false); } }, RESUME_AFTER_MS);
+      }
+
+      function tick(now) {
+        if (!paused) {
+          elapsed = now - slideStart;
+          var total = duration(index);
+          if (elapsed >= total) { go(index + 1); }
+          else { progressBar.style.width = ((elapsed / total) * 100).toFixed(2) + '%'; }
+        }
+        requestAnimationFrame(tick);
+      }
+
+      document.addEventListener('keydown', function (event) {
+        var key = event.key;
+        if (key === 'ArrowRight' || key === 'PageDown') { go(index + 1); deferAutoResume(); }
+        else if (key === 'ArrowLeft' || key === 'PageUp') { go(index - 1); deferAutoResume(); }
+        else if (key === ' ' || key === 'Spacebar') { setPaused(!paused); deferAutoResume(); event.preventDefault(); }
+        else if (key === 'f' || key === 'F') {
+          if (document.fullscreenElement) { document.exitFullscreen(); }
+          else if (document.documentElement.requestFullscreen) { document.documentElement.requestFullscreen(); }
+        }
+      });
+
+      var touchStartX = null;
+      document.addEventListener('touchstart', function (event) {
+        touchStartX = event.changedTouches[0].clientX;
+      }, { passive: true });
+
+      document.addEventListener('touchend', function (event) {
+        if (touchStartX === null) { return; }
+        var delta = event.changedTouches[0].clientX - touchStartX;
+        touchStartX = null;
+        if (Math.abs(delta) < 45) { return; }
+        go(index + (delta < 0 ? 1 : -1));
+        deferAutoResume();
+      }, { passive: true });
+
+      document.addEventListener('click', function (event) {
+        if (event.target.closest('.dots')) { return; }
+        go(index + (event.clientX < window.innerWidth / 2 ? -1 : 1));
+        deferAutoResume();
+      });
+
+      document.addEventListener('contextmenu', function (event) { event.preventDefault(); });
+
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) { slideStart = performance.now() - elapsed; }
+      });
+
+      go(0);
+      requestAnimationFrame(tick);
+    })();
+  </script>
+</body>
+
+</html>
