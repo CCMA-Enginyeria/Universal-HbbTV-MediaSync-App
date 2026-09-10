@@ -1,4 +1,4 @@
-name: Publish Landing Page
+name: Publish Landing Page and IBC Demonstrations
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
     paths:
       - ".github/workflows/publish-landing-page.yml"
       - "www/landing/**"
+      - "www/ibc_demostrations/**"
   workflow_dispatch:
 
 permissions:
@@ -32,12 +33,13 @@ jobs:
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
-      - name: Prepare landing page artifact
+      - name: Prepare website artifact
         shell: bash
         run: |
           mkdir -p dist
           cp -r www/landing/* dist/
           mv dist/code.html dist/index.html
+          cp -r www/ibc_demostrations dist/ibc_demostrations
           touch dist/.nojekyll
 
       - name: Upload GitHub Pages artifact
