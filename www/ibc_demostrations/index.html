@@ -383,6 +383,62 @@
       max-width: 22ch;
     }
 
+    .playback-controls {
+      display: flex;
+      align-items: center;
+      gap: clamp(14px, calc(2 * var(--u)), 24px);
+    }
+
+    .playback-toggle {
+      position: relative;
+      width: clamp(44px, calc(5 * var(--u)), 56px);
+      height: clamp(44px, calc(5 * var(--u)), 56px);
+      flex: 0 0 auto;
+      appearance: none;
+      border: 1px solid rgba(175, 198, 255, 0.42);
+      border-radius: 50%;
+      background: rgba(175, 198, 255, 0.12);
+      color: var(--primary);
+      cursor: pointer;
+    }
+
+    .playback-toggle::before,
+    .playback-toggle::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      width: 4px;
+      height: 18px;
+      border-radius: 2px;
+      background: currentColor;
+      transform: translateY(-50%);
+    }
+
+    .playback-toggle::before {
+      left: calc(50% - 7px);
+    }
+
+    .playback-toggle::after {
+      right: calc(50% - 7px);
+    }
+
+    body.is-paused .playback-toggle::before {
+      top: 50%;
+      left: calc(50% - 5px);
+      width: 0;
+      height: 0;
+      border-top: 10px solid transparent;
+      border-bottom: 10px solid transparent;
+      border-left: 16px solid currentColor;
+      border-radius: 0;
+      background: transparent;
+      transform: translateY(-50%);
+    }
+
+    body.is-paused .playback-toggle::after {
+      display: none;
+    }
+
     .dots {
       display: flex;
       align-items: center;
@@ -657,7 +713,11 @@
       <span class="brand__chip"><img src="assets/3cat-logo.png" alt="3Cat"></span>
       <span class="brand__label">Media innovation<br>by 3Cat Engineering</span>
     </div>
-    <ul class="dots" id="dots"></ul>
+    <div class="playback-controls">
+      <button class="playback-toggle" id="playbackToggle" type="button" aria-label="Pause slideshow"
+        title="Pause slideshow"></button>
+      <ul class="dots" id="dots"></ul>
+    </div>
     <div class="qr">
       <span class="qr__text"><strong>Get Universal MediaSync</strong>Scan for the app &amp; docs</span>
       <span class="qr__code"><img src="assets/qr-landing.svg" alt="QR code linking to the Universal HbbTV MediaSync landing page"></span>
@@ -671,21 +731,19 @@
       var progress = document.getElementById('progress');
       var progressBar = document.getElementById('progressBar');
       var counter = document.getElementById('counter');
+      var playbackToggle = document.getElementById('playbackToggle');
       var demoSlides = slides.filter(function (s) { return !s.classList.contains('slide--hero'); });
 
       var index = 0;
       var paused = false;
       var slideStart = 0;
       var elapsed = 0;
-      var resumeTimer = null;
-      var RESUME_AFTER_MS = 60000;
-
       var dots = slides.map(function (slide, i) {
         var li = document.createElement('li');
         var button = document.createElement('button');
         button.type = 'button';
         button.setAttribute('aria-label', 'Go to slide ' + (i + 1));
-        button.addEventListener('click', function () { go(i); deferAutoResume(); });
+        button.addEventListener('click', function () { go(i); });
         li.appendChild(button);
         dotsList.appendChild(li);
         return button;
@@ -706,7 +764,7 @@
         slides.forEach(function (slide, i) {
           var videos = slide.querySelectorAll('video');
           Array.prototype.forEach.call(videos, function (video) {
-            if (i === index) {
+            if (i === index && !paused) {
               try { video.currentTime = 0; } catch (e) { }
               var playback = video.play();
               if (playback && playback.catch) { playback.catch(function () { }); }
@@ -737,13 +795,21 @@
         paused = value;
         document.body.classList.toggle('is-paused', paused);
         progress.classList.toggle('is-paused', paused);
+        playbackToggle.setAttribute('aria-label', paused ? 'Resume slideshow' : 'Pause slideshow');
+        playbackToggle.setAttribute('title', paused ? 'Resume slideshow' : 'Pause slideshow');
+        var activeVideos = slides[index].querySelectorAll('video');
+        Array.prototype.forEach.call(activeVideos, function (video) {
+          if (paused) {
+            video.pause();
+          } else {
+            var playback = video.play();
+            if (playback && playback.catch) { playback.catch(function () { }); }
+          }
+        });
         if (!paused) { slideStart = performance.now() - elapsed; }
       }
 
-      function deferAutoResume() {
-        if (resumeTimer) { clearTimeout(resumeTimer); }
-        resumeTimer = setTimeout(function () { if (paused) { setPaused(false); } }, RESUME_AFTER_MS);
-      }
+      playbackToggle.addEventListener('click', function () { setPaused(!paused); });
 
       function enterFullscreen() {
         if (document.fullscreenElement || !document.documentElement.requestFullscreen) { return; }
@@ -763,9 +829,9 @@
 
       document.addEventListener('keydown', function (event) {
         var key = event.key;
-        if (key === 'ArrowRight' || key === 'PageDown') { go(index + 1); deferAutoResume(); }
-        else if (key === 'ArrowLeft' || key === 'PageUp') { go(index - 1); deferAutoResume(); }
-        else if (key === ' ' || key === 'Spacebar') { setPaused(!paused); deferAutoResume(); event.preventDefault(); }
+        if (key === 'ArrowRight' || key === 'PageDown') { go(index + 1); }
+        else if (key === 'ArrowLeft' || key === 'PageUp') { go(index - 1); }
+        else if (key === ' ' || key === 'Spacebar') { setPaused(!paused); event.preventDefault(); }
         else if (key === 'f' || key === 'F') {
           if (document.fullscreenElement) { document.exitFullscreen(); }
           else { enterFullscreen(); }
@@ -785,13 +851,11 @@
         touchStartX = null;
         if (Math.abs(delta) < 45) { return; }
         go(index + (delta < 0 ? 1 : -1));
-        deferAutoResume();
       }, { passive: true });
 
       document.addEventListener('click', function (event) {
-        if (event.target.closest('.dots')) { return; }
+        if (event.target.closest('.playback-controls')) { return; }
         go(index + (event.clientX < window.innerWidth / 2 ? -1 : 1));
-        deferAutoResume();
       });
 
       document.addEventListener('contextmenu', function (event) { event.preventDefault(); });
