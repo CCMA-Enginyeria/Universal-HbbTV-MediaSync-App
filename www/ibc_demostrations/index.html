@@ -317,6 +317,12 @@
       color: var(--tertiary);
     }
 
+    .hero__highlight {
+      color: #ffffff;
+      font-weight: 700;
+      text-shadow: 0 0 22px rgba(175, 198, 255, 0.34);
+    }
+
     .hero__meta {
       margin: 12px 0 0;
       font-family: var(--font-mono);
@@ -358,18 +364,18 @@
       justify-content: center;
       background: #ffffff;
       border-radius: 12px;
-      padding: clamp(6px, calc(0.9 * var(--u)), 10px) clamp(9px, calc(1.4 * var(--u)), 16px);
+      padding: clamp(8px, calc(1.15 * var(--u)), 14px) clamp(12px, calc(1.9 * var(--u)), 24px);
     }
 
     .brand__chip img {
       display: block;
-      height: clamp(18px, calc(3 * var(--u)), 40px);
+      height: clamp(28px, calc(4.1 * var(--u)), 58px);
       width: auto;
     }
 
     .brand__label {
       font-family: var(--font-mono);
-      font-size: clamp(8px, calc(0.85 * var(--u)), 14px);
+      font-size: clamp(10px, calc(1.05 * var(--u)), 17px);
       letter-spacing: 0.16em;
       text-transform: uppercase;
       color: var(--on-surface-variant);
@@ -558,8 +564,9 @@
       <div class="hero__content">
         <span class="eyebrow">IBC 2026 · Showcase</span>
         <h1 class="hero__title">Universal HbbTV MediaSync</h1>
-        <p class="hero__claim">A showcase of <em>synchronized</em>, immersive and accessible multi-device media
-          experiences that keep the television at the center.</p>
+        <p class="hero__claim">A showcase of <em>synchronized</em>, <span class="hero__highlight">immersive</span> and
+          <span class="hero__highlight">accessible</span> <span class="hero__highlight">multi-device</span> media
+          experiences that keep the <span class="hero__highlight">television at the center</span>.</p>
         <p class="hero__meta">4 live demonstrations · HbbTV Inter-Device Synchronization · DVB-CSS</p>
       </div>
     </section>
@@ -738,6 +745,12 @@
         resumeTimer = setTimeout(function () { if (paused) { setPaused(false); } }, RESUME_AFTER_MS);
       }
 
+      function enterFullscreen() {
+        if (document.fullscreenElement || !document.documentElement.requestFullscreen) { return; }
+        var request = document.documentElement.requestFullscreen();
+        if (request && request.catch) { request.catch(function () { }); }
+      }
+
       function tick(now) {
         if (!paused) {
           elapsed = now - slideStart;
@@ -755,9 +768,11 @@
         else if (key === ' ' || key === 'Spacebar') { setPaused(!paused); deferAutoResume(); event.preventDefault(); }
         else if (key === 'f' || key === 'F') {
           if (document.fullscreenElement) { document.exitFullscreen(); }
-          else if (document.documentElement.requestFullscreen) { document.documentElement.requestFullscreen(); }
+          else { enterFullscreen(); }
         }
       });
+
+      document.addEventListener('pointerdown', enterFullscreen, { once: true });
 
       var touchStartX = null;
       document.addEventListener('touchstart', function (event) {
