@@ -1,0 +1,5 @@
+#include "Base.xcconfig"
+
+// Development builds coexist with the store app (PRD-001-R06).
+PRODUCT_BUNDLE_IDENTIFIER = $(BRAND_BUNDLE_IDENTIFIER).dev
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG

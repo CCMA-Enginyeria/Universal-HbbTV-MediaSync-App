@@ -1,0 +1,13 @@
+WEBVTT
+X-TIMESTAMP-MAP=LOCAL:00:00:00.000,MPEGTS:0
+
+1
+00:00:01.000 --> 00:00:02.500 align:center
+<v Speaker>Hola</v> &amp; adeu
+
+00:01.000 --> 00:03,000
+Segona
+linia
+
+bad --> timing
+ignored

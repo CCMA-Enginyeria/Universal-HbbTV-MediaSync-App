@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static" mediaPresentationDuration="PT1H2M3.5S" profiles="urn:dvb:dash:profile:dvb-dash:2014">
+  <BaseURL>media/</BaseURL>
+  <Period id="main">
+    <BaseURL>p1/</BaseURL>
+    <AdaptationSet id="1" contentType="video" mimeType="video/mp4" codecs="avc1.64001f">
+      <Role schemeIdUri="urn:mpeg:dash:role:2011" value="main"/>
+      <Representation id="v1" bandwidth="1000000" width="1280" height="720"/>
+      <Representation id="v2" bandwidth="3000000" width="1920" height="1080"/>
+    </AdaptationSet>
+    <AdaptationSet id="2" mimeType="video/mp4" lang="ca">
+      <Role schemeIdUri="urn:mpeg:dash:role:2011" value="sign"/>
+      <Representation id="s1" bandwidth="500000" width="640" height="360" codecs="avc1.4d401e"/>
+    </AdaptationSet>
+    <AdaptationSet id="3" contentType="audio" mimeType="audio/mp4" lang="ca" codecs="mp4a.40.2">
+      <Role schemeIdUri="urn:mpeg:dash:role:2011" value="main"/>
+      <Representation id="a1" bandwidth="128000"/>
+    </AdaptationSet>
+    <AdaptationSet id="4" mimeType="audio/mp4" lang="ca">
+      <Accessibility schemeIdUri="urn:tva:metadata:cs:AudioPurposeCS:2007" value="1"/>
+      <Role schemeIdUri="urn:mpeg:dash:role:2011" value="alternate"/>
+      <Label>Audiodescripcio</Label>
+      <Representation id="ad1" bandwidth="96000" codecs="ec-3"/>
+    </AdaptationSet>
+    <AdaptationSet id="5" mimeType="audio/mp4" lang="qaa">
+      <ContentProtection schemeIdUri="urn:mpeg:dash:mp4protection:2011" value="cenc"/>
+      <Representation id="a3" bandwidth="128000" codecs="mp4a.40.2"/>
+    </AdaptationSet>
+    <AdaptationSet id="6" contentType="text" mimeType="text/vtt" lang="es">
+      <Representation id="t1" bandwidth="1000"><BaseURL>../subs/es.vtt</BaseURL></Representation>
+    </AdaptationSet>
+    <AdaptationSet id="7" mimeType="application/ttml+xml" lang="ca">
+      <Representation id="t2" bandwidth="1000"><BaseURL>https://cdn.example.com/subs/ca.ttml</BaseURL></Representation>
+    </AdaptationSet>
+    <AdaptationSet id="8" mimeType="image/png"/>
+  </Period>
+</MPD>

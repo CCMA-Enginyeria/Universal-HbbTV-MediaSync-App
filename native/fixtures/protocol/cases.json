@@ -1,0 +1,201 @@
+{
+  "wallClock": [
+    {
+      "name": "response",
+      "hex": "0001F6000001F400000000011DCD6500000000640000000000000064000003E8",
+      "expect": { "type": 1, "precision": -10, "maxFreqError": 128000, "originate": "1500000000", "receive": "100000000000", "transmit": "100000001000" }
+    },
+    {
+      "name": "maximum 32-bit seconds",
+      "hex": "000300000000000000000000000000000000000000000000FFFFFFFF3B9AC9FF",
+      "expect": { "type": 3, "precision": 0, "maxFreqError": 0, "originate": "0", "receive": "0", "transmit": "4294967295999999999" }
+    },
+    { "name": "truncated", "hex": "0001F6000001F400000000011DCD6500000000640000000000000064000003", "expect": null },
+    { "name": "unknown version", "hex": "0101F6000001F400000000011DCD6500000000640000000000000064000003E8", "expect": null },
+    { "name": "request type", "hex": "0000F6000001F400000000011DCD6500000000640000000000000064000003E8", "expect": null },
+    { "name": "nanoseconds overflow", "hex": "0001F6000001F400000000011DCD6500000000643B9ACA0000000064000003E8", "expect": null }
+  ],
+  "timeline": [
+    { "text": "{\"contentTime\":\"900000\",\"wallClockTime\":\"1000000000\",\"timelineSpeedMultiplier\":1}", "expect": { "contentTime": "900000", "wallClockTime": "1000000000", "speed": 1.0 } },
+    { "text": "{\"contentTime\":\"9007199254740993\",\"wallClockTime\":\"9223372036854775000\",\"timelineSpeedMultiplier\":1.0}", "expect": { "contentTime": "9007199254740993", "wallClockTime": "9223372036854775000", "speed": 1.0 } },
+    { "text": "{\"contentTime\":90000,\"wallClockTime\":123,\"timelineSpeedMultiplier\":0}", "expect": { "contentTime": "90000", "wallClockTime": "123", "speed": 0.0 } },
+    { "text": "{\"contentTime\":1.6,\"wallClockTime\":2.4,\"timelineSpeedMultiplier\":0.5}", "expect": { "contentTime": "2", "wallClockTime": "2", "speed": 0.5 } },
+    { "text": "{\"contentTime\":\"1\",\"wallClockTime\":\"2\"}", "expect": { "contentTime": "1", "wallClockTime": "2", "speed": 1.0 } },
+    { "text": "{\"contentTime\":null,\"wallClockTime\":null,\"timelineSpeedMultiplier\":null}", "expect": "unavailable" },
+    { "text": "{\"timelineSpeedMultiplier\":null}", "expect": "unavailable" },
+    { "text": "pairingcompleted", "expect": null },
+    { "text": "{\"contentTime\":\"abc\",\"wallClockTime\":\"1\",\"timelineSpeedMultiplier\":1}", "expect": null },
+    { "text": "{\"contentTime\":\"1\",\"wallClockTime\":\"1\",\"timelineSpeedMultiplier\":-1}", "expect": null },
+    { "text": "{\"contentTime\":\"1e999999999\",\"wallClockTime\":\"1\",\"timelineSpeedMultiplier\":1}", "expect": null }
+  ],
+  "tickRate": [
+    { "selector": "urn:dvb:css:timeline:pts", "expect": 90000 },
+    { "selector": "urn:dvb:css:timeline:mpd:period:rel:1000", "expect": 1000 },
+    { "selector": "urn:dvb:css:timeline:mpd:period:rel:25:period-2", "expect": 25 },
+    { "selector": "urn:dvb:css:timeline:temi:1:1000", "expect": 1000 },
+    { "selector": "urn:dvb:css:timeline:ct", "expect": null },
+    { "selector": "urn:dvb:css:timeline:ct", "advertised": [["urn:dvb:css:timeline:ct", 2, 100]], "expect": 50 },
+    { "selector": "urn:dvb:css:timeline:pts", "advertised": [["urn:dvb:css:timeline:pts", 1, 45000]], "expect": 45000 }
+  ],
+  "timelineSelection": [
+    { "configured": "urn:dvb:css:timeline:mpd:period:rel:1000", "advertised": [], "expect": "urn:dvb:css:timeline:mpd:period:rel:1000" },
+    { "configured": "urn:dvb:css:timeline:mpd:period:rel:1000", "advertised": ["urn:dvb:css:timeline:pts"], "expect": "urn:dvb:css:timeline:pts" },
+    { "configured": "urn:dvb:css:timeline:pts", "advertised": ["urn:dvb:css:timeline:temi:1:1000", "urn:dvb:css:timeline:pts"], "expect": "urn:dvb:css:timeline:pts" },
+    { "configured": "urn:dvb:css:timeline:pts", "advertised": ["urn:dvb:css:timeline:ct"], "expect": null }
+  ],
+  "cii": [
+    {
+      "name": "partial updates keep previous values",
+      "messages": [
+        "{\"protocolVersion\":\"1.1\",\"contentId\":\"https://a/1.mpd\",\"contentIdStatus\":\"final\",\"presentationStatus\":[\"okay\"],\"wcUrl\":\"udp://10.0.0.2:6677\",\"tsUrl\":\"ws://10.0.0.2:7681/ts\",\"timelines\":[{\"timelineSelector\":\"urn:dvb:css:timeline:pts\",\"timelineProperties\":{\"unitsPerTick\":1,\"unitsPerSecond\":90000}}]}",
+        "{\"contentId\":\"https://a/2.mpd\"}"
+      ],
+      "expect": { "contentId": "https://a/2.mpd", "presentationStatus": ["okay"], "wcUrl": "udp://10.0.0.2:6677", "tsUrl": "ws://10.0.0.2:7681/ts", "timelines": [["urn:dvb:css:timeline:pts", 1, 90000]], "changed": ["CONTENT_ID"] }
+    },
+    {
+      "name": "null clears and string presentation status",
+      "messages": [
+        "{\"contentId\":\"https://a/1.mpd\",\"presentationStatus\":\"okay\",\"wcUrl\":\"udp://h:1\"}",
+        "{\"contentId\":null,\"presentationStatus\":\"fault other\",\"wcUrl\":null}"
+      ],
+      "expect": { "contentId": null, "presentationStatus": ["fault", "other"], "wcUrl": null, "tsUrl": null, "timelines": [], "changed": ["CONTENT_ID", "PRESENTATION_STATUS", "WC_URL"] }
+    },
+    {
+      "name": "invalid frames are ignored",
+      "messages": ["{\"contentId\":\"https://a/1.mpd\"}", "pairingcompleted", "[1,2]", "{\"contentId\":42}"],
+      "expect": { "contentId": "https://a/1.mpd", "presentationStatus": [], "wcUrl": null, "tsUrl": null, "timelines": [], "changed": [] }
+    }
+  ],
+  "endpoints": [
+    { "url": "ws://0.0.0.0:7681/cii", "host": "192.168.1.5", "expect": "ws://192.168.1.5:7681/cii" },
+    { "url": "ws://:7681/cii", "host": "192.168.1.5", "expect": "ws://192.168.1.5:7681/cii" },
+    { "url": "udp://localhost:6677", "host": "192.168.1.5", "expect": "udp://192.168.1.5:6677" },
+    { "url": "ws://127.0.0.1", "host": "192.168.1.5", "expect": "ws://192.168.1.5" },
+    { "url": "ws://10.0.0.2/localhost", "host": "192.168.1.5", "expect": "ws://10.0.0.2/localhost" },
+    { "url": "ws://0.0.0.0:7681/cii", "host": null, "expect": "ws://0.0.0.0:7681/cii" }
+  ],
+  "udp": [
+    { "url": "udp://10.0.0.2:6677", "expect": ["10.0.0.2", 6677] },
+    { "url": "10.0.0.2:6677", "expect": ["10.0.0.2", 6677] },
+    { "url": "udp://10.0.0.2", "expect": null },
+    { "url": "ws://10.0.0.2:6677", "expect": null },
+    { "url": "udp://10.0.0.2:70000", "expect": null },
+    { "url": "udp://user@10.0.0.2:6677", "expect": null }
+  ],
+  "classify": [
+    { "contentId": "https://cdn.example/a/manifest.mpd", "expect": "DASH" },
+    { "contentId": "https://cdn.example/a/manifest.mpd?token=1", "expect": "DASH" },
+    { "contentId": "https://site.example/page.html#top", "expect": "WEB" },
+    { "contentId": "http://site.example/page.htm", "expect": "WEB" },
+    { "contentId": "https://cdn.example/master.m3u8", "expect": "HLS" },
+    { "contentId": "dvb://1.2.3", "expect": "UNSUPPORTED" },
+    { "contentId": "file:///sdcard/a.mpd", "expect": "UNSUPPORTED" },
+    { "contentId": "https://user:secret@cdn.example/a.mpd", "expect": "UNSUPPORTED" },
+    { "contentId": "https://cdn.example/video.mp4", "expect": "UNSUPPORTED" },
+    { "contentId": "", "expect": "NONE" }
+  ],
+  "manifests": [
+    {
+      "file": "vod.mpd",
+      "url": "https://broadcaster.example/vod/show/manifest.mpd",
+      "expect": {
+        "isLive": false,
+        "durationS": 3723.5,
+        "availabilityStartTimeMs": null,
+        "tracks": [
+          { "id": "main/1", "kind": "VIDEO", "language": null, "role": "main", "label": null, "bandwidth": 3000000, "width": 1920, "height": 1080, "audioDescription": false, "signLanguage": false, "protected": false, "textFormat": null, "textUrl": null },
+          { "id": "main/2", "kind": "VIDEO", "language": "ca", "role": "sign", "label": null, "bandwidth": 500000, "width": 640, "height": 360, "audioDescription": false, "signLanguage": true, "protected": false, "textFormat": null, "textUrl": null },
+          { "id": "main/3", "kind": "AUDIO", "language": "ca", "role": "main", "label": null, "bandwidth": 128000, "width": null, "height": null, "audioDescription": false, "signLanguage": false, "protected": false, "textFormat": null, "textUrl": null },
+          { "id": "main/4", "kind": "AUDIO", "language": "ca", "role": "description", "label": "Audiodescripcio", "bandwidth": 96000, "width": null, "height": null, "audioDescription": true, "signLanguage": false, "protected": false, "textFormat": null, "textUrl": null },
+          { "id": "main/5", "kind": "AUDIO", "language": "qaa", "role": null, "label": null, "bandwidth": 128000, "width": null, "height": null, "audioDescription": false, "signLanguage": false, "protected": true, "textFormat": null, "textUrl": null },
+          { "id": "main/6", "kind": "TEXT", "language": "es", "role": null, "label": null, "bandwidth": 1000, "width": null, "height": null, "audioDescription": false, "signLanguage": false, "protected": false, "textFormat": "vtt", "textUrl": "https://broadcaster.example/vod/show/media/subs/es.vtt" },
+          { "id": "main/7", "kind": "TEXT", "language": "ca", "role": null, "label": null, "bandwidth": 1000, "width": null, "height": null, "audioDescription": false, "signLanguage": false, "protected": false, "textFormat": "ttml", "textUrl": "https://cdn.example.com/subs/ca.ttml" }
+        ]
+      }
+    },
+    {
+      "file": "live.mpd",
+      "url": "https://live.example/ch1/live.mpd",
+      "expect": {
+        "isLive": true,
+        "durationS": null,
+        "availabilityStartTimeMs": 1704067200000,
+        "timeShiftBufferDepthS": 7200,
+        "tracks": [
+          { "id": "1/10", "kind": "TEXT", "language": "ca", "role": null, "label": null, "bandwidth": 2000, "width": null, "height": null, "audioDescription": false, "signLanguage": false, "protected": false, "textFormat": "ttml", "textUrl": null },
+          { "id": "1/11", "kind": "AUDIO", "language": "es", "role": null, "label": null, "bandwidth": 128000, "width": null, "height": null, "audioDescription": false, "signLanguage": false, "protected": false, "textFormat": null, "textUrl": null }
+        ]
+      },
+      "segments": { "nowOffsetMs": 125000, "pending": [20, 21], "url21": "https://live.example/ch1/ttml/sub-ttml1-00021.m4s", "ptoS": 12 }
+    },
+    {
+      "file": "master.m3u8",
+      "url": "https://hls.example/show/master.m3u8",
+      "expect": {
+        "isLive": false,
+        "durationS": null,
+        "availabilityStartTimeMs": null,
+        "tracks": [
+          { "id": "aud/Catala", "kind": "AUDIO", "language": "ca", "role": "main", "label": "Catala", "bandwidth": 0, "width": null, "height": null, "audioDescription": false, "signLanguage": false, "protected": false, "textFormat": null, "textUrl": "https://hls.example/show/audio/ca.m3u8" },
+          { "id": "aud/AD", "kind": "AUDIO", "language": "ca", "role": "description", "label": "AD", "bandwidth": 0, "width": null, "height": null, "audioDescription": true, "signLanguage": false, "protected": false, "textFormat": null, "textUrl": "https://hls.example/show/audio/ad.m3u8" },
+          { "id": "subs/Castella", "kind": "TEXT", "language": "es", "role": "alternate", "label": "Castella", "bandwidth": 0, "width": null, "height": null, "audioDescription": false, "signLanguage": false, "protected": false, "textFormat": "vtt", "textUrl": "https://hls.example/show/subs/es.m3u8" },
+          { "id": "variant0", "kind": "VIDEO", "language": null, "role": "main", "label": null, "bandwidth": 2000000, "width": 1280, "height": 720, "audioDescription": false, "signLanguage": false, "protected": false, "textFormat": null, "textUrl": null }
+        ]
+      }
+    }
+  ],
+  "subtitles": [
+    {
+      "file": "nested.ttml",
+      "format": "ttml",
+      "expect": [
+        [11.0, 13.5, "Primera l\u00ednia\nsegona l\u00ednia"],
+        [12.48, 14.0, "Frames & entitats"],
+        [15.5, 16.5, "Offset"],
+        [16.0, 18.0, "Ticks"]
+      ],
+      "active": [[12.0, "Primera l\u00ednia\nsegona l\u00ednia"], [13.0, "Primera l\u00ednia\nsegona l\u00ednia\nFrames & entitats"], [14.5, null], [16.2, "Offset\nTicks"]]
+    },
+    {
+      "file": "basic.vtt",
+      "format": "vtt",
+      "expect": [[1.0, 2.5, "Hola & adeu"], [1.0, 3.0, "Segona\nlinia"]],
+      "active": [[2.6, "Segona\nlinia"], [3.0, null]]
+    }
+  ],
+  "companion": {
+    "injectionPayload": "{\"type\":\"app-message\",\"message\":{\"payload\":\"</script>\\u2028'\\\"\"}}",
+    "valid": [
+      { "text": "{\"version\":1,\"type\":\"sync-ack\",\"positionSeconds\":1}", "type": "sync-ack" },
+      { "text": "{\"version\":1,\"type\":\"app-message\",\"message\":{\"type\":\"vote\",\"id\":\"r1\",\"payload\":{\"n\":1.5,\"s\":\"\u00e9\"}}}", "type": "app-message", "messageType": "vote", "id": "r1", "payload": "{\"n\":1.5,\"s\":\"\u00e9\"}" }
+    ],
+    "invalid": [
+      "{\"version\":2,\"type\":\"sync-ack\"}",
+      "{\"version\":\"1\",\"type\":\"sync-ack\"}",
+      "{\"version\":1,\"type\":\"position\"}",
+      "{\"version\":1,\"type\":\"app-message\",\"message\":{\"payload\":1}}",
+      "not json"
+    ],
+    "origins": [
+      ["https://Example.com/page.html?x=1", "https://example.com"],
+      ["https://example.com:443/a", "https://example.com"],
+      ["http://example.com:8080/a", "http://example.com:8080"],
+      ["javascript:alert(1)", null],
+      ["file:///etc/hosts", null]
+    ]
+  },
+  "modeSelection": [
+    { "preferred": "COMPAT", "native": "AVAILABLE", "compat": "AVAILABLE", "expect": "COMPAT" },
+    { "preferred": "NATIVE", "native": "AVAILABLE", "compat": "AVAILABLE", "expect": "NATIVE" },
+    { "preferred": "NATIVE", "native": "UNAVAILABLE", "compat": "AVAILABLE", "expect": "COMPAT" },
+    { "preferred": "NATIVE", "native": "CHECKING", "compat": "AVAILABLE", "expect": null },
+    { "preferred": "COMPAT", "native": "AVAILABLE", "compat": "UNAVAILABLE", "expect": "NATIVE" },
+    { "preferred": "COMPAT", "native": "UNAVAILABLE", "compat": "UNAVAILABLE", "expect": null },
+    { "preferred": "COMPAT", "native": "UNKNOWN", "compat": "UNKNOWN", "expect": null }
+  ],
+  "preferenceKeys": [
+    { "manufacturer": " LG  Electronics ", "modelName": "OLED55*C1", "location": null, "expect": "@universal-mediasync/mode/v1/model/lg%20electronics/oled55*c1" },
+    { "manufacturer": null, "modelName": null, "location": "http://10.0.0.2:8008/dd.xml", "expect": "@universal-mediasync/mode/v1/device/http%3A%2F%2F10.0.0.2%3A8008%2Fdd.xml" },
+    { "manufacturer": null, "modelName": null, "location": null, "expect": "@universal-mediasync/mode/v1/device/unknown" }
+  ]
+}

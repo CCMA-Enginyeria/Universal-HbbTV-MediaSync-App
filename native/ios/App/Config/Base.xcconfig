@@ -1,0 +1,7 @@
+// Brand identity comes from the generated Brand.xcconfig (native/tools/export-brand.cjs).
+#include "../Generated/Brand.xcconfig"
+
+PRODUCT_NAME = MediaSync
+MARKETING_VERSION = $(BRAND_MARKETING_VERSION)
+CURRENT_PROJECT_VERSION = $(BRAND_BUILD_NUMBER)
+DEVELOPMENT_LANGUAGE = $(BRAND_DEVELOPMENT_LANGUAGE)

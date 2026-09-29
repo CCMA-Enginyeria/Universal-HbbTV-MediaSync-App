@@ -1,0 +1,62 @@
+# XcodeGen specification of the iOS application. Generate the project with
+#   native/ios/App/generate.sh
+# which first exports brand resources into App/Generated (not versioned).
+name: MediaSync
+options:
+  bundleIdPrefix: mediasync
+  deploymentTarget:
+    iOS: "15.0"
+  developmentLanguage: en
+  createIntermediateGroups: true
+packages:
+  MediaSyncCore:
+    path: ..
+configFiles:
+  Debug: Config/Debug.xcconfig
+  Release: Config/Release.xcconfig
+targets:
+  MediaSync:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+      - path: Generated
+        excludes:
+          - Info.plist
+          - "*.entitlements"
+          - Brand.xcconfig
+    dependencies:
+      - package: MediaSyncCore
+    settings:
+      base:
+        INFOPLIST_FILE: Generated/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Generated/MediaSync.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.9"
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    preBuildScripts:
+      - name: Export brand resources
+        basedOnDependencyAnalysis: false
+        script: |
+          export PATH="$PATH:/opt/homebrew/bin:/usr/local/bin"
+          node "${SRCROOT}/../../tools/export-brand.cjs" --ios "${SRCROOT}/Generated"
+        outputFiles:
+          - $(SRCROOT)/Generated/Info.plist
+  MediaSyncTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests]
+    dependencies:
+      - target: MediaSync
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  MediaSync:
+    build:
+      targets:
+        MediaSync: all
+        MediaSyncTests: [test]
+    test:
+      targets: [MediaSyncTests]

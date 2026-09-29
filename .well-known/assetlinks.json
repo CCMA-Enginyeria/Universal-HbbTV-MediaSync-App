@@ -12,5 +12,17 @@
         "FA:C6:17:45:DC:09:03:78:6F:B9:ED:E6:2A:96:2B:39:9F:73:48:F0:BB:6F:89:9B:83:32:66:75:91:03:3B:9C"
       ]
     }
+  },
+  {
+    "relation": [
+      "delegate_permission/common.use_as_origin"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "cat.ccma.lab.universalmediasync.dev",
+      "sha256_cert_fingerprints": [
+        "4D:48:0C:43:29:50:CB:14:7B:B9:56:B5:2E:89:A8:1D:83:32:F0:CA:CD:0A:6B:89:AA:37:A8:73:CF:BB:00:3F"
+      ]
+    }
   }
 ]

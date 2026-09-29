@@ -1,0 +1,450 @@
+{
+  "en": {
+    "discovery": {
+      "rescan": "Search again",
+      "cancel": "Stop searching",
+      "finished": "Search finished",
+      "noNetwork": "Connect this device to the same Wi-Fi network as your TV.",
+      "permissionTitle": "Local network access needed",
+      "permissionMessage": "Allow access to devices on your local network so the app can find TVs.",
+      "openSettings": "Open settings",
+      "sendFailed": "The search could not be sent on this network.",
+      "unnamedTv": "Unnamed TV",
+      "noSyncSupport": "This device does not support synchronization.",
+      "nonHbbtvNotice": "Not an HbbTV device: synchronization is not available.",
+      "activeSession": "Active session"
+    },
+    "terminal": {
+      "back": "Back",
+      "probing": "Checking synchronization modes...",
+      "noModes": "This TV does not offer synchronization right now.",
+      "connecting": "Connecting to the TV...",
+      "synchronising": "Synchronizing with the TV...",
+      "invalidEndpoints": "The TV announced invalid synchronization endpoints.",
+      "presentationFault": "The TV reports a playback problem.",
+      "unsupportedTimeline": "The TV timeline is not supported.",
+      "timelineUnavailable": "The TV timeline is not available.",
+      "wallClock": "Waiting for the TV clock...",
+      "unsupportedContent": "This content cannot be played on this device.",
+      "protectedContent": "This content is protected and cannot be played here.",
+      "manifestError": "The list of tracks could not be loaded.",
+      "subtitles": "Subtitles",
+      "subtitlesOff": "Off",
+      "fullscreen": "Full screen",
+      "exitFullscreen": "Exit full screen",
+      "retry": "Retry",
+      "help": "Help"
+    },
+    "player": {
+      "retrying": "Playback failed. Retrying...",
+      "failed": "Playback failed.",
+      "pausedOnTv": "Paused on the TV",
+      "webPlayer": "Playing in the web player",
+      "resume": "Resume",
+      "pausedBySystem": "Paused by the system",
+      "volume": "Volume"
+    },
+    "notification": {
+      "channel": "Synchronization",
+      "text": "Synchronizing with the TV"
+    },
+    "web": {
+      "loading": "Loading...",
+      "loadError": "The page could not be loaded.",
+      "cameraDisabled": "Camera access is not enabled for this app."
+    },
+    "a11y": {
+      "syncStatus": "Synchronization status: {{status}}",
+      "selected": "Selected",
+      "terminal": "TV {{name}}, {{status}}"
+    },
+    "help": {
+      "support": "Support",
+      "exportDiagnostics": "Share diagnostics"
+    }
+  },
+  "ca": {
+    "discovery": {
+      "rescan": "Torna a cercar",
+      "cancel": "Atura la cerca",
+      "finished": "Cerca finalitzada",
+      "noNetwork": "Connecta aquest dispositiu a la mateixa xarxa Wi-Fi que el televisor.",
+      "permissionTitle": "Cal accés a la xarxa local",
+      "permissionMessage": "Permet l'accés als dispositius de la xarxa local perquè l'app pugui trobar televisors.",
+      "openSettings": "Obre la configuració",
+      "sendFailed": "No s'ha pogut enviar la cerca en aquesta xarxa.",
+      "unnamedTv": "Televisor sense nom",
+      "noSyncSupport": "Aquest dispositiu no admet la sincronització.",
+      "nonHbbtvNotice": "No és un dispositiu HbbTV: la sincronització no està disponible.",
+      "activeSession": "Sessi? activa"
+    },
+    "terminal": {
+      "back": "Enrere",
+      "probing": "Comprovant els modes de sincronització...",
+      "noModes": "Aquest televisor ara mateix no ofereix sincronització.",
+      "connecting": "Connectant amb el televisor...",
+      "synchronising": "Sincronitzant amb el televisor...",
+      "invalidEndpoints": "El televisor ha anunciat punts de sincronització no vàlids.",
+      "presentationFault": "El televisor informa d'un problema de reproducció.",
+      "unsupportedTimeline": "La línia de temps del televisor no és compatible.",
+      "timelineUnavailable": "La línia de temps del televisor no està disponible.",
+      "wallClock": "Esperant el rellotge del televisor...",
+      "unsupportedContent": "Aquest contingut no es pot reproduir en aquest dispositiu.",
+      "protectedContent": "Aquest contingut està protegit i no es pot reproduir aquí.",
+      "manifestError": "No s'ha pogut carregar la llista de pistes.",
+      "subtitles": "Subtítols",
+      "subtitlesOff": "Desactivats",
+      "fullscreen": "Pantalla completa",
+      "exitFullscreen": "Surt de la pantalla completa",
+      "retry": "Torna-ho a provar",
+      "help": "Ajuda"
+    },
+    "player": {
+      "retrying": "La reproducció ha fallat. Reintentant...",
+      "failed": "La reproducció ha fallat.",
+      "pausedOnTv": "En pausa al televisor",
+      "webPlayer": "Reproduint al reproductor web",
+      "resume": "Repr?n",
+      "pausedBySystem": "Pausat pel sistema",
+      "volume": "Volum"
+    },
+    "notification": {
+      "channel": "Sincronització",
+      "text": "Sincronitzant amb el televisor"
+    },
+    "web": {
+      "loading": "Carregant...",
+      "loadError": "No s'ha pogut carregar la pàgina.",
+      "cameraDisabled": "L'accés a la càmera no està activat en aquesta app."
+    },
+    "a11y": {
+      "syncStatus": "Estat de la sincronització: {{status}}",
+      "selected": "Seleccionat",
+      "terminal": "Televisor {{name}}, {{status}}"
+    },
+    "help": {
+      "support": "Suport",
+      "exportDiagnostics": "Comparteix el diagn?stic"
+    }
+  },
+  "es": {
+    "discovery": {
+      "rescan": "Buscar de nuevo",
+      "cancel": "Detener la búsqueda",
+      "finished": "Búsqueda finalizada",
+      "noNetwork": "Conecta este dispositivo a la misma red Wi-Fi que el televisor.",
+      "permissionTitle": "Se necesita acceso a la red local",
+      "permissionMessage": "Permite el acceso a los dispositivos de la red local para que la app pueda encontrar televisores.",
+      "openSettings": "Abrir ajustes",
+      "sendFailed": "No se ha podido enviar la búsqueda en esta red.",
+      "unnamedTv": "Televisor sin nombre",
+      "noSyncSupport": "Este dispositivo no admite la sincronización.",
+      "nonHbbtvNotice": "No es un dispositivo HbbTV: la sincronización no está disponible.",
+      "activeSession": "Sesi?n activa"
+    },
+    "terminal": {
+      "back": "Atrás",
+      "probing": "Comprobando los modos de sincronización...",
+      "noModes": "Este televisor no ofrece sincronización en este momento.",
+      "connecting": "Conectando con el televisor...",
+      "synchronising": "Sincronizando con el televisor...",
+      "invalidEndpoints": "El televisor ha anunciado puntos de sincronización no válidos.",
+      "presentationFault": "El televisor informa de un problema de reproducción.",
+      "unsupportedTimeline": "La línea de tiempo del televisor no es compatible.",
+      "timelineUnavailable": "La línea de tiempo del televisor no está disponible.",
+      "wallClock": "Esperando el reloj del televisor...",
+      "unsupportedContent": "Este contenido no se puede reproducir en este dispositivo.",
+      "protectedContent": "Este contenido está protegido y no se puede reproducir aquí.",
+      "manifestError": "No se ha podido cargar la lista de pistas.",
+      "subtitles": "Subtítulos",
+      "subtitlesOff": "Desactivados",
+      "fullscreen": "Pantalla completa",
+      "exitFullscreen": "Salir de pantalla completa",
+      "retry": "Reintentar",
+      "help": "Ayuda"
+    },
+    "player": {
+      "retrying": "La reproducción ha fallado. Reintentando...",
+      "failed": "La reproducción ha fallado.",
+      "pausedOnTv": "En pausa en el televisor",
+      "webPlayer": "Reproduciendo en el reproductor web",
+      "resume": "Reanudar",
+      "pausedBySystem": "Pausado por el sistema",
+      "volume": "Volumen"
+    },
+    "notification": {
+      "channel": "Sincronización",
+      "text": "Sincronizando con el televisor"
+    },
+    "web": {
+      "loading": "Cargando...",
+      "loadError": "No se ha podido cargar la página.",
+      "cameraDisabled": "El acceso a la cámara no está activado en esta app."
+    },
+    "a11y": {
+      "syncStatus": "Estado de la sincronización: {{status}}",
+      "selected": "Seleccionado",
+      "terminal": "Televisor {{name}}, {{status}}"
+    },
+    "help": {
+      "support": "Soporte",
+      "exportDiagnostics": "Compartir diagn?stico"
+    }
+  },
+  "eu": {
+    "discovery": {
+      "rescan": "Bilatu berriro",
+      "cancel": "Gelditu bilaketa",
+      "finished": "Bilaketa amaitu da",
+      "noNetwork": "Konektatu gailu hau telebistaren Wi-Fi sare berera.",
+      "permissionTitle": "Sare lokalerako sarbidea behar da",
+      "permissionMessage": "Eman sare lokaleko gailuetarako sarbidea, aplikazioak telebistak aurki ditzan.",
+      "openSettings": "Ireki ezarpenak",
+      "sendFailed": "Ezin izan da bilaketa bidali sare honetan.",
+      "unnamedTv": "Izenik gabeko telebista",
+      "noSyncSupport": "Gailu honek ez du sinkronizazioa onartzen.",
+      "nonHbbtvNotice": "Ez da HbbTV gailua: sinkronizazioa ez dago erabilgarri.",
+      "activeSession": "Saio aktiboa"
+    },
+    "terminal": {
+      "back": "Atzera",
+      "probing": "Sinkronizazio moduak egiaztatzen...",
+      "noModes": "Telebista honek ez du orain sinkronizaziorik eskaintzen.",
+      "connecting": "Telebistarekin konektatzen...",
+      "synchronising": "Telebistarekin sinkronizatzen...",
+      "invalidEndpoints": "Telebistak sinkronizazio-puntu baliogabeak iragarri ditu.",
+      "presentationFault": "Telebistak erreprodukzio-arazo bat jakinarazi du.",
+      "unsupportedTimeline": "Telebistaren denbora-lerroa ez da bateragarria.",
+      "timelineUnavailable": "Telebistaren denbora-lerroa ez dago erabilgarri.",
+      "wallClock": "Telebistaren erlojuaren zain...",
+      "unsupportedContent": "Eduki hau ezin da gailu honetan erreproduzitu.",
+      "protectedContent": "Eduki hau babestuta dago eta ezin da hemen erreproduzitu.",
+      "manifestError": "Ezin izan da pisten zerrenda kargatu.",
+      "subtitles": "Azpitituluak",
+      "subtitlesOff": "Desaktibatuta",
+      "fullscreen": "Pantaila osoa",
+      "exitFullscreen": "Irten pantaila osotik",
+      "retry": "Saiatu berriro",
+      "help": "Laguntza"
+    },
+    "player": {
+      "retrying": "Erreprodukzioak huts egin du. Berriro saiatzen...",
+      "failed": "Erreprodukzioak huts egin du.",
+      "pausedOnTv": "Pausatuta telebistan",
+      "webPlayer": "Web erreproduzigailuan erreproduzitzen",
+      "resume": "Berrekin",
+      "pausedBySystem": "Sistemak pausatuta",
+      "volume": "Bolumena"
+    },
+    "notification": {
+      "channel": "Sinkronizazioa",
+      "text": "Telebistarekin sinkronizatzen"
+    },
+    "web": {
+      "loading": "Kargatzen...",
+      "loadError": "Ezin izan da orria kargatu.",
+      "cameraDisabled": "Kamerarako sarbidea ez dago gaituta aplikazio honetan."
+    },
+    "a11y": {
+      "syncStatus": "Sinkronizazioaren egoera: {{status}}",
+      "selected": "Hautatuta",
+      "terminal": "{{name}} telebista, {{status}}"
+    },
+    "help": {
+      "support": "Laguntza teknikoa",
+      "exportDiagnostics": "Partekatu diagnostikoa"
+    }
+  },
+  "de": {
+    "discovery": {
+      "rescan": "Erneut suchen",
+      "cancel": "Suche beenden",
+      "finished": "Suche beendet",
+      "noNetwork": "Verbinde dieses Gerät mit demselben WLAN wie deinen Fernseher.",
+      "permissionTitle": "Zugriff auf das lokale Netzwerk erforderlich",
+      "permissionMessage": "Erlaube den Zugriff auf Geräte im lokalen Netzwerk, damit die App Fernseher finden kann.",
+      "openSettings": "Einstellungen öffnen",
+      "sendFailed": "Die Suche konnte in diesem Netzwerk nicht gesendet werden.",
+      "unnamedTv": "Fernseher ohne Namen",
+      "noSyncSupport": "Dieses Gerät unterstützt keine Synchronisierung.",
+      "nonHbbtvNotice": "Kein HbbTV-Gerät: Synchronisierung ist nicht verfügbar.",
+      "activeSession": "Aktive Sitzung"
+    },
+    "terminal": {
+      "back": "Zurück",
+      "probing": "Synchronisierungsmodi werden geprüft...",
+      "noModes": "Dieser Fernseher bietet derzeit keine Synchronisierung an.",
+      "connecting": "Verbindung zum Fernseher wird hergestellt...",
+      "synchronising": "Synchronisierung mit dem Fernseher...",
+      "invalidEndpoints": "Der Fernseher hat ungültige Synchronisierungsendpunkte gemeldet.",
+      "presentationFault": "Der Fernseher meldet ein Wiedergabeproblem.",
+      "unsupportedTimeline": "Die Zeitleiste des Fernsehers wird nicht unterstützt.",
+      "timelineUnavailable": "Die Zeitleiste des Fernsehers ist nicht verfügbar.",
+      "wallClock": "Warten auf die Uhr des Fernsehers...",
+      "unsupportedContent": "Dieser Inhalt kann auf diesem Gerät nicht wiedergegeben werden.",
+      "protectedContent": "Dieser Inhalt ist geschützt und kann hier nicht wiedergegeben werden.",
+      "manifestError": "Die Liste der Spuren konnte nicht geladen werden.",
+      "subtitles": "Untertitel",
+      "subtitlesOff": "Aus",
+      "fullscreen": "Vollbild",
+      "exitFullscreen": "Vollbild beenden",
+      "retry": "Erneut versuchen",
+      "help": "Hilfe"
+    },
+    "player": {
+      "retrying": "Wiedergabe fehlgeschlagen. Neuer Versuch...",
+      "failed": "Wiedergabe fehlgeschlagen.",
+      "pausedOnTv": "Auf dem Fernseher pausiert",
+      "webPlayer": "Wiedergabe im Web-Player",
+      "resume": "Fortsetzen",
+      "pausedBySystem": "Vom System pausiert",
+      "volume": "Lautst?rke"
+    },
+    "notification": {
+      "channel": "Synchronisierung",
+      "text": "Synchronisierung mit dem Fernseher"
+    },
+    "web": {
+      "loading": "Wird geladen...",
+      "loadError": "Die Seite konnte nicht geladen werden.",
+      "cameraDisabled": "Der Kamerazugriff ist für diese App nicht aktiviert."
+    },
+    "a11y": {
+      "syncStatus": "Synchronisierungsstatus: {{status}}",
+      "selected": "Ausgewählt",
+      "terminal": "Fernseher {{name}}, {{status}}"
+    },
+    "help": {
+      "support": "Support",
+      "exportDiagnostics": "Diagnose teilen"
+    }
+  },
+  "it": {
+    "discovery": {
+      "rescan": "Cerca di nuovo",
+      "cancel": "Interrompi la ricerca",
+      "finished": "Ricerca terminata",
+      "noNetwork": "Collega questo dispositivo alla stessa rete Wi-Fi del televisore.",
+      "permissionTitle": "Serve l'accesso alla rete locale",
+      "permissionMessage": "Consenti l'accesso ai dispositivi della rete locale perché l'app possa trovare i televisori.",
+      "openSettings": "Apri impostazioni",
+      "sendFailed": "Impossibile inviare la ricerca su questa rete.",
+      "unnamedTv": "Televisore senza nome",
+      "noSyncSupport": "Questo dispositivo non supporta la sincronizzazione.",
+      "nonHbbtvNotice": "Non è un dispositivo HbbTV: la sincronizzazione non è disponibile.",
+      "activeSession": "Sessione attiva"
+    },
+    "terminal": {
+      "back": "Indietro",
+      "probing": "Verifica delle modalità di sincronizzazione...",
+      "noModes": "Questo televisore al momento non offre la sincronizzazione.",
+      "connecting": "Connessione al televisore...",
+      "synchronising": "Sincronizzazione con il televisore...",
+      "invalidEndpoints": "Il televisore ha annunciato punti di sincronizzazione non validi.",
+      "presentationFault": "Il televisore segnala un problema di riproduzione.",
+      "unsupportedTimeline": "La linea temporale del televisore non è supportata.",
+      "timelineUnavailable": "La linea temporale del televisore non è disponibile.",
+      "wallClock": "In attesa dell'orologio del televisore...",
+      "unsupportedContent": "Questo contenuto non può essere riprodotto su questo dispositivo.",
+      "protectedContent": "Questo contenuto è protetto e non può essere riprodotto qui.",
+      "manifestError": "Impossibile caricare l'elenco delle tracce.",
+      "subtitles": "Sottotitoli",
+      "subtitlesOff": "Disattivati",
+      "fullscreen": "Schermo intero",
+      "exitFullscreen": "Esci da schermo intero",
+      "retry": "Riprova",
+      "help": "Aiuto"
+    },
+    "player": {
+      "retrying": "Riproduzione non riuscita. Nuovo tentativo...",
+      "failed": "Riproduzione non riuscita.",
+      "pausedOnTv": "In pausa sul televisore",
+      "webPlayer": "Riproduzione nel lettore web",
+      "resume": "Riprendi",
+      "pausedBySystem": "In pausa dal sistema",
+      "volume": "Volume"
+    },
+    "notification": {
+      "channel": "Sincronizzazione",
+      "text": "Sincronizzazione con il televisore"
+    },
+    "web": {
+      "loading": "Caricamento...",
+      "loadError": "Impossibile caricare la pagina.",
+      "cameraDisabled": "L'accesso alla fotocamera non è abilitato per questa app."
+    },
+    "a11y": {
+      "syncStatus": "Stato della sincronizzazione: {{status}}",
+      "selected": "Selezionato",
+      "terminal": "Televisore {{name}}, {{status}}"
+    },
+    "help": {
+      "support": "Assistenza",
+      "exportDiagnostics": "Condividi diagnostica"
+    }
+  },
+  "fr": {
+    "discovery": {
+      "rescan": "Rechercher à nouveau",
+      "cancel": "Arrêter la recherche",
+      "finished": "Recherche terminée",
+      "noNetwork": "Connectez cet appareil au même réseau Wi-Fi que votre téléviseur.",
+      "permissionTitle": "Accès au réseau local requis",
+      "permissionMessage": "Autorisez l'accès aux appareils du réseau local pour que l'app puisse trouver les téléviseurs.",
+      "openSettings": "Ouvrir les réglages",
+      "sendFailed": "La recherche n'a pas pu être envoyée sur ce réseau.",
+      "unnamedTv": "Téléviseur sans nom",
+      "noSyncSupport": "Cet appareil ne prend pas en charge la synchronisation.",
+      "nonHbbtvNotice": "Ce n'est pas un appareil HbbTV : la synchronisation n'est pas disponible.",
+      "activeSession": "Session active"
+    },
+    "terminal": {
+      "back": "Retour",
+      "probing": "Vérification des modes de synchronisation...",
+      "noModes": "Ce téléviseur ne propose pas de synchronisation pour le moment.",
+      "connecting": "Connexion au téléviseur...",
+      "synchronising": "Synchronisation avec le téléviseur...",
+      "invalidEndpoints": "Le téléviseur a annoncé des points de synchronisation non valides.",
+      "presentationFault": "Le téléviseur signale un problème de lecture.",
+      "unsupportedTimeline": "La ligne temporelle du téléviseur n'est pas prise en charge.",
+      "timelineUnavailable": "La ligne temporelle du téléviseur n'est pas disponible.",
+      "wallClock": "En attente de l'horloge du téléviseur...",
+      "unsupportedContent": "Ce contenu ne peut pas être lu sur cet appareil.",
+      "protectedContent": "Ce contenu est protégé et ne peut pas être lu ici.",
+      "manifestError": "La liste des pistes n'a pas pu être chargée.",
+      "subtitles": "Sous-titres",
+      "subtitlesOff": "Désactivés",
+      "fullscreen": "Plein écran",
+      "exitFullscreen": "Quitter le plein écran",
+      "retry": "Réessayer",
+      "help": "Aide"
+    },
+    "player": {
+      "retrying": "La lecture a échoué. Nouvelle tentative...",
+      "failed": "La lecture a échoué.",
+      "pausedOnTv": "En pause sur le téléviseur",
+      "webPlayer": "Lecture dans le lecteur web",
+      "resume": "Reprendre",
+      "pausedBySystem": "Mis en pause par le syst?me",
+      "volume": "Volume"
+    },
+    "notification": {
+      "channel": "Synchronisation",
+      "text": "Synchronisation avec le téléviseur"
+    },
+    "web": {
+      "loading": "Chargement...",
+      "loadError": "La page n'a pas pu être chargée.",
+      "cameraDisabled": "L'accès à la caméra n'est pas activé pour cette app."
+    },
+    "a11y": {
+      "syncStatus": "État de la synchronisation : {{status}}",
+      "selected": "Sélectionné",
+      "terminal": "Téléviseur {{name}}, {{status}}"
+    },
+    "help": {
+      "support": "Assistance",
+      "exportDiagnostics": "Partager le diagnostic"
+    }
+  }
+}

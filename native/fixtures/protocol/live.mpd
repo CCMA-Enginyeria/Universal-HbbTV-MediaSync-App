@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="dynamic" availabilityStartTime="2024-01-01T00:00:00Z" timeShiftBufferDepth="PT2H" minimumUpdatePeriod="PT10S" suggestedPresentationDelay="PT4S">
+  <Period id="1" start="PT0S">
+    <AdaptationSet id="10" contentType="text" mimeType="application/mp4" codecs="stpp" lang="ca">
+      <SegmentTemplate timescale="1000" duration="6000" startNumber="1" presentationTimeOffset="12000" media="ttml/sub-$RepresentationID$-$Number%05d$.m4s" initialization="ttml/init.mp4"/>
+      <Representation id="ttml1" bandwidth="2000"/>
+    </AdaptationSet>
+    <AdaptationSet id="11" contentType="audio" mimeType="audio/mp4" lang="es" codecs="mp4a.40.2">
+      <Representation id="a1" bandwidth="128000"/>
+    </AdaptationSet>
+  </Period>
+</MPD>
