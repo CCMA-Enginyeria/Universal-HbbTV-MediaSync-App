@@ -1,0 +1,117 @@
+name: Native apps
+
+on:
+  push:
+    branches: [main, native-apps]
+    paths:
+      - 'native/**'
+      - 'src/brand/**'
+      - 'src/i18n/**'
+      - 'src/data/**'
+      - 'src/theme.js'
+      - 'assets/**'
+      - 'tools/tv-emulator/**'
+      - 'www/hbbtv_examples/sync_webplayer/SyncController.js'
+      - '.github/workflows/native-core.yml'
+  pull_request:
+    paths:
+      - 'native/**'
+      - 'src/brand/**'
+      - 'src/i18n/**'
+      - 'src/data/**'
+      - 'src/theme.js'
+      - 'assets/**'
+      - 'tools/tv-emulator/**'
+      - 'www/hbbtv_examples/sync_webplayer/SyncController.js'
+      - '.github/workflows/native-core.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shared:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify JavaScript reference vectors
+        run: node native/tools/sync-vectors.cjs --check
+      - name: Verify brand, keys and placeholders in all languages
+        run: node native/tools/export-brand.cjs --check
+
+  android:
+    runs-on: ubuntu-latest
+    needs: shared
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Start the TV emulator
+        working-directory: tools/tv-emulator
+        run: |
+          npm ci --no-audit --no-fund
+          EMU_IP=127.0.0.1 nohup node index.js > "$RUNNER_TEMP/tv-emulator.log" 2>&1 &
+          for attempt in $(seq 1 30); do curl -sf http://127.0.0.1:7681/dd.xml > /dev/null && break; sleep 1; done
+      - name: Core tests (including the TV emulator end-to-end test)
+        working-directory: native/android
+        run: bash gradlew :core:test -Pmediasync.emulator=127.0.0.1 --no-daemon
+      - name: Build and lint the Android app
+        working-directory: native/android
+        run: bash gradlew :app:assembleDebug :app:lintDebug :app:testDebugUnitTest :app:assembleRelease :app:bundleRelease :app:lintRelease --no-daemon
+      - name: Keep test reports and the debug APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-${{ github.sha }}
+          path: |
+            native/android/core/build/test-results/test/*.xml
+            native/android/app/build/reports/lint-results-debug.html
+            native/android/app/build/reports/lint-results-release.html
+            native/android/app/build/test-results/testDebugUnitTest/*.xml
+            native/android/app/build/outputs/apk/debug/*.apk
+            native/android/app/build/outputs/apk/release/*.apk
+            native/android/app/build/outputs/bundle/release/*.aab
+            ${{ runner.temp }}/tv-emulator.log
+          if-no-files-found: warn
+
+  ios:
+    runs-on: macos-15
+    needs: shared
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test Swift core
+        run: swift test --package-path native/ios
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen
+          sh native/ios/App/generate.sh
+      - name: Build and test the iOS app on the simulator
+        run: |
+          xcodebuild -project native/ios/App/MediaSync.xcodeproj -scheme MediaSync \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -resultBundlePath "$RUNNER_TEMP/MediaSync-tests.xcresult" CODE_SIGNING_ALLOWED=NO test
+      - name: Archive iOS release without signing
+        run: |
+          xcodebuild -project native/ios/App/MediaSync.xcodeproj -scheme MediaSync \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/MediaSync.xcarchive" CODE_SIGNING_ALLOWED=NO archive
+      - name: Keep iOS results and unsigned archive
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-unsigned-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/MediaSync-tests.xcresult
+            ${{ runner.temp }}/MediaSync.xcarchive
+          if-no-files-found: warn
