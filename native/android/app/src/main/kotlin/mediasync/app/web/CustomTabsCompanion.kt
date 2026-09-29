@@ -29,10 +29,9 @@ class CustomTabsCompanion(private val context: Context, private val controller: 
     private var origin: Uri? = null
     private var channelReady = false
     private var fallback: (() -> Unit)? = null
-    private val unverified = mutableSetOf<String>()
     private val timeout = Runnable {
         trace("Validation timed out")
-        fail(remember = false)
+        fail()
     }
 
     private val sink = object : CompanionSink {
@@ -44,15 +43,15 @@ class CustomTabsCompanion(private val context: Context, private val controller: 
     fun canTry(url: String): Boolean {
         val candidate = CompanionProtocol.httpsOrigin(url) ?: return false
         val provider = CustomTabsClient.getPackageName(context, null)
-        trace("Eligibility: provider=$provider, previouslyRejected=${candidate in unverified}")
-        return candidate !in unverified && provider != null
+        trace("Eligibility: provider=$provider, origin=$candidate")
+        return provider != null
     }
 
     fun open(activity: Activity, url: String, onFallback: () -> Unit) {
         close()
         val originText = CompanionProtocol.httpsOrigin(url)
         val provider = CustomTabsClient.getPackageName(context, null)
-        if (originText == null || provider == null || originText in unverified) {
+        if (originText == null || provider == null) {
             onFallback()
             return
         }
@@ -62,14 +61,14 @@ class CustomTabsCompanion(private val context: Context, private val controller: 
         val callback = object : CustomTabsCallback() {
             override fun onRelationshipValidationResult(relation: Int, requestedOrigin: Uri, result: Boolean, extras: Bundle?) {
                 main.post {
-                    trace("Relationship validation: relation=$relation, result=$result")
+                    trace("Relationship validation: relation=$relation, origin=$requestedOrigin, result=$result")
                     if (relation != CustomTabsService.RELATION_USE_AS_ORIGIN || fallback == null) return@post
                     main.removeCallbacks(timeout)
-                    if (!result) return@post fail(remember = true)
+                    if (!result) return@post fail()
                     val tabs = session
                     val requested = tabs?.requestPostMessageChannel(originUri, originUri, Bundle()) == true
                     trace("Initial channel request: accepted=$requested")
-                    if (!requested) return@post fail(remember = false)
+                    if (!requested) return@post fail()
                     fallback = null
                     controller.attachCompanion(sink)
                     CustomTabsIntent.Builder(tabs).build().apply { intent.setPackage(provider) }.launchUrl(activity, Uri.parse(url))
@@ -111,7 +110,7 @@ class CustomTabsCompanion(private val context: Context, private val controller: 
                     val tabs = client.newSession(callback)
                     session = tabs
                     if (tabs == null || !tabs.validateRelationship(CustomTabsService.RELATION_USE_AS_ORIGIN, originUri, null)) {
-                        fail(remember = false)
+                        fail()
                         return@post
                     }
                     main.postDelayed(timeout, VALIDATION_TIMEOUT_MS)
@@ -119,11 +118,11 @@ class CustomTabsCompanion(private val context: Context, private val controller: 
             }
 
             override fun onServiceDisconnected(name: ComponentName) {
-                main.post { if (fallback != null) fail(remember = false) else close() }
+                main.post { if (fallback != null) fail() else close() }
             }
         }
         connection = serviceConnection
-        if (!CustomTabsClient.bindCustomTabsService(context, provider, serviceConnection)) fail(remember = false)
+        if (!CustomTabsClient.bindCustomTabsService(context, provider, serviceConnection)) fail()
     }
 
     fun close() {
@@ -137,10 +136,9 @@ class CustomTabsCompanion(private val context: Context, private val controller: 
         fallback = null
     }
 
-    private fun fail(remember: Boolean) {
-        trace("Falling back: remember=$remember")
+    private fun fail() {
+        trace("Falling back to WebView; validation can be retried on the next open")
         val onFallback = fallback
-        origin?.toString()?.takeIf { remember }?.let(unverified::add)
         close()
         onFallback?.invoke()
     }
@@ -150,6 +148,6 @@ class CustomTabsCompanion(private val context: Context, private val controller: 
     }
 
     private companion object {
-        const val VALIDATION_TIMEOUT_MS = 2_500L
+        const val VALIDATION_TIMEOUT_MS = 10_000L
     }
 }
