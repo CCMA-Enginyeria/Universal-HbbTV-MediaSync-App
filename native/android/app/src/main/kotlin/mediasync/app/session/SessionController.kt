@@ -119,6 +119,8 @@ class SessionController(
     private val companions = linkedSetOf<CompanionSink>()
     private val feed = CompanionFeedThrottle()
     private var lastPositionEnvelope: String? = null
+    /** Service type the session needs (null: none) and the one actually running. */
+    private var wantedService: Boolean? = null
     private var serviceMedia: Boolean? = null
     private var lastSyncLog = 0L
     private val tick = Runnable { tick() }
@@ -443,7 +445,12 @@ class SessionController(
         owner?.stop()
         corrector.reset()
         update { copy(selected = null, status = PlaybackCorrector.Status.WAITING, rate = 1.0, playerRetrying = false) }
-        if (companions.isEmpty()) stopService() else startService(media = false)
+        when {
+            companions.isNotEmpty() -> startService(media = false)
+            // Waiting to resume (content gap, unmatched track): restarting later from the background is not allowed.
+            intent != null -> Unit
+            else -> stopService()
+        }
     }
 
     private val playerListener = object : PlayerOwner.Listener {
@@ -527,15 +534,30 @@ class SessionController(
     }
 
     private fun startService(media: Boolean) {
+        wantedService = media
         if (serviceMedia == media) return
-        serviceMedia = media
-        SyncService.start(context, _state.value.terminal?.device?.friendlyName ?: BrandConfig.APP_NAME, media)
+        val started = SyncService.start(context, _state.value.terminal?.device?.friendlyName ?: BrandConfig.APP_NAME, media)
+        serviceMedia = if (started) media else null
+        if (!started) diagnostics.log("service", "start-failed", "media" to media)
     }
 
     private fun stopService() {
+        wantedService = null
         if (serviceMedia == null) return
         serviceMedia = null
         SyncService.stop(context)
+    }
+
+    /** Called by [SyncService] when it could not enter the foreground and stopped itself. */
+    fun onServiceStartFailed() {
+        serviceMedia = null
+        diagnostics.log("service", "foreground-denied", "media" to wantedService)
+    }
+
+    /** Retries a service that the system refused to start while the app was in the background. */
+    fun onAppForeground() {
+        val media = wantedService ?: return
+        if (serviceMedia != media) startService(media)
     }
 
     companion object {

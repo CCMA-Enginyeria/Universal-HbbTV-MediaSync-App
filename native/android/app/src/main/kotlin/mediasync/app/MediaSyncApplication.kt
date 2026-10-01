@@ -4,6 +4,9 @@ import android.app.Application
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import java.util.concurrent.TimeUnit
 import mediasync.app.content.ContentLoader
 import mediasync.app.data.Preferences
@@ -21,6 +24,9 @@ class MediaSyncApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         graph = AppGraph(this)
+        ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onStart(owner: LifecycleOwner) = graph.session.onAppForeground()
+        })
     }
 }
 

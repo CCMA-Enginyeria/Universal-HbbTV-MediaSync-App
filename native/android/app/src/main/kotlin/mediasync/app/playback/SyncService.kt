@@ -44,7 +44,8 @@ class SyncService : Service() {
         try {
             ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(title), type)
         } catch (error: RuntimeException) {
-            // Starting from the background is not allowed; the session stays foreground-only.
+            // Starting from the background is not allowed; the controller retries on the next app start.
+            applicationContext.graph.session.onServiceStartFailed()
             stopSelf()
             return START_NOT_STICKY
         }
@@ -86,9 +87,10 @@ class SyncService : Service() {
         private const val EXTRA_MEDIA = "media"
         private const val EXTRA_TITLE = "title"
 
-        fun start(context: Context, title: String, media: Boolean) {
+        /** Returns false when the system refused the start (e.g. from the background on Android 12+). */
+        fun start(context: Context, title: String, media: Boolean): Boolean {
             val intent = Intent(context, SyncService::class.java).putExtra(EXTRA_TITLE, title).putExtra(EXTRA_MEDIA, media)
-            runCatching { ContextCompat.startForegroundService(context, intent) }
+            return runCatching { ContextCompat.startForegroundService(context, intent) }.isSuccess
         }
 
         fun stop(context: Context) {

@@ -178,6 +178,22 @@ class MediaSyncSessionTest {
         assertEquals(before, snapshots.size)
     }
 
+    @Test fun restartWithIdenticalCiiReopensEndpoints() {
+        nativeFlowReachesSynchronisedAndExtrapolates()
+        session.start(config())
+        assertNull(snapshots.last().contentId, "No content from the previous generation before the new CII")
+        assertNull(session.position())
+        val cii = transport.opened("/cii")
+        transport.text(cii, cii())
+        assertEquals(listOf<String?>("https://cdn/a.mpd", "https://cdn/a.mpd"), contents)
+        val wc = transport.open.values.single { it.udp }
+        wc.events.onOpened(wc.token)
+        assertTrue(transport.open.values.none { it.url.endsWith("/ts") }, "A fresh wall-clock correlation is required")
+        answerWallClock(offsetNanos = 1_000_000_000_000L)
+        transport.opened("/ts")
+        assertEquals(MediaSyncSession.State.SYNCHRONISING, state)
+    }
+
     @Test fun missingEndpointIsAnErrorAndNoContentIsReported() {
         session.start(MediaSyncSession.Config(SyncMode.NATIVE, null, null, null))
         assertEquals(MediaSyncSession.State.ERROR, state)

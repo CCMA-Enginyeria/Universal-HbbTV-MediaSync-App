@@ -143,7 +143,14 @@ class MediaSyncSession(
         appChannel = null
         timers.keys.toList().forEach(transport::cancel)
         timers.clear()
+        // A restart may receive an identical CII; stale state would hide it as "unchanged".
+        tracker.reset()
+        estimator.reset()
+        noContentExpired = false
+        wallClockExpired = false
         ciiBackoff.reset()
+        wcBackoff.reset()
+        tsBackoff.reset()
         everOpened = false
         config = null
         generation++
