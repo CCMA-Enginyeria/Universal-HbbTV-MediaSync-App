@@ -56,6 +56,7 @@ class DiscoveryController(
         val options = DialDiscoveryScan.Options(
             allowNonHbbtvDevices = ALLOW_NON_HBBTV_DEVICES,
             networkInterface = local.networkInterface(),
+            openConnection = local.network?.let { lan -> { url -> lan.openConnection(url) } },
         )
         val scan = DialDiscoveryScan(options)
         this.scan = scan

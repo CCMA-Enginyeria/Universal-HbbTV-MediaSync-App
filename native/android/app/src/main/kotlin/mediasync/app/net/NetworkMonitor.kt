@@ -16,7 +16,13 @@ import kotlinx.coroutines.flow.StateFlow
  * when a VPN is the default route, so discovery can target the right interface.
  */
 class NetworkMonitor(context: Context) {
-    data class LocalNetwork(val available: Boolean, val interfaceName: String?, val vpnActive: Boolean) {
+    data class LocalNetwork(
+        val available: Boolean,
+        val interfaceName: String?,
+        val vpnActive: Boolean,
+        /** The LAN itself, so TV traffic can bypass a VPN or a cellular default route. */
+        val network: Network? = null,
+    ) {
         fun networkInterface(): NetworkInterface? = interfaceName?.let { runCatching { NetworkInterface.getByName(it) }.getOrNull() }
             ?.takeIf { candidate -> candidate.isUp && candidate.supportsMulticast() && candidate.inetAddresses.toList().any { it is Inet4Address } }
     }
@@ -43,6 +49,7 @@ class NetworkMonitor(context: Context) {
         change()
         val vpn = connectivity.activeNetwork?.let { connectivity.getNetworkCapabilities(it) }
             ?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
-        _state.value = LocalNetwork(links.isNotEmpty(), links.values.lastOrNull { it != null }, vpn)
+        val lan = links.entries.lastOrNull { it.value != null }
+        _state.value = LocalNetwork(links.isNotEmpty(), lan?.value, vpn, lan?.key)
     }
 }

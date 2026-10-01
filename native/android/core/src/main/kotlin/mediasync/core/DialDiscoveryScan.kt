@@ -36,6 +36,8 @@ class DialDiscoveryScan(
         /** Extra M-SEARCH transmissions, relative to the scan start (UDP is lossy). */
         val searchRetryDelaysMs: List<Int> = listOf(1_000, 3_000),
         val maxConcurrentRequests: Int = 4,
+        /** Opens device-description requests, e.g. on the LAN when a VPN is the default route. */
+        val openConnection: ((URL) -> java.net.URLConnection)? = null,
     ) {
         init {
             require(durationMs > 0 && requestTimeoutMs > 0)
@@ -161,7 +163,8 @@ class DialDiscoveryScan(
 
     private fun get(address: String): Response {
         ensureActive()
-        val request = URL(address).openConnection() as HttpURLConnection
+        val url = URL(address)
+        val request = (options.openConnection?.invoke(url) ?: url.openConnection()) as HttpURLConnection
         request.instanceFollowRedirects = false
         request.useCaches = false
         request.connectTimeout = remainingMs().coerceAtMost(options.requestTimeoutMs)

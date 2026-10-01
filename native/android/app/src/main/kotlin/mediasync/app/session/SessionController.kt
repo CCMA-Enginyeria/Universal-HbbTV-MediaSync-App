@@ -483,7 +483,8 @@ class SessionController(
         val now = SystemClock.elapsedRealtime()
         var status = _state.value.status
         if (owner != null && owner.isActive && mode != null && content != null) {
-            if (owner.suspendedBySystem) {
+            if (owner.suspendedBySystem || owner.isSuppressed) {
+                // No corrections against a position frozen by the system; resync once it resumes.
                 status = PlaybackCorrector.Status.PAUSED
             } else {
                 val tv = position?.let { PlaybackCorrector.Tv(it.seconds, liveEpoch(content.manifest, it.seconds), it.isPlaying, it.reliable) }

@@ -22,6 +22,7 @@ import mediasync.core.CompanionProtocol
  * Custom Tab with a Digital Asset Links verified postMessage channel. The tab
  * is launched only after the browser validates the origin; any failure calls
  * [open]'s fallback exactly once, so retries never stack browser instances.
+ * Process-scoped (see AppGraph) so activity recreation never leaves a second binding.
  */
 class CustomTabsCompanion(private val context: Context, private val controller: SessionController, private val main: Handler) {
     private var connection: CustomTabsServiceConnection? = null
@@ -29,6 +30,8 @@ class CustomTabsCompanion(private val context: Context, private val controller: 
     private var origin: Uri? = null
     private var channelReady = false
     private var fallback: (() -> Unit)? = null
+    /** True once the tab was launched; the host activity resuming afterwards means it was closed. */
+    private var launched = false
     private val timeout = Runnable {
         trace("Validation timed out")
         fail()
@@ -71,6 +74,7 @@ class CustomTabsCompanion(private val context: Context, private val controller: 
                     if (!requested) return@post fail()
                     fallback = null
                     controller.attachCompanion(sink)
+                    launched = true
                     CustomTabsIntent.Builder(tabs).build().apply { intent.setPackage(provider) }.launchUrl(activity, Uri.parse(url))
                 }
             }
@@ -97,7 +101,8 @@ class CustomTabsCompanion(private val context: Context, private val controller: 
                             val current = origin
                             if (current == null || session?.requestPostMessageChannel(current, current, Bundle()) != true) close()
                         }
-                        TAB_HIDDEN -> close()
+                        // Hidden also means screen lock or app switch; real closure is detected by onHostResumed.
+                        TAB_HIDDEN -> Unit
                     }
                 }
             }
@@ -125,6 +130,11 @@ class CustomTabsCompanion(private val context: Context, private val controller: 
         if (!CustomTabsClient.bindCustomTabsService(context, provider, serviceConnection)) fail()
     }
 
+    /** Called when the host activity resumes: a launched tab is no longer on top, so it was closed. */
+    fun onHostResumed() {
+        if (launched) close()
+    }
+
     fun close() {
         main.removeCallbacks(timeout)
         controller.detachCompanion(sink)
@@ -134,6 +144,7 @@ class CustomTabsCompanion(private val context: Context, private val controller: 
         origin = null
         channelReady = false
         fallback = null
+        launched = false
     }
 
     private fun fail() {
