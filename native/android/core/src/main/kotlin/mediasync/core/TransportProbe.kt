@@ -28,8 +28,11 @@ class TransportProbe(
             finish(false)
             return
         }
-        socket = Tokens.next().also { transport.openWebSocket(it, url, this) }
+        // Tokens are assigned before opening so a synchronously reported failure is not ignored.
         timer = Tokens.next().also { transport.schedule(it, timeoutMs, this) }
+        val socketToken = Tokens.next()
+        socket = socketToken
+        transport.openWebSocket(socketToken, url, this)
     }
 
     /** Stops the probe without reporting a result (terminal or mode abandoned). */

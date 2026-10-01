@@ -194,6 +194,22 @@ class MediaSyncSessionTest {
         assertEquals(MediaSyncSession.State.SYNCHRONISING, state)
     }
 
+    @Test fun wallClockLossIsReportedAfterAnEarlierSync() {
+        nativeFlowReachesSynchronisedAndExtrapolates()
+        transport.fire(10_000)
+        assertTrue(issue != MediaSyncSession.Issue.WALL_CLOCK_UNSYNCHRONISED)
+        clock.now += 600_000_000_000L
+        transport.fire(10_000)
+        assertEquals(MediaSyncSession.Issue.WALL_CLOCK_UNSYNCHRONISED, issue, "Silent UDP must surface after the first check")
+    }
+
+    @Test fun withdrawnEndpointsCloseWallClockAndTimeline() {
+        nativeFlowReachesSynchronisedAndExtrapolates()
+        transport.text(transport.socket("/cii"), """{"wcUrl":null,"tsUrl":null}""")
+        assertTrue(transport.open.values.none { it.udp || it.url.endsWith("/ts") })
+        assertNull(session.position())
+    }
+
     @Test fun missingEndpointIsAnErrorAndNoContentIsReported() {
         session.start(MediaSyncSession.Config(SyncMode.NATIVE, null, null, null))
         assertEquals(MediaSyncSession.State.ERROR, state)
@@ -330,6 +346,13 @@ class PlaybackCorrectorTest {
         val result = corrector.update(0, tv(15.0), player(10.0), SyncMode.COMPAT, false)
         assertTrue(result.commands.single() is PlaybackCorrector.Command.SetRate, "5 s drift is corrected by rate in compat")
         assertEquals(PlaybackCorrector.Status.ADJUSTING, result.status)
+    }
+
+    @Test fun modeSwitchRestoresNormalRateWhenAlreadyLocked() {
+        val result = corrector.update(0, tv(10.0), player(10.0, rate = 1.04), SyncMode.COMPAT, false)
+        assertEquals(listOf<PlaybackCorrector.Command>(PlaybackCorrector.Command.SetRate(1.0)), result.commands,
+            "A new controller assumes 1.0, so the player's leftover correction rate must be undone")
+        assertEquals(PlaybackCorrector.Status.LOCKED, result.status)
     }
 
     @Test fun doesNotCorrectWhileBufferingUnreliableOrThrottled() {
