@@ -56,6 +56,13 @@ final class DiscoveryModel: ObservableObject {
         var options = DialDiscoveryScan.Options()
         options.allowNonHbbtvDevices = Self.allowNonHbbtvDevices
         options.interfaceAddress = interfaceName.flatMap(Self.ipv4Address)
+        #if DEBUG
+        // Development-only unicast SSDP target (e.g. tools/tv-emulator), so devices signed
+        // without Apple's multicast entitlement can still exercise the full session path.
+        if let destination = ProcessInfo.processInfo.environment["MEDIASYNC_SSDP_DESTINATION"] {
+            options.destination = destination
+        }
+        #endif
         let startedAt = Date()
         diagnostics.log("discovery", "start", ["generation": current])
         task = Task { [weak self] in

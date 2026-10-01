@@ -15,6 +15,29 @@ Fecha: 2026-09-26. Fuente de verdad del estado de cada requisito de los PRD
 
 ## Evidencia disponible
 
+- E14 (2026-10-01): iPhone 15 fisico (iOS 26.6.1), build Debug sin el entitlement
+  de multicast, contra `tools/tv-emulator` en la misma Wi-Fi. SSDP unicast mediante
+  `MEDIASYNC_SSDP_DESTINATION` (solo DEBUG), descripcion DIAL, CII y TS PTS reales;
+  pausa/reanudacion y cambio de contenido de la TV seguidos durante ~6 min sin
+  desconexiones; paso a segundo plano y vuelta correctos segun el usuario. Antes de
+  la correccion la app murio por SIGPIPE tras desconectar CII/TS; anadido
+  `SO_NOSIGPIPE` a los sockets UDP. No acredita multicast real, TVs reales,
+  precision de sincronia medida ni sesion de fondo de 30 min.
+
+- E13 (2026-10-01): compuerta de temporizacion DASH con MobileVLCKit en iPhone
+  fisico (muestra CCMA): fallida. Reloj de medio con saltos de hasta 0.67 s,
+  ritmos 0.998/1.002 fuera de tolerancia y reanudacion tras seek de 4-7 s
+  (umbral 3 s). Decision: DASH iOS sigue en el reproductor web de marca;
+  DASH nativo aplazado (brecha conocida). Ver [evaluacion](../ios-native-dash.md).
+
+- E12 (2026-10-01): iOS local, Xcode 26.0.1 y XcodeGen 2.46.0:
+  41 tests Swift core y 2 tests alojados en simulador iPhone 17 Pro correctos;
+  archive Release arm64 sin firma correcto. Corregida colision del nombre de
+  producto del target de tests, con regresion de identidad de bundles.
+  Esto actualiza la anterior ausencia de compilacion Swift; las filas Impl.
+  siguen sin acreditar validacion funcional en dispositivo. DASH nativo sin web
+  es ahora objetivo pendiente; ver [evaluacion](../ios-native-dash.md).
+
 - E11 (2026-09-26): seis tests Android de `ContentLoader` correctos mediante
   `:app:testDebugUnitTest`; regresion de cancelacion durante lectura del cuerpo
   reproducida antes de la correccion. Verifican cancelacion de Call y cierre de
@@ -164,7 +187,7 @@ Fecha: 2026-09-26. Fuente de verdad del estado de cada requisito de los PRD
 
 | ID | Android | iOS | Notas |
 | --- | --- | --- | --- |
-| R01 | Hecho | Impl. | Media3 ExoPlayer / AVPlayer; DASH en iOS via reproductor web de marca |
+| R01 | Hecho | Impl. | Media3 ExoPlayer / AVPlayer; DASH en iOS via reproductor web de marca (DASH nativo aplazado, E13) |
 | R02-R03 | Hecho | Impl. | Corrector cada 250 ms; ritmo 1 al pausar o perder la TV |
 | R04 | Parcial | Parcial | Directo con AST como en RN; discontinuidades de periodo pendientes |
 | R05-R07 | Parcial | Parcial | Errores localizados, 3 reintentos, pausa del sistema distinta de pausa de TV |

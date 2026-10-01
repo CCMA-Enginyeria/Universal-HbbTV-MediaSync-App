@@ -210,6 +210,10 @@ private final class SSDPReceiver: @unchecked Sendable {
         var destination = sockaddr_in()
         do {
             guard fcntl(descriptor, F_SETFL, O_NONBLOCK) != -1 else { throw ScanError.socket(errno) }
+            // Writes to a socket reclaimed while suspended raise SIGPIPE by default (TN2277).
+            var noSigPipe: Int32 = 1
+            guard setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe,
+                socklen_t(MemoryLayout<Int32>.size)) == 0 else { throw ScanError.socket(errno) }
             var local = sockaddr_in()
             local.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
             local.sin_family = sa_family_t(AF_INET)

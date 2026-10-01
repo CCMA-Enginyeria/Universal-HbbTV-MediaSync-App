@@ -67,9 +67,21 @@ xcodebuild -project native/ios/App/MediaSync.xcodeproj -scheme MediaSync \
   -destination 'platform=iOS Simulator,name=iPhone 16' CODE_SIGNING_ALLOWED=NO test
 ```
 
-**The Swift code (core and app) has not been compiled yet**: the migration
-environment was Windows. The macOS CI job is its first verification. Physical
-devices and real TVs have not been tested on either platform.
+**iOS baseline verified on 2026-10-01:** Xcode 26.0.1 and XcodeGen 2.46.0;
+41 Swift core tests and 2 hosted app tests passed on the iPhone 17 Pro simulator.
+The Release arm64 archive also built successfully without signing. Use an
+installed simulator destination rather than assuming iPhone 16 is available.
+Real TVs and production signing remain unverified.
+
+Physical iPhone against the emulator without Apple's multicast entitlement: build
+Debug with `CODE_SIGN_ENTITLEMENTS=` and launch with
+`MEDIASYNC_SSDP_DESTINATION=<emulator IP>` (Debug-only unicast M-SEARCH), e.g.
+`xcrun devicectl device process launch --environment-variables '{"MEDIASYNC_SSDP_DESTINATION":"192.168.1.48"}' <bundle id>`.
+Everything after discovery uses unicast and is exercised normally.
+
+Native DASH on iOS is deferred: MobileVLCKit failed the device timing gate, and
+DASH stays on the brand's sync web player for now (known gap). See the
+[feasibility decision](../docs/ios-native-dash.md).
 
 ## Decisions and known gaps
 
@@ -119,7 +131,7 @@ source location. Run them from a full checkout, not an isolated copied package.
 
 ## Next steps
 
-1. Run the macOS CI job and fix any Swift compile/test failures.
+1. Repeat the locally verified baseline in macOS CI.
 2. Test on physical devices and TVs: multicast, permissions, TalkBack/VoiceOver,
    30-minute background sessions and battery (see the parity matrix).
 3. Close the documented gaps and pending product decisions, then start the beta

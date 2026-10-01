@@ -163,7 +163,10 @@ private final class UdpChannel {
             defer { freeaddrinfo(result) }
             let socket = Darwin.socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
             guard socket >= 0 else { return onFailure() }
-            guard fcntl(socket, F_SETFL, O_NONBLOCK) != -1, connect(socket, address.pointee.ai_addr, address.pointee.ai_addrlen) == 0 else {
+            // Writes to a socket reclaimed while suspended raise SIGPIPE by default (TN2277).
+            var noSigPipe: Int32 = 1
+            guard setsockopt(socket, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size)) == 0,
+                  fcntl(socket, F_SETFL, O_NONBLOCK) != -1, connect(socket, address.pointee.ai_addr, address.pointee.ai_addrlen) == 0 else {
                 Darwin.close(socket)
                 return onFailure()
             }
