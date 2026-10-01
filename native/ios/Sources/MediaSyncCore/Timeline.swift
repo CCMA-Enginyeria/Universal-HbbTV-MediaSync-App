@@ -15,7 +15,6 @@ public enum TimelineMessage: Equatable {
 public enum TimelineProtocol {
     public static let pts = "urn:dvb:css:timeline:pts"
     private static let mpdPeriodRel = Pattern("^urn:dvb:css:timeline:mpd:period:rel:(\\d+)(?::.*)?$")
-    private static let temi = Pattern("^urn:dvb:css:timeline:temi:\\d+:(\\d+)$")
 
     public static func setupMessage(timelineSelector: String, contentIdStem: String = "") -> String {
         "{\"contentIdStem\":\(JsonInput.escape(contentIdStem)),\"timelineSelector\":\(JsonInput.escape(timelineSelector))}"
@@ -36,15 +35,17 @@ public enum TimelineProtocol {
             guard let parsed = JsonInput.double(speedValue) else { return nil }
             speed = parsed
         }
-        guard speed >= 0, speed <= 64 else { return nil }
+        // Any finite speed is valid (TS 103 286-2); negative means rewinding, which the corrector treats as not playing.
+        guard speed.isFinite else { return nil }
         return .available(ControlTimestamp(contentTime: contentTime, wallClockTime: wallClockTime, speed: speed))
     }
 
+    /// Ticks per second, preferring CII properties. TEMI selectors (`temi:<component_tag>:<timeline_id>`)
+    /// carry no rate, so they need CII properties.
     public static func tickRate(_ selector: String, advertised: [TimelineOption] = []) -> Double? {
         if let rate = advertised.first(where: { $0.selector == selector })?.tickRate { return rate }
         if selector == pts { return 90_000 }
         if let match = mpdPeriodRel.matchEntire(selector) { return Double(match[1]).flatMap { $0 > 0 ? $0 : nil } }
-        if let match = temi.matchEntire(selector) { return Double(match[1]).flatMap { $0 > 0 ? $0 : nil } }
         return nil
     }
 

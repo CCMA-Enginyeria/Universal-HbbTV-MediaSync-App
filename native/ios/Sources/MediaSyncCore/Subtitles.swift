@@ -19,16 +19,23 @@ public enum Subtitles {
     private struct Timing {
         let frameRate: Double
         let tickRate: Double
+        let subFrameRate: Double
     }
 
     public static func parseTtml(_ xml: String) -> [Cue] {
         guard let root = XmlElement.parse(xml, maxChars: maxDocumentChars), root.name == "tt", let body = root.child("body") else { return [] }
-        let frameRate = Double(root.attribute("frameRate")).flatMap { $0 > 0 ? $0 : nil } ?? 25
+        let declaredFrameRate = Double(root.attribute("frameRate")).flatMap { $0 > 0 ? $0 : nil }
+        // 25 fps when undeclared, as in the RN parser (EBU-TT-D broadcasters).
+        let frameRate = declaredFrameRate ?? 25
         let parts = root.attribute("frameRateMultiplier").split(separator: " ").compactMap { Double($0) }
         let multiplier = parts.count == 2 && parts[1] != 0 ? parts[0] / parts[1] : 1
-        let tickRate = Double(root.attribute("tickRate")).flatMap { $0 > 0 ? $0 : nil } ?? frameRate
+        let subFrameRate = Double(root.attribute("subFrameRate")).flatMap { $0 > 0 ? $0 : nil } ?? 1
+        // TTML: without ttp:tickRate, ticks are frames x sub-frames when a frame rate is declared, otherwise 1 per second.
+        let tickRate = Double(root.attribute("tickRate")).flatMap { $0 > 0 ? $0 : nil }
+            ?? declaredFrameRate.map { $0 * multiplier * subFrameRate } ?? 1
         var cues: [Cue] = []
-        walk(body, parentBegin: 0, timing: Timing(frameRate: frameRate * multiplier, tickRate: tickRate), cues: &cues)
+        let timing = Timing(frameRate: frameRate * multiplier, tickRate: tickRate, subFrameRate: subFrameRate)
+        walk(body, parentBegin: 0, timing: timing, cues: &cues)
         return stableSorted(cues)
     }
 
@@ -75,7 +82,7 @@ public enum Subtitles {
             return Double(Int64(m[1])! * 3600 + Int64(m[2])! * 60 + Int64(m[3])!) + fraction
         }
         if let m = frameTime.matchEntire(text) {
-            let frames = (Double(m[4]) ?? 0) + (m[5].isEmpty ? 0 : Double("0." + m[5]) ?? 0)
+            let frames = (Double(m[4]) ?? 0) + (m[5].isEmpty ? 0 : (Double(m[5]) ?? 0) / timing.subFrameRate)
             return Double(Int64(m[1])! * 3600 + Int64(m[2])! * 60 + Int64(m[3])!) + frames / timing.frameRate
         }
         if let m = offsetTime.matchEntire(text), let amount = Double(m[1]) {

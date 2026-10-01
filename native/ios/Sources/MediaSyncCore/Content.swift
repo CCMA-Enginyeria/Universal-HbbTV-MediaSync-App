@@ -92,10 +92,15 @@ public enum ContentClassifier {
         guard let components = URLComponents(string: contentId), let scheme = components.scheme?.lowercased(),
               scheme == "http" || scheme == "https", let host = components.host, !host.isEmpty,
               components.user == nil, components.password == nil else { return .unsupported }
-        if web.contains(contentId) { return .web }
-        if dash.contains(contentId) { return .dash }
-        if hls.contains(contentId) { return .hls }
-        return .unsupported
+        // The path decides first, so a query such as `?back=/index.html` cannot change the kind.
+        return kind(of: components.percentEncodedPath) ?? kind(of: contentId) ?? .unsupported
+    }
+
+    private static func kind(of text: String) -> ContentKind? {
+        if web.contains(text) { return .web }
+        if dash.contains(text) { return .dash }
+        if hls.contains(text) { return .hls }
+        return nil
     }
 
     /// Brand fallback only replaces missing content, never unsupported content.

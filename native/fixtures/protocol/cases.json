@@ -25,14 +25,16 @@
     { "text": "{\"timelineSpeedMultiplier\":null}", "expect": "unavailable" },
     { "text": "pairingcompleted", "expect": null },
     { "text": "{\"contentTime\":\"abc\",\"wallClockTime\":\"1\",\"timelineSpeedMultiplier\":1}", "expect": null },
-    { "text": "{\"contentTime\":\"1\",\"wallClockTime\":\"1\",\"timelineSpeedMultiplier\":-1}", "expect": null },
+    { "text": "{\"contentTime\":\"1\",\"wallClockTime\":\"1\",\"timelineSpeedMultiplier\":-1}", "expect": { "contentTime": "1", "wallClockTime": "1", "speed": -1.0 } },
+    { "text": "{\"contentTime\":\"1\",\"wallClockTime\":\"1\",\"timelineSpeedMultiplier\":128}", "expect": { "contentTime": "1", "wallClockTime": "1", "speed": 128.0 } },
     { "text": "{\"contentTime\":\"1e999999999\",\"wallClockTime\":\"1\",\"timelineSpeedMultiplier\":1}", "expect": null }
   ],
   "tickRate": [
     { "selector": "urn:dvb:css:timeline:pts", "expect": 90000 },
     { "selector": "urn:dvb:css:timeline:mpd:period:rel:1000", "expect": 1000 },
     { "selector": "urn:dvb:css:timeline:mpd:period:rel:25:period-2", "expect": 25 },
-    { "selector": "urn:dvb:css:timeline:temi:1:1000", "expect": 1000 },
+    { "selector": "urn:dvb:css:timeline:temi:1:1000", "expect": null },
+    { "selector": "urn:dvb:css:timeline:temi:1:1", "advertised": [["urn:dvb:css:timeline:temi:1:1", 1, 1000]], "expect": 1000 },
     { "selector": "urn:dvb:css:timeline:ct", "expect": null },
     { "selector": "urn:dvb:css:timeline:ct", "advertised": [["urn:dvb:css:timeline:ct", 2, 100]], "expect": 50 },
     { "selector": "urn:dvb:css:timeline:pts", "advertised": [["urn:dvb:css:timeline:pts", 1, 45000]], "expect": 45000 }
@@ -92,6 +94,9 @@
     { "contentId": "file:///sdcard/a.mpd", "expect": "UNSUPPORTED" },
     { "contentId": "https://user:secret@cdn.example/a.mpd", "expect": "UNSUPPORTED" },
     { "contentId": "https://cdn.example/video.mp4", "expect": "UNSUPPORTED" },
+    { "contentId": "https://cdn.example/a/x.mpd?back=/index.html", "expect": "DASH" },
+    { "contentId": "https://site.example/page.html?src=a.m3u8", "expect": "WEB" },
+    { "contentId": "https://proxy.example/play?url=a.mpd", "expect": "DASH" },
     { "contentId": "", "expect": "NONE" }
   ],
   "manifests": [
@@ -155,6 +160,18 @@
         [16.0, 18.0, "Ticks"]
       ],
       "active": [[12.0, "Primera l\u00ednia\nsegona l\u00ednia"], [13.0, "Primera l\u00ednia\nsegona l\u00ednia\nFrames & entitats"], [14.5, null], [16.2, "Offset\nTicks"]]
+    },
+    {
+      "file": "ticks-default.ttml",
+      "format": "ttml",
+      "expect": [[250.0, 260.0, "Ticks sense par\u00e0metres"]],
+      "active": [[255.0, "Ticks sense par\u00e0metres"], [260.0, null]]
+    },
+    {
+      "file": "subframes.ttml",
+      "format": "ttml",
+      "expect": [[1.0, 3.5166666666666666, "Subframes"]],
+      "active": [[2.0, "Subframes"]]
     },
     {
       "file": "basic.vtt",

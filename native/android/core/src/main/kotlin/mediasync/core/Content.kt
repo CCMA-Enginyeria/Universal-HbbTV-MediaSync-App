@@ -29,12 +29,15 @@ object ContentClassifier {
         if (uri == null || (scheme != "http" && scheme != "https") || uri.host.isNullOrBlank() || uri.rawUserInfo != null) {
             return ContentKind.UNSUPPORTED
         }
-        return when {
-            web.containsMatchIn(contentId) -> ContentKind.WEB
-            dash.containsMatchIn(contentId) -> ContentKind.DASH
-            hls.containsMatchIn(contentId) -> ContentKind.HLS
-            else -> ContentKind.UNSUPPORTED
-        }
+        // The path decides first, so a query such as `?back=/index.html` cannot change the kind.
+        return kindOf(uri.rawPath.orEmpty()) ?: kindOf(contentId) ?: ContentKind.UNSUPPORTED
+    }
+
+    private fun kindOf(text: String): ContentKind? = when {
+        web.containsMatchIn(text) -> ContentKind.WEB
+        dash.containsMatchIn(text) -> ContentKind.DASH
+        hls.containsMatchIn(text) -> ContentKind.HLS
+        else -> null
     }
 
     /** Brand fallback only replaces missing content, never unsupported content (PRD-007-R07). */

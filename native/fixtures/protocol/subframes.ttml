@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttp="http://www.w3.org/ns/ttml#parameter" ttp:frameRate="30" ttp:subFrameRate="2" xml:lang="ca">
+  <body>
+    <div>
+      <p begin="60t" end="00:00:03:15.1">Subframes</p>
+    </div>
+  </body>
+</tt>
