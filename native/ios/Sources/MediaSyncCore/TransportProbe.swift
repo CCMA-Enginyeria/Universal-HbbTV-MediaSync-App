@@ -37,12 +37,14 @@ public final class TransportProbe: TransportEvents {
             finish(false)
             return
         }
-        let socketToken = Tokens.next()
-        socket = socketToken
-        transport.openWebSocket(socketToken, url: target, events: self)
+        // Tokens are assigned before opening so a synchronously reported failure is not ignored,
+        // and the timeout exists by then so that failure also cancels it.
         let timerToken = Tokens.next()
         timer = timerToken
         transport.schedule(timerToken, delayMs: timeoutMs, events: self)
+        let socketToken = Tokens.next()
+        socket = socketToken
+        transport.openWebSocket(socketToken, url: target, events: self)
     }
 
     /// Stops without reporting a result (terminal or mode abandoned).

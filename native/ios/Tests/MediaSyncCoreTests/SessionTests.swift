@@ -206,6 +206,37 @@ final class MediaSyncSessionTests: XCTestCase {
         XCTAssertEqual(snapshots.count, before)
     }
 
+    func testRestartWithIdenticalCiiReopensEndpoints() {
+        synchronise()
+        session.start(config())
+        XCTAssertNil(snapshots.last!.contentId, "No content from the previous generation before the new CII")
+        XCTAssertNil(session.position())
+        transport.text(transport.opened("/cii"), cii())
+        XCTAssertEqual(contents, ["https://cdn/a.mpd", "https://cdn/a.mpd"])
+        let wc = transport.open.first { $0.udp }!
+        wc.events.onOpened(wc.token)
+        XCTAssertFalse(transport.open.contains { $0.url.hasSuffix("/ts") }, "A fresh wall-clock correlation is required")
+        _ = answerWallClock(offset: 1_000_000_000_000)
+        transport.opened("/ts")
+        XCTAssertEqual(state, .synchronising)
+    }
+
+    func testWallClockLossIsReportedAfterAnEarlierSync() {
+        synchronise()
+        transport.fire(10_000)
+        XCTAssertNotEqual(issue, .wallClockUnsynchronised)
+        now += 600_000_000_000
+        transport.fire(10_000)
+        XCTAssertEqual(issue, .wallClockUnsynchronised, "Silent UDP must surface after the first check")
+    }
+
+    func testWithdrawnEndpointsCloseWallClockAndTimeline() {
+        synchronise()
+        transport.text(transport.socket("/cii"), "{\"wcUrl\":null,\"tsUrl\":null}")
+        XCTAssertFalse(transport.open.contains { $0.udp || $0.url.hasSuffix("/ts") })
+        XCTAssertNil(session.position())
+    }
+
     func testMissingEndpointAndNoContent() {
         session.start(MediaSyncSession.Config(mode: .native, interDevSyncUrl: nil, app2appUrl: nil, realHost: nil))
         XCTAssertEqual(state, .error)
@@ -262,6 +293,30 @@ final class TransportProbeTests: XCTestCase {
     }
 }
 
+/// Reports the WebSocket failure synchronously, inside openWebSocket.
+private final class SynchronousFailureTransport: Transport {
+    var timers: [Int64] = []
+    func openWebSocket(_ token: Int64, url: String, events: TransportEvents) { events.onClosed(token, failed: true) }
+    func openUdp(_ token: Int64, host: String, port: Int, events: TransportEvents) {}
+    func sendText(_ token: Int64, _ text: String) -> Bool { false }
+    func sendDatagram(_ token: Int64, _ data: Data) -> Bool { false }
+    func close(_ token: Int64) {}
+    func schedule(_ token: Int64, delayMs: Int64, events: TransportEvents) { timers.append(token) }
+    func cancel(_ token: Int64) { timers.removeAll { $0 == token } }
+}
+
+final class TransportProbeSynchronousFailureTests: XCTestCase {
+    func testSynchronousOpenFailureIsReported() {
+        let transport = SynchronousFailureTransport()
+        var results: [Bool] = []
+        let probe = TransportProbe(transport: transport, mode: .native, interDevSyncUrl: "ws://10.0.0.2:7681/cii",
+                                   app2appUrl: nil, realHost: "10.0.0.2") { results.append($0) }
+        probe.start()
+        XCTAssertEqual(results, [false])
+        XCTAssertTrue(transport.timers.isEmpty, "The timeout is cancelled with the failed socket")
+    }
+}
+
 final class PlaybackCorrectorTests: XCTestCase {
     private func player(_ time: Double, playing: Bool = true, rate: Double = 1, buffering: Bool = false) -> PlaybackCorrector.Player {
         PlaybackCorrector.Player(mediaTimeS: time, liveEpochS: nil, isPlaying: playing, isBuffering: buffering, rate: rate)
@@ -281,6 +336,12 @@ final class PlaybackCorrectorTests: XCTestCase {
         XCTAssertEqual(other.update(nowMs: 500, tv: tv(20.5), player: player(10.5), mode: .native, isLive: false).status, .seeking)
         other.onSeekCompleted()
         XCTAssertEqual(other.update(nowMs: 600, tv: tv(20.6), player: player(20.6), mode: .native, isLive: false).status, .locked)
+    }
+
+    func testModeSwitchRestoresNormalRateWhenAlreadyLocked() {
+        let result = PlaybackCorrector().update(nowMs: 0, tv: tv(10), player: player(10, rate: 1.04), mode: .compat, isLive: false)
+        XCTAssertEqual(result.commands, [.setRate(1)], "A new controller assumes 1.0, so a leftover correction rate must be undone")
+        XCTAssertEqual(result.status, .locked)
     }
 
     func testCompatRateAndLiveSeek() {

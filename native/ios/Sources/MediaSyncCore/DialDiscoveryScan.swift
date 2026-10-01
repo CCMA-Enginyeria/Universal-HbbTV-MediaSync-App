@@ -70,7 +70,10 @@ public struct DialDiscoveryScan {
                 do {
                     for try await packet in receiver.messages {
                         if Task.isCancelled || receiver.isClosed { break }
-                        guard let request = await state.accept(packet) else { continue }
+                        // Only descriptions served by the host that answered (no LAN-triggered SSRF).
+                        guard let location = DialProtocol.parseResponse(packet.text),
+                              SSDPPacket.names(location, address: packet.source),
+                              let request = await state.accept(packet.text) else { continue }
                         if running >= options.maxConcurrentRequests {
                             _ = await group.next()
                             running -= 1
@@ -105,12 +108,19 @@ public struct DialDiscoveryScan {
         })
     }
 
+    /// Application-URL must stay on the device-description host.
+    static func sameHost(_ applicationUrl: String, _ location: String) -> Bool {
+        guard let host = URLComponents(string: applicationUrl)?.host?.lowercased() else { return false }
+        return host == URLComponents(string: location)?.host?.lowercased()
+    }
+
     private func resolve(_ location: String, session http: URLSession, receiver: SSDPReceiver) async throws -> DialTerminal {
         let description = try await get(location, session: http)
         guard let device = DialProtocol.parseDevice(description.0, location: location,
             applicationUrl: description.1.value(forHTTPHeaderField: "Application-URL")) else {
             throw ScanError.invalidDescription
         }
+        guard Self.sameHost(device.applicationUrl, location) else { throw ScanError.applicationUrlHostMismatch }
         let application: HbbtvApplication?
         do {
             application = DialProtocol.parseApplication(try await get(device.hbbtvUrl, session: http).0,
@@ -145,7 +155,7 @@ public struct DialDiscoveryScan {
 
 /// Scan failures; `socket` carries errno so apps can map local-network denials (EHOSTUNREACH/EPERM).
 public enum ScanError: Error {
-    case invalidOptions, invalidDescription, bodyTooLarge
+    case invalidOptions, invalidDescription, bodyTooLarge, applicationUrlHostMismatch
     case http(Int), socket(Int32)
 }
 
@@ -190,9 +200,23 @@ private final class NoRedirects: NSObject, URLSessionTaskDelegate {
     }
 }
 
+/// One SSDP datagram and the IPv4 address it came from.
+struct SSDPPacket: Sendable {
+    let text: String
+    /// Sender IPv4 address in network byte order.
+    let source: UInt32
+
+    /// True when [url] names [address] as an IPv4 literal; host names are not resolved.
+    static func names(_ url: String, address: UInt32) -> Bool {
+        guard let host = URLComponents(string: url)?.host else { return false }
+        var literal = in_addr()
+        return inet_pton(AF_INET, host, &literal) == 1 && literal.s_addr == address
+    }
+}
+
 private final class SSDPReceiver: @unchecked Sendable {
-    let messages: AsyncThrowingStream<String, Error>
-    private let continuation: AsyncThrowingStream<String, Error>.Continuation
+    let messages: AsyncThrowingStream<SSDPPacket, Error>
+    private let continuation: AsyncThrowingStream<SSDPPacket, Error>.Continuation
     private let source: DispatchSourceRead
     private let lock = NSLock()
     private var closed = false
@@ -242,7 +266,7 @@ private final class SSDPReceiver: @unchecked Sendable {
         }
         self.descriptor = descriptor
         self.destination = destination
-        var streamContinuation: AsyncThrowingStream<String, Error>.Continuation!
+        var streamContinuation: AsyncThrowingStream<SSDPPacket, Error>.Continuation!
         messages = AsyncThrowingStream(bufferingPolicy: .bufferingNewest(128)) { streamContinuation = $0 }
         continuation = streamContinuation
         source = DispatchSource.makeReadSource(fileDescriptor: descriptor,
@@ -250,9 +274,17 @@ private final class SSDPReceiver: @unchecked Sendable {
         let output = continuation
         source.setEventHandler {
             var buffer = [UInt8](repeating: 0, count: 65507)
-            let count = buffer.withUnsafeMutableBytes { recv(descriptor, $0.baseAddress, $0.count, 0) }
+            var sender = sockaddr_in()
+            var senderLength = socklen_t(MemoryLayout<sockaddr_in>.size)
+            let count = buffer.withUnsafeMutableBytes { bytes in
+                withUnsafeMutablePointer(to: &sender) {
+                    $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                        recvfrom(descriptor, bytes.baseAddress, bytes.count, 0, $0, &senderLength)
+                    }
+                }
+            }
             if count >= 0 {
-                output.yield(String(decoding: buffer.prefix(count), as: UTF8.self))
+                output.yield(SSDPPacket(text: String(decoding: buffer.prefix(count), as: UTF8.self), source: sender.sin_addr.s_addr))
             } else if errno != EWOULDBLOCK && errno != EAGAIN && errno != EINTR {
                 output.finish(throwing: ScanError.socket(errno))
             }
