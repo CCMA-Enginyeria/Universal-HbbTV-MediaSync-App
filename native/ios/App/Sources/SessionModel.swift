@@ -77,6 +77,11 @@ final class SessionModel: ObservableObject {
     private var lastPositionEnvelope: String?
     private var ticker: Timer?
     private var lastSyncLog = Date.distantPast
+    /// Background time requested while playback waits for the programme to resume (content gap).
+    private var gapTask = UIBackgroundTaskIdentifier.invalid
+    private var gapExpiry: DispatchWorkItem?
+    /// Upper bound for holding the audio session without audio, also in the foreground.
+    private static let gapHoldS = 60.0
 
     static let timelineSelector = "urn:dvb:css:timeline:mpd:period:rel:1000"
 
@@ -199,6 +204,7 @@ final class SessionModel: ObservableObject {
         contentTask?.cancel()
         intent = nil
         stopPlayback()
+        lastPositionEnvelope = nil
         selectSubtitle(nil)
         companions.removeAll()
         stopTicker()
@@ -270,6 +276,8 @@ final class SessionModel: ObservableObject {
     }
 
     func resumeAfterSystemPause() {
+        // The filter and cooldown describe the time before the interruption.
+        corrector.reset()
         playerOwner.resumeAfterSystemPause()
         suspendedBySystem = false
     }
@@ -278,6 +286,8 @@ final class SessionModel: ObservableObject {
         webPlayerUrl = nil
         intent = nil
         selected = nil
+        endGapHold(deactivate: true)
+        if !playerOwner.isActive { playerOwner.deactivateSession() }
         if companions.isEmpty { stopTicker() }
     }
 
@@ -294,7 +304,7 @@ final class SessionModel: ObservableObject {
     func seedCompanion(_ sink: CompanionSink) {
         if case .web(let page) = content { sink.deliver(CompanionProtocol.initMessage(contentId: page.url)) }
         else { sink.deliver(CompanionProtocol.initMessage(contentId: nil)) }
-        if let envelope = lastPositionEnvelope ?? positionEnvelope() { sink.deliver(envelope) }
+        if let envelope = positionEnvelope() ?? lastPositionEnvelope { sink.deliver(envelope) }
         session?.retainedAppMessages.forEach { sink.deliver(CompanionProtocol.appMessage(rawMessage: $0.raw)) }
     }
 
@@ -355,6 +365,8 @@ final class SessionModel: ObservableObject {
         let resolved = ContentClassifier.resolve(contentId, brandFallback: BrandConfig.defaultContentUrl)
         let kind = ContentClassifier.classify(resolved)
         diagnostics.log("content", "changed", ["kind": kind.rawValue])
+        // The previous content's position must not seed pages opened for the new one.
+        lastPositionEnvelope = nil
         webGone = hadWeb && kind != .web
         switch kind {
         case .none:
@@ -409,9 +421,11 @@ final class SessionModel: ObservableObject {
         playerRetrying = false
         suspendedBySystem = false
         selected = track
+        endGapHold(deactivate: false)
         if kind == .dash {
             // AVPlayer cannot play MPEG-DASH: the brand web player follows the TV through the companion protocol.
-            playerOwner.stop()
+            playerOwner.stop(keepSession: true)
+            playerOwner.activateForWebPlayback(video: track.kind == .video)
             guard let base = BrandConfig.syncWebPlayerUrl else {
                 content = .failed(.format)
                 return
@@ -453,13 +467,43 @@ final class SessionModel: ObservableObject {
     }
 
     private func stopPlayback() {
-        playerOwner.stop()
+        if intent != nil {
+            // Waiting for the programme to resume: keep the audio session and ask for background time,
+            // since a deactivated session lets iOS suspend the app and its sockets.
+            playerOwner.stop(keepSession: true)
+            beginGapHold()
+        } else {
+            playerOwner.stop()
+            endGapHold(deactivate: false)
+        }
         corrector.reset()
         selected = nil
         webPlayerUrl = nil
         status = .waiting
         rate = 1
         playerRetrying = false
+    }
+
+    private func beginGapHold() {
+        guard gapExpiry == nil else { return }
+        gapTask = UIApplication.shared.beginBackgroundTask(withName: "mediasync.content-gap") { [weak self] in
+            self?.endGapHold(deactivate: true)
+        }
+        let expiry = DispatchWorkItem { [weak self] in self?.endGapHold(deactivate: true) }
+        gapExpiry = expiry
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.gapHoldS, execute: expiry)
+        diagnostics.log("player", "gap-hold")
+    }
+
+    /// - Parameter deactivate: releases the held audio session when nothing is playing.
+    private func endGapHold(deactivate: Bool) {
+        gapExpiry?.cancel()
+        gapExpiry = nil
+        if deactivate && !playerOwner.isActive && webPlayerUrl == nil { playerOwner.deactivateSession() }
+        if gapTask != .invalid {
+            UIApplication.shared.endBackgroundTask(gapTask)
+            gapTask = .invalid
+        }
     }
 
     private func positionEnvelope() -> String? {
