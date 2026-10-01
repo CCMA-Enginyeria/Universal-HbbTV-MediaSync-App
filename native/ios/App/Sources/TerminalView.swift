@@ -43,16 +43,19 @@ struct TerminalView: View {
         }
     }
 
+    /// Shows the mode actually in use (PRD-006-R08); the stored preference can differ when
+    /// the TV only offers the other stack. Unavailable modes are not offered.
     private var modeSelector: some View {
-        VStack(alignment: .leading, spacing: Theme.spacing("xs")) {
+        let shown = session.effectiveMode ?? session.preferredMode
+        return VStack(alignment: .leading, spacing: Theme.spacing("xs")) {
             section(L10n.t("discovery.modeTitle"))
-            Picker(L10n.t("discovery.modeTitle"), selection: Binding(get: { session.preferredMode }, set: { session.setPreferredMode($0) })) {
-                ForEach(SyncMode.allCases, id: \.self) { mode in
+            Picker(L10n.t("discovery.modeTitle"), selection: Binding(get: { shown }, set: { session.setPreferredMode($0) })) {
+                ForEach(session.availableModes, id: \.self) { mode in
                     Text(L10n.t(mode == .native ? "discovery.modeNative" : "discovery.modeCompat")).tag(mode)
                 }
             }
             .pickerStyle(.segmented)
-            Text(L10n.t(session.preferredMode == .native ? "discovery.modeNativeDescription" : "discovery.modeCompatDescription"))
+            Text(L10n.t(shown == .native ? "discovery.modeNativeDescription" : "discovery.modeCompatDescription"))
                 .font(.caption).foregroundColor(Theme.onSurfaceVariant)
         }
     }

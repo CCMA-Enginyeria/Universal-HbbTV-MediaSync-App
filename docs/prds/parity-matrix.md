@@ -15,6 +15,13 @@ Fecha: 2026-09-26. Fuente de verdad del estado de cada requisito de los PRD
 
 ## Evidencia disponible
 
+- E15 (2026-10-01): iPhone fisico contra `tools/tv-emulator`. Cambio de modo en la
+  TV sin salir del detalle: la sesion que pierde la TV vuelve a sondear ambos modos
+  (primero a los 2 s, luego cada 5 s) y cambia sola; nativo a compat en ~2.8 s y
+  compat a nativo en ~2.7 s. El selector muestra el modo efectivo y solo los modos
+  disponibles (antes mostraba la preferencia guardada). Cambio equivalente en
+  Android sin compilar (sin JDK en el Mac); sin test automatizado del resondeo.
+
 - E14 (2026-10-01): iPhone 15 fisico (iOS 26.6.1), build Debug sin el entitlement
   de multicast, contra `tools/tv-emulator` en la misma Wi-Fi. SSDP unicast mediante
   `MEDIASYNC_SSDP_DESTINATION` (solo DEBUG), descripcion DIAL, CII y TS PTS reales;
@@ -167,7 +174,7 @@ Fecha: 2026-09-26. Fuente de verdad del estado de cada requisito de los PRD
 | R05 | Hecho | Impl. | Transporte compat JSON y emparejamiento (E2 compat) |
 | R06 | Hecho | Impl. | Ajuste por modo |
 | R07 | Hecho | Impl. | App2App con limites y relevo literal |
-| R08 | Hecho | Impl. | Modo efectivo visible; sin alternancia automatica |
+| R08 | Hecho | Impl. | Modo efectivo visible en el selector; resondeo y cambio si la TV cambia de pila (E15) |
 | A01-A03 | Hecho | Impl. | Tests de matriz, endpoints mezclados y reinicio de sesion |
 | A04 | Parcial | Pend. | Canal App2App independiente con fakes |
 

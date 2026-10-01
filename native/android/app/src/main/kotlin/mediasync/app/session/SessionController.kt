@@ -104,6 +104,10 @@ class SessionController(
     val state: StateFlow<UiState> = _state
     private var generation = 0L
     private val probes = mutableListOf<TransportProbe>()
+    /** True while availability is re-checked for a running session that lost the TV. */
+    private var reprobing = false
+    private var reprobeJob: Job? = null
+    private var reprobeCount = 0
     private var session: MediaSyncSession? = null
     private var sessionMode: SyncMode? = null
     private var contentJob: Job? = null
@@ -161,6 +165,10 @@ class SessionController(
         generation++
         probes.forEach(TransportProbe::cancel)
         probes.clear()
+        reprobing = false
+        reprobeJob?.cancel()
+        reprobeJob = null
+        reprobeCount = 0
         session?.stop()
         session = null
         sessionMode = null
@@ -231,26 +239,67 @@ class SessionController(
         }
     }
 
+    /**
+     * Probes both transports. The TV can switch stacks at any time (the emulator does so
+     * on demand), so availability is re-checked while a session recovers instead of only
+     * once on selection; otherwise the session would retry a stack that no longer exists.
+     */
     private fun startProbes(terminal: DialTerminal) {
+        probes.forEach(TransportProbe::cancel)
+        probes.clear()
         val current = generation
         val application = terminal.application
         val realHost = Endpoints.realHost(terminal.device.location, terminal.device.applicationUrl)
+        var pending = SyncMode.entries.size
         for (mode in SyncMode.entries) {
             val probe = TransportProbe(transport, mode, application?.interDeviceSyncUrl, application?.app2AppUrl, realHost,
                 Endpoints.DEFAULT_COMPAT_PREFIX, tuning.probeTimeoutMs) { available ->
                 if (current != generation) return@TransportProbe
-                diagnostics.log("session", "probe", "mode" to mode.name, "available" to available)
+                diagnostics.log("session", "probe", "mode" to mode.name, "available" to available, "reprobe" to reprobing)
                 update { copy(availability = availability + (mode to if (available) Availability.AVAILABLE else Availability.UNAVAILABLE)) }
                 reconcileMode()
+                pending--
+                if (pending == 0 && reprobing) {
+                    reprobing = false
+                    watchConnection()
+                }
             }
             probes += probe
             probe.start()
         }
     }
 
+    /** Schedules a re-check while the active session is recovering; cancels it otherwise. */
+    private fun watchConnection() {
+        val state = _state.value
+        if (state.snapshot?.state != MediaSyncSession.State.RECOVERING || state.terminal == null) {
+            reprobeJob?.cancel()
+            reprobeJob = null
+            reprobeCount = 0
+            return
+        }
+        if (reprobing || reprobeJob != null) return
+        val current = generation
+        // The first re-check waits one probe timeout so a brief drop can reconnect on its own.
+        val delayMs = if (reprobeCount == 0) tuning.probeTimeoutMs else REPROBE_INTERVAL_MS
+        reprobeCount++
+        reprobeJob = scope.launch {
+            delay(delayMs)
+            reprobeJob = null
+            val latest = _state.value
+            val terminal = latest.terminal
+            if (current != generation || latest.snapshot?.state != MediaSyncSession.State.RECOVERING || terminal == null) return@launch
+            diagnostics.log("session", "reprobe", "mode" to (sessionMode?.name ?: "none"))
+            reprobing = true
+            startProbes(terminal)
+        }
+    }
+
     private fun reconcileMode() {
         val state = _state.value
         val effective = ModeSelection.effective(state.preferredMode, state.availability)
+        // A failed re-check keeps the current session retrying rather than tearing it down.
+        if (effective == null && reprobing && session != null) return
         if (effective == sessionMode && (effective == null || session != null)) return
         startSession(effective)
     }
@@ -266,7 +315,9 @@ class SessionController(
         lateinit var created: MediaSyncSession
         created = MediaSyncSession(transport, { System.nanoTime() }, object : MediaSyncSession.Listener {
             override fun onSnapshot(snapshot: MediaSyncSession.Snapshot) {
-                if (session === created) update { copy(snapshot = snapshot) }
+                if (session !== created) return
+                update { copy(snapshot = snapshot) }
+                watchConnection()
             }
             override fun onContentChanged(generation: Long, contentId: String?) {
                 if (session === created) handleContent(contentId)
@@ -490,5 +541,7 @@ class SessionController(
     companion object {
         /** Timeline registered by the broadcaster HbbTV apps (RN `TIMELINE_SELECTOR`); PTS is used when the TV only offers it. */
         const val TIMELINE_SELECTOR = "urn:dvb:css:timeline:mpd:period:rel:1000"
+        /** Pause between availability re-checks while the active session keeps recovering. */
+        const val REPROBE_INTERVAL_MS = 5_000L
     }
 }

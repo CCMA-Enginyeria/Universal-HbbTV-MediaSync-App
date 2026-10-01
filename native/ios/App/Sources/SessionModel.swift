@@ -61,6 +61,12 @@ final class SessionModel: ObservableObject {
     private let feed = CompanionFeedThrottle()
     private var generation = 0
     private var probes: [TransportProbe] = []
+    /// True while availability is re-checked for a running session that lost the TV.
+    private var reprobing = false
+    private var reprobeTimer: Timer?
+    private var reprobeCount = 0
+    /// Pause between availability re-checks while the active session keeps recovering.
+    private static let reprobeIntervalS = 5.0
     private var session: MediaSyncSession?
     private var sessionMode: SyncMode?
     private var contentTask: Task<Void, Never>?
@@ -106,19 +112,59 @@ final class SessionModel: ObservableObject {
             availability = [.native: .unavailable, .compat: .unavailable]
             return
         }
+        startProbes(terminal)
+    }
+
+    /**
+     * Probes both transports. The TV can switch stacks at any time (the emulator does so
+     * on demand), so availability is re-checked while a session recovers instead of only
+     * once on selection; otherwise the session would retry a stack that no longer exists.
+     */
+    private func startProbes(_ terminal: DialTerminal) {
+        probes.forEach { $0.cancel() }
+        probes.removeAll()
         let current = generation
         let realHost = Endpoints.realHost(terminal.device.location, terminal.device.applicationUrl)
+        var pending = SyncMode.allCases.count
         for mode in SyncMode.allCases {
             let probe = TransportProbe(transport: transport, mode: mode, interDevSyncUrl: terminal.application?.interDeviceSyncUrl,
                                        app2appUrl: terminal.application?.app2AppUrl, realHost: realHost,
                                        timeoutMs: tuning.probeTimeoutMs) { [weak self] available in
                 guard let self = self, current == self.generation else { return }
-                self.diagnostics.log("session", "probe", ["mode": mode.rawValue, "available": available])
+                self.diagnostics.log("session", "probe", ["mode": mode.rawValue, "available": available, "reprobe": self.reprobing])
                 self.availability[mode] = available ? .available : .unavailable
                 self.reconcileMode()
+                pending -= 1
+                if pending == 0 && self.reprobing {
+                    self.reprobing = false
+                    self.watchConnection()
+                }
             }
             probes.append(probe)
             probe.start()
+        }
+    }
+
+    /// Schedules a re-check while the active session is recovering; cancels it otherwise.
+    private func watchConnection() {
+        guard snapshot?.state == .recovering, terminal != nil else {
+            reprobeTimer?.invalidate()
+            reprobeTimer = nil
+            reprobeCount = 0
+            return
+        }
+        guard !reprobing, reprobeTimer == nil else { return }
+        let current = generation
+        // The first re-check waits one probe timeout so a brief drop can reconnect on its own.
+        let delay = reprobeCount == 0 ? Double(tuning.probeTimeoutMs) / 1000 : Self.reprobeIntervalS
+        reprobeCount += 1
+        reprobeTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
+            guard let self = self, current == self.generation else { return }
+            self.reprobeTimer = nil
+            guard self.snapshot?.state == .recovering, let terminal = self.terminal else { return }
+            self.diagnostics.log("session", "reprobe", ["mode": self.sessionMode?.rawValue ?? "none"])
+            self.reprobing = true
+            self.startProbes(terminal)
         }
     }
 
@@ -143,6 +189,10 @@ final class SessionModel: ObservableObject {
         generation += 1
         probes.forEach { $0.cancel() }
         probes.removeAll()
+        reprobing = false
+        reprobeTimer?.invalidate()
+        reprobeTimer = nil
+        reprobeCount = 0
         session?.stop()
         session = nil
         sessionMode = nil
@@ -257,6 +307,8 @@ final class SessionModel: ObservableObject {
 
     private func reconcileMode() {
         let effective = ModeSelection.effective(preferred: preferredMode, availability: availability)
+        // A failed re-check keeps the current session retrying rather than tearing it down.
+        if effective == nil && reprobing && session != nil { return }
         if effective == sessionMode && (effective == nil || session != nil) { return }
         startSession(effective)
     }
@@ -272,6 +324,7 @@ final class SessionModel: ObservableObject {
         created.onSnapshot = { [weak self, weak created] snapshot in
             guard let self = self, self.session === created else { return }
             self.snapshot = snapshot
+            self.watchConnection()
         }
         created.onContentChanged = { [weak self, weak created] _, contentId in
             guard let self = self, self.session === created else { return }
