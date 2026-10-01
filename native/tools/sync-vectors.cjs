@@ -24,7 +24,11 @@ scenario('boundaries', [0, 0.02, 0.1, 0.100001, -0.100001, 2, -2, 2.000001, -2.0
 scenario('live', [3, 5, 5.000001, -3, -5, -5.000001]
   .map(playerTime => ({ playerTime, seekThresholdS: 5, reset: true })));
 scenario('zero-threshold', [{ playerTime: 0.001, seekThresholdS: 0 }]);
-scenario('jitter', Array.from({ length: 100 }, (_, step) => ({ playerTime: Math.sin(step * 1.7) * 0.03 })));
+// Preserve the original sine-wave inputs as literals: Math.sin is implementation-
+// approximated, so its last bits can vary across Node/V8 versions and platforms.
+// Only inputs are pinned; every controller decision is still computed and checked.
+const jitterInputs = require('./sync-jitter-inputs.json');
+scenario('jitter', jitterInputs.map(playerTime => ({ playerTime })));
 scenario('reset-and-seek', [0.5, 0.5, 10, 0.04, -0.5, 0, 0, 0]
   .map((playerTime, step) => ({ playerTime, reset: step === 5 })));
 scenario('release', [0.5, ...Array(60).fill(0)].map(playerTime => ({ playerTime })));

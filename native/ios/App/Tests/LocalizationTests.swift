@@ -2,6 +2,13 @@ import XCTest
 @testable import MediaSync
 
 final class LocalizationTests: XCTestCase {
+    func testTestBundleHasIndependentProductIdentity() throws {
+        let testBundle = Bundle(for: LocalizationTests.self)
+        XCTAssertEqual(testBundle.object(forInfoDictionaryKey: "CFBundleExecutable") as? String, "MediaSyncTests")
+        XCTAssertNotEqual(try XCTUnwrap(testBundle.bundleIdentifier), try XCTUnwrap(Bundle.main.bundleIdentifier))
+        XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "CFBundleExecutable") as? String, "MediaSync")
+    }
+
     func testGeneratedStringsResolveInEveryLanguage() throws {
         XCTAssertNotEqual(L10n.t("discovery.title"), "discovery.title")
         XCTAssertEqual(L10n.list("help.troubleshootingSteps").count, 3)
