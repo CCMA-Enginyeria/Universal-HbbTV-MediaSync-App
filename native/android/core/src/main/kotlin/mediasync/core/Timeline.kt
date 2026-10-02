@@ -15,7 +15,6 @@ sealed interface TimelineMessage {
 object TimelineProtocol {
     const val PTS = "urn:dvb:css:timeline:pts"
     private val mpdPeriodRel = Regex("^urn:dvb:css:timeline:mpd:period:rel:(\\d+)(?::.*)?$")
-    private val temi = Regex("^urn:dvb:css:timeline:temi:\\d+:(\\d+)$")
 
     fun setupMessage(timelineSelector: String, contentIdStem: String = ""): String = buildJsonObject {
         put("contentIdStem", contentIdStem)
@@ -34,16 +33,19 @@ object TimelineProtocol {
         val contentTime = JsonInput.long(content) ?: return null
         val wallClockTime = JsonInput.long(wall) ?: return null
         val speed = if (speedElement == null) 1.0 else JsonInput.double(speedElement) ?: return null
-        if (speed < 0 || speed > 64) return null
+        // Any finite speed is valid (TS 103 286-2); negative means rewinding, which the corrector treats as not playing.
+        if (!speed.isFinite()) return null
         return TimelineMessage.Available(ControlTimestamp(contentTime, wallClockTime, speed))
     }
 
-    /** Ticks per second, preferring the properties advertised by CII. */
+    /**
+     * Ticks per second, preferring the properties advertised by CII. TEMI selectors
+     * (`temi:<component_tag>:<timeline_id>`) carry no rate, so they need CII properties.
+     */
     fun tickRate(selector: String, advertised: List<TimelineOption> = emptyList()): Double? {
         advertised.firstOrNull { it.selector == selector }?.tickRate?.let { return it }
         if (selector == PTS) return 90_000.0
         mpdPeriodRel.matchEntire(selector)?.let { return it.groupValues[1].toDoubleOrNull()?.takeIf { rate -> rate > 0 } }
-        temi.matchEntire(selector)?.let { return it.groupValues[1].toDoubleOrNull()?.takeIf { rate -> rate > 0 } }
         return null
     }
 

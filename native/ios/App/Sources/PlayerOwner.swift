@@ -177,7 +177,18 @@ final class PlayerOwner: NSObject, AVPlayerItemLegibleOutputPushDelegate {
         if output === legibleOutput { subtitleText = nil }
     }
 
-    func stop() {
+    /// Audio session for the DASH web player, which plays through WebKit but must follow the same policy.
+    func activateForWebPlayback(video: Bool) {
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: video ? .moviePlayback : .spokenAudio)
+        try? AVAudioSession.sharedInstance().setActive(true)
+    }
+
+    func deactivateSession() {
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    /// - Parameter keepSession: keeps the audio session active, e.g. while waiting for the programme to resume.
+    func stop(keepSession: Bool = false) {
         selectSubtitle(nil)
         legibleOutput?.setDelegate(nil, queue: nil)
         legibleOutput = nil
@@ -191,7 +202,7 @@ final class PlayerOwner: NSObject, AVPlayerItemLegibleOutputPushDelegate {
         player.pause()
         player.replaceCurrentItem(with: nil)
         desiredRate = 1
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        if !keepSession { deactivateSession() }
     }
 
     @objc private func interruption(_ notification: Notification) {

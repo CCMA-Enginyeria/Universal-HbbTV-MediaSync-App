@@ -1,6 +1,6 @@
 import Foundation
 
-/// Values used by the React Native reference (`src/utils/config.js`).
+/// Values inherited from the former React Native app (`src/utils/config.js`).
 public struct SyncTuning {
     public var native: SyncController.Options = {
         var options = SyncController.Options()
@@ -166,7 +166,14 @@ public final class MediaSyncSession: TransportEvents {
         appChannel = nil
         timers.keys.forEach(transport.cancel)
         timers.removeAll()
+        // A restart may receive an identical CII; stale state would hide it as "unchanged".
+        tracker.reset()
+        estimator.reset()
+        noContentExpired = false
+        wallClockExpired = false
         ciiBackoff.reset()
+        wcBackoff.reset()
+        tsBackoff.reset()
         everOpened = false
         config = nil
         generation += 1
@@ -265,7 +272,10 @@ public final class MediaSyncSession: TransportEvents {
         case .wcPoll:
             sendWallClockRequest()
             schedule(.wcPoll, tuning.wallClockIntervalMs)
-        case .wcTimeout: wallClockExpired = !wallClockSynchronised()
+        case .wcTimeout:
+            // Re-armed: UDP never reports a close, so responses that stop later must still surface.
+            wallClockExpired = !wallClockSynchronised()
+            schedule(.wcTimeout, tuning.wallClockTimeoutMs)
         case .ciiRetry: if ciiToken == nil { openCii() }
         case .wcRetry: if wcToken == nil { reconcileEndpoints() }
         case .tsRetry: if tsToken == nil { maybeOpenTimeline() }
@@ -313,7 +323,12 @@ public final class MediaSyncSession: TransportEvents {
     private func reconcileEndpoints() {
         guard let config = config else { return }
         let state = tracker.state
-        guard state.wcUrl != nil || state.tsUrl != nil else { return }
+        guard state.wcUrl != nil || state.tsUrl != nil else {
+            // The TV withdrew both endpoints: stop syncing against the old ones.
+            closeWallClock(); wcUrl = nil
+            closeTimeline(); tsUrl = nil
+            return
+        }
         let wc = Endpoints.repair(state.wcUrl, realHost: config.realHost)
         let ts = Endpoints.repair(state.tsUrl, realHost: config.realHost)
         let valid: Bool

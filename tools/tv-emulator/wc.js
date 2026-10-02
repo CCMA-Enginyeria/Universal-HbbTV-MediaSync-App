@@ -7,7 +7,7 @@ const { wallClockNanos, nanosToSecsAndNanos } = require('./clock');
  * CSS-WC (Wall Clock) UDP server.
  *
  * Implements the binary DVB-CSS wall clock protocol described in
- * src/services/CSSWCServiceUDP.js. The app sends 32-byte request packets
+ * native/android/core/src/main/kotlin/mediasync/core/WallClock.kt. The app sends 32-byte request packets
  * (message type 0) carrying its "originate" timestamp; we reply with a response
  * packet (message type 1) that:
  *

@@ -125,10 +125,9 @@ public final class PlaybackCorrector {
             normalRate()
             startSeek(nowMs)
             return result(commands, .seeking)
-        case .rate:
+        case .rate, .none:
+            // NONE still converges the player: a controller created on a mode switch assumes 1.0.
             if decision.rate != player.rate { commands.append(.setRate(decision.rate)) }
-        case .none:
-            break
         }
         return result(commands, controller.mode == .correcting ? .adjusting : .locked)
     }

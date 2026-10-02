@@ -5,6 +5,7 @@ import java.io.Closeable
 import java.io.IOException
 import java.net.DatagramPacket
 import java.net.HttpURLConnection
+import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.MulticastSocket
 import java.net.NetworkInterface
@@ -15,6 +16,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Single-use DIAL scan. [run] blocks the calling worker; device descriptions
@@ -34,6 +36,8 @@ class DialDiscoveryScan(
         /** Extra M-SEARCH transmissions, relative to the scan start (UDP is lossy). */
         val searchRetryDelaysMs: List<Int> = listOf(1_000, 3_000),
         val maxConcurrentRequests: Int = 4,
+        /** Opens device-description requests, e.g. on the LAN when a VPN is the default route. */
+        val openConnection: ((URL) -> java.net.URLConnection)? = null,
     ) {
         init {
             require(durationMs > 0 && requestTimeoutMs > 0)
@@ -56,6 +60,7 @@ class DialDiscoveryScan(
     private val connections = mutableSetOf<HttpURLConnection>()
     private var finished = false
     private var deadlineNanos = 0L
+    private val inFlight = AtomicInteger(0)
 
     /** [onFound] runs on a scan worker, serialised; it must not block or throw. */
     fun run(onFound: (DialTerminal) -> Unit = {}): Result {
@@ -97,7 +102,11 @@ class DialDiscoveryScan(
                     continue
                 }
                 val message = String(packet.data, packet.offset, packet.length, Charsets.UTF_8)
+                // Bounded fan-out, and only descriptions served by the host that answered (no LAN-triggered SSRF).
+                if (inFlight.get() >= options.maxDevices) continue
+                if (DialProtocol.parseResponse(message)?.let { sameHost(it, packet.address) } != true) continue
                 val request = synchronized(sessionLock) { session.accept(message) } ?: continue
+                inFlight.incrementAndGet()
                 workers.execute {
                     val terminal = try {
                         resolve(request.location)
@@ -112,6 +121,7 @@ class DialDiscoveryScan(
                     synchronized(sessionLock) {
                         if (!inactive() && !finished && session.complete(request, terminal)) onFound(requireNotNull(terminal))
                     }
+                    inFlight.decrementAndGet()
                 }
             }
         } catch (error: IOException) {
@@ -139,6 +149,9 @@ class DialDiscoveryScan(
         val description = get(location)
         val device = DialProtocol.parseDevice(description.body, location, description.applicationUrl)
             ?: throw IOException("Invalid device description or missing Application-URL")
+        if (URI(device.applicationUrl).host?.equals(URI(location).host, ignoreCase = true) != true) {
+            throw IOException("Application-URL host differs from the device description host")
+        }
         val application = try {
             DialProtocol.parseApplication(get(device.hbbtvUrl).body, URI(location).host)
         } catch (error: IOException) {
@@ -150,7 +163,8 @@ class DialDiscoveryScan(
 
     private fun get(address: String): Response {
         ensureActive()
-        val request = URL(address).openConnection() as HttpURLConnection
+        val url = URL(address)
+        val request = (options.openConnection?.invoke(url) ?: url.openConnection()) as HttpURLConnection
         request.instanceFollowRedirects = false
         request.useCaches = false
         request.connectTimeout = remainingMs().coerceAtMost(options.requestTimeoutMs)
@@ -185,6 +199,14 @@ class DialDiscoveryScan(
             synchronized(resourceLock) { connections.remove(request) }
             request.disconnect()
         }
+    }
+
+    /** True when [url] names [address] as an IP literal; host names are not resolved. */
+    private fun sameHost(url: String, address: InetAddress?): Boolean {
+        val host = runCatching { URI(url).host }.getOrNull()?.removeSurrounding("[", "]") ?: return false
+        if (address == null || !(host.all { it.isDigit() || it == '.' } || ':' in host)) return false
+        val literal = runCatching { InetAddress.getByName(host) }.getOrNull() ?: return false
+        return literal.address.contentEquals(address.address)
     }
 
     private fun inactive() = cancelled.get() || expired.get()

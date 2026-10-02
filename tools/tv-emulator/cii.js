@@ -5,10 +5,10 @@
  *
  * When the mobile app connects to the InterDevSync URL (our /cii endpoint), it
  * expects a JSON message describing what the TV is presenting. See
- * src/services/CSSCIIService.js -> handleMessage for the exact fields consumed:
+ * native/android/core/src/main/kotlin/mediasync/core/Cii.kt -> handleMessage for the exact fields consumed:
  *
  *   - contentId          : DASH manifest or companion web URL presented on the
- *                          second device (src/components/TerminalItem.js).
+ *                          second device (the app terminal screen).
  *   - wcUrl              : udp:// URL of the CSS-WC wall clock server.
  *   - tsUrl              : ws:// URL of the CSS-TS timeline server.
  *   - timelines          : advertised timeline options.

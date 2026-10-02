@@ -52,6 +52,8 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_NAME: MediaSyncTests
+        PRODUCT_BUNDLE_IDENTIFIER: $(BRAND_BUNDLE_IDENTIFIER).tests
 schemes:
   MediaSync:
     build:

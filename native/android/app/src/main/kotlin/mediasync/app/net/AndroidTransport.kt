@@ -1,12 +1,16 @@
 package mediasync.app.net
 
+import android.net.Network
 import android.os.Handler
 import android.os.Looper
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.Socket
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import javax.net.SocketFactory
 import mediasync.app.diagnostics.Diagnostics
 import mediasync.core.Transport
 import mediasync.core.TransportEvents
@@ -22,10 +26,13 @@ import okhttp3.WebSocketListener
  * back to it; events for tokens no longer registered are dropped.
  */
 class AndroidTransport(
-    private val http: OkHttpClient,
+    http: OkHttpClient,
     private val handler: Handler,
     private val diagnostics: Diagnostics,
+    /** LAN to bind TV sockets to; null keeps the default route. */
+    private val lan: () -> Network? = { null },
 ) : Transport {
+    private val http = http.newBuilder().socketFactory(LanSocketFactory()).build()
     private val sockets = HashMap<Long, WebSocket>()
     private val datagrams = HashMap<Long, UdpChannel>()
     private val listeners = HashMap<Long, TransportEvents>()
@@ -95,6 +102,21 @@ class AndroidTransport(
         if (removed) events?.onClosed(token, failed)
     }
 
+    /** Best effort: a non-bypassable VPN refuses the binding, and the default route is kept. */
+    private fun bindToLan(socket: Socket) { lan()?.let { network -> runCatching { network.bindSocket(socket) } } }
+    private fun bindToLan(socket: DatagramSocket) { lan()?.let { network -> runCatching { network.bindSocket(socket) } } }
+
+    /** OkHttp only uses [createSocket] without arguments; the others are provided for completeness. */
+    private inner class LanSocketFactory : SocketFactory() {
+        override fun createSocket(): Socket = Socket().also(::bindToLan)
+        override fun createSocket(host: String, port: Int): Socket = createSocket().apply { connect(InetSocketAddress(host, port)) }
+        override fun createSocket(host: String, port: Int, localHost: InetAddress, localPort: Int): Socket =
+            createSocket().apply { bind(InetSocketAddress(localHost, localPort)); connect(InetSocketAddress(host, port)) }
+        override fun createSocket(host: InetAddress, port: Int): Socket = createSocket().apply { connect(InetSocketAddress(host, port)) }
+        override fun createSocket(address: InetAddress, port: Int, localAddress: InetAddress, localPort: Int): Socket =
+            createSocket().apply { bind(InetSocketAddress(localAddress, localPort)); connect(InetSocketAddress(address, port)) }
+    }
+
     private fun checkThread() = check(Looper.myLooper() == handler.looper) { "Transport must be used on its owner looper" }
 
     /** Connected socket: only datagrams from the TV's address and port are delivered. */
@@ -108,6 +130,7 @@ class AndroidTransport(
                 try {
                     val target = InetAddress.getByName(host)
                     val created = DatagramSocket()
+                    bindToLan(created)
                     created.connect(target, port)
                     socket = created
                     if (closed) {

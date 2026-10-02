@@ -338,8 +338,11 @@ function exportIos(outDir, inputs, strings, summary) {
     CFBundleURLTypes: [{ CFBundleURLName: summary.bundleIdentifier, CFBundleURLSchemes: [summary.scheme] }],
     ITSAppUsesNonExemptEncryption: false,
     LSRequiresIPhoneOS: true,
-    // Televisions are reached by LAN IP over HTTP/WS; media CDNs may still use HTTP.
-    NSAppTransportSecurity: { NSAllowsLocalNetworking: true, NSAllowsArbitraryLoadsForMedia: true },
+    // Parity with Android's cleartext policy: TVs are reached by LAN IP over HTTP/WS, and HbbTV content IDs,
+    // manifests, subtitles and companion pages are often plain HTTP on public hosts. The narrower keys
+    // (NSAllowsLocalNetworking, ...ForMedia, ...InWebContent) must stay out: iOS ignores NSAllowsArbitraryLoads
+    // when any of them is present. Schemes and hosts are validated in the core.
+    NSAppTransportSecurity: { NSAllowsArbitraryLoads: true },
     NSLocalNetworkUsageDescription: strings[summary.defaultLanguage]['native.discovery.permissionMessage'],
     ...(summary.cameraEnabled ? { NSCameraUsageDescription: summary.cameraUsageDescription } : {}),
     UIBackgroundModes: ['audio'],

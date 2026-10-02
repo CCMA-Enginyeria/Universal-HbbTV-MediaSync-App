@@ -130,10 +130,10 @@ is a request; answering with the same `id` correlates the response.
 
 The mobile app detects the compatibility channel and connects to
 `<X_HbbTV_App2AppURL>/<prefix>-cii`, preferring it over native DVB-CSS and
-falling back automatically. See `src/services/MediaSyncService.js`
+falling back automatically. See `native/android/core/src/main/kotlin/mediasync/core/MediaSyncSession.kt`
 (`connect()` compat-first logic).
 
-The application channel is handled by `src/services/App2AppChannelService.js`
+The application channel is handled by `native/android/core/src/main/kotlin/mediasync/core/App2AppChannel.kt`
 and exposed through `MediaSyncService.sendAppMessage()`, `requestApp()` and the
 `app-message` event. It is opened whenever the terminal advertises an App2App
 base URL, regardless of the DVB-CSS transport in use. Messages are relayed

@@ -1,0 +1,9 @@
+platform :ios, '15.0'
+project 'DashProbe.xcodeproj'
+
+target 'DashProbe' do
+  pod 'MobileVLCKit', '3.7.3'
+  target 'DashProbeTests' do
+    inherit! :search_paths
+  end
+end

@@ -4,7 +4,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-/** Values used by the React Native reference (`src/utils/config.js`). */
+/** Values inherited from the former React Native app (`src/utils/config.js`). */
 data class SyncTuning(
     val native: SyncController.Options = SyncController.Options(
         emaAlpha = 0.25, enterBandS = 0.1, exitBandS = 0.01, horizonS = 3.0,
@@ -143,7 +143,14 @@ class MediaSyncSession(
         appChannel = null
         timers.keys.toList().forEach(transport::cancel)
         timers.clear()
+        // A restart may receive an identical CII; stale state would hide it as "unchanged".
+        tracker.reset()
+        estimator.reset()
+        noContentExpired = false
+        wallClockExpired = false
         ciiBackoff.reset()
+        wcBackoff.reset()
+        tsBackoff.reset()
         everOpened = false
         config = null
         generation++
@@ -257,7 +264,11 @@ class MediaSyncSession(
                 sendWallClockRequest()
                 schedule(TimerKind.WC_POLL, tuning.wallClockIntervalMs)
             }
-            TimerKind.WC_TIMEOUT -> wallClockExpired = !wallClockSynchronised()
+            TimerKind.WC_TIMEOUT -> {
+                // Re-armed: UDP never reports a close, so responses that stop later must still surface.
+                wallClockExpired = !wallClockSynchronised()
+                schedule(TimerKind.WC_TIMEOUT, tuning.wallClockTimeoutMs)
+            }
             TimerKind.CII_RETRY -> if (ciiToken == null) openCii()
             TimerKind.WC_RETRY -> if (wcToken == null) reconcileEndpoints()
             TimerKind.TS_RETRY -> if (tsToken == null) maybeOpenTimeline()
@@ -314,7 +325,12 @@ class MediaSyncSession(
     private fun reconcileEndpoints() {
         val config = config ?: return
         val state = tracker.state
-        if (state.wcUrl == null && state.tsUrl == null) return
+        if (state.wcUrl == null && state.tsUrl == null) {
+            // The TV withdrew both endpoints: stop syncing against the old ones.
+            closeWallClock(); wcUrl = null
+            closeTimeline(); tsUrl = null
+            return
+        }
         val wc = Endpoints.repair(state.wcUrl, config.realHost)
         val ts = Endpoints.repair(state.tsUrl, config.realHost)
         val valid = when (config.mode) {

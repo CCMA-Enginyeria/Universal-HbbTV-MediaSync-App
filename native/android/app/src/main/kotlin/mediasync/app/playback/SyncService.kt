@@ -1,8 +1,6 @@
 package mediasync.app.playback
 
 import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.BroadcastReceiver
@@ -11,7 +9,9 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import mediasync.app.MainActivity
@@ -41,12 +41,19 @@ class SyncService : Service() {
             media -> ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
             else -> ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
         }
-        try {
+        val entered = try {
             ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(title), type)
+            true
         } catch (error: RuntimeException) {
-            // Starting from the background is not allowed; the session stays foreground-only.
+            // Starting from the background is not allowed; the controller retries on the next app start.
+            applicationContext.graph.session.onServiceStartFailed()
+            false
+        }
+        pendingStarts = (pendingStarts - 1).coerceAtLeast(0)
+        if (!entered || (stopRequested && pendingStarts == 0)) {
+            stopRequested = false
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
             stopSelf()
-            return START_NOT_STICKY
         }
         return START_NOT_STICKY
     }
@@ -57,14 +64,17 @@ class SyncService : Service() {
     }
 
     private fun notification(title: String): Notification {
-        val manager = getSystemService(NotificationManager::class.java)
-        if (manager.getNotificationChannel(CHANNEL_ID) == null) {
-            manager.createNotificationChannel(NotificationChannel(CHANNEL_ID, getString(R.string.native_notification_channel),
-                NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false); setSound(null, null) })
+        // Compat: channels only exist from API 26; below that this is a no-op.
+        val manager = NotificationManagerCompat.from(this)
+        if (manager.getNotificationChannelCompat(CHANNEL_ID) == null) {
+            manager.createNotificationChannel(NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_LOW)
+                .setName(getString(R.string.native_notification_channel)).setShowBadge(false).setSound(null, null).build())
         }
         val flags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP), flags)
+        // Same intent as the launcher icon: brings the task to front without clearing an open Custom Tab.
+        val launch = packageManager.getLaunchIntentForPackage(packageName) ?: Intent(this, MainActivity::class.java)
+        val open = PendingIntent.getActivity(this, 0, launch
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED), flags)
         val stop = PendingIntent.getBroadcast(this, 1, Intent(this, StopReceiver::class.java), flags)
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_sync)
@@ -86,13 +96,27 @@ class SyncService : Service() {
         private const val EXTRA_MEDIA = "media"
         private const val EXTRA_TITLE = "title"
 
-        fun start(context: Context, title: String, media: Boolean) {
+        /**
+         * Starts not yet handled by [onStartCommand]. Stopping the service before it calls
+         * startForeground crashes the app, so such a stop is deferred. Main thread only.
+         */
+        private var pendingStarts = 0
+        private var stopRequested = false
+
+        /** Returns false when the system refused the start (e.g. from the background on Android 12+). */
+        fun start(context: Context, title: String, media: Boolean): Boolean {
             val intent = Intent(context, SyncService::class.java).putExtra(EXTRA_TITLE, title).putExtra(EXTRA_MEDIA, media)
-            runCatching { ContextCompat.startForegroundService(context, intent) }
+            val started = runCatching { ContextCompat.startForegroundService(context, intent) }.isSuccess
+            if (started) {
+                pendingStarts++
+                stopRequested = false
+            }
+            return started
         }
 
         fun stop(context: Context) {
-            context.stopService(Intent(context, SyncService::class.java))
+            if (pendingStarts > 0) stopRequested = true
+            else context.stopService(Intent(context, SyncService::class.java))
         }
     }
 }

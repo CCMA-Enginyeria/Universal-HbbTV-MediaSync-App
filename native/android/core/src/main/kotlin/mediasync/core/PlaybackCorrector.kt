@@ -106,8 +106,9 @@ class PlaybackCorrector(private val tuning: SyncTuning = SyncTuning()) {
                 startSeek(nowMs)
                 return result(commands, Status.SEEKING)
             }
-            SyncController.Action.RATE -> if (decision.rate != player.rate) commands.add(Command.SetRate(decision.rate))
-            SyncController.Action.NONE -> Unit
+            // NONE still converges the player: a controller created on a mode switch assumes 1.0.
+            SyncController.Action.RATE, SyncController.Action.NONE ->
+                if (decision.rate != player.rate) commands.add(Command.SetRate(decision.rate))
         }
         val next = if (controller.mode == SyncController.Mode.CORRECTING) Status.ADJUSTING else Status.LOCKED
         return result(commands, next)

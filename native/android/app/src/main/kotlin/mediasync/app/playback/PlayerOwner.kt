@@ -80,6 +80,8 @@ class PlayerOwner(context: Context, private val handler: Handler, private val li
                 listener.onStateChanged()
             }
 
+            override fun onPlaybackSuppressionReasonChanged(reason: Int) = listener.onStateChanged()
+
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 if (!playWhenReady && (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY ||
                         reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS)) {
@@ -113,6 +115,8 @@ class PlayerOwner(context: Context, private val handler: Handler, private val li
 
     val isActive: Boolean get() = track != null
     val isPlaying: Boolean get() = player.isPlaying
+    /** Transient focus loss (calls, navigation prompts) keeps playWhenReady but freezes playback. */
+    val isSuppressed: Boolean get() = player.playbackSuppressionReason != Player.PLAYBACK_SUPPRESSION_REASON_NONE
     val isBuffering: Boolean get() = player.playbackState == Player.STATE_BUFFERING || seekPending
     val rate: Double get() = player.playbackParameters.speed.toDouble()
     val positionS: Double get() = player.currentPosition / 1000.0

@@ -1,11 +1,12 @@
 # Universal HbbTV MediaSync App
 
-[![Tests](https://github.com/CCMA-Enginyeria/Universal-HbbTV-MediaSync-App/actions/workflows/tests.yml/badge.svg)](https://github.com/CCMA-Enginyeria/Universal-HbbTV-MediaSync-App/actions/workflows/tests.yml)
-[![Build Android APK](https://github.com/CCMA-Enginyeria/Universal-HbbTV-MediaSync-App/actions/workflows/build-android.yml/badge.svg)](https://github.com/CCMA-Enginyeria/Universal-HbbTV-MediaSync-App/actions/workflows/build-android.yml)
+[![Native apps](https://github.com/CCMA-Enginyeria/Universal-HbbTV-MediaSync-App/actions/workflows/native-core.yml/badge.svg)](https://github.com/CCMA-Enginyeria/Universal-HbbTV-MediaSync-App/actions/workflows/native-core.yml)
+[![Build Android release](https://github.com/CCMA-Enginyeria/Universal-HbbTV-MediaSync-App/actions/workflows/build-android.yml/badge.svg)](https://github.com/CCMA-Enginyeria/Universal-HbbTV-MediaSync-App/actions/workflows/build-android.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS-blue.svg)](#)
 [![Get it on Google Play](https://img.shields.io/badge/Get%20it%20on-Google%20Play-01875f?logo=googleplay&logoColor=white)](https://play.google.com/store/apps/details?id=cat.ccma.lab.universalmediasync&pcampaignid=web_share)
-[![Made with Expo](https://img.shields.io/badge/Made%20with-Expo-000020.svg?logo=expo&logoColor=white)](https://expo.dev)
+[![Kotlin](https://img.shields.io/badge/Android-Kotlin%20%7C%20Compose-7F52FF.svg?logo=kotlin&logoColor=white)](native/android)
+[![Swift](https://img.shields.io/badge/iOS-Swift%20%7C%20SwiftUI-F05138.svg?logo=swift&logoColor=white)](native/ios)
 
 ![Universal HbbTV MediaSync App preview](assets/preview.jpg)
 
@@ -117,6 +118,25 @@ Additional capabilities:
   and lets them close it.
 - 7 UI languages: Catalan, Spanish, Basque, English, German, Italian, French
   (default/fallback: **English**).
+
+## Repository Layout
+
+The apps are native: Kotlin/Jetpack Compose on Android and Swift/SwiftUI on iOS, each
+with a pure protocol core shared through cross-platform fixtures. The former React
+Native app was retired; it remains in the Git history.
+
+| Path | Contents |
+|------|----------|
+| [`native/`](native/README.md) | Android and iOS apps, protocol cores, fixtures and build tools (build and test instructions) |
+| `src/brand/brand.config.js` | Single source of truth for a fork: name, identifiers, version, colors, default language |
+| `src/i18n/translations.js`, `src/theme.js`, `src/data/`, `assets/` | Shared strings, design tokens, data and brand images exported into both apps |
+| `tools/tv-emulator/` | Node.js HbbTV/DVB-CSS TV emulator to test end to end without a real TV |
+| `www/` | Landing page, IBC demonstrations, HbbTV examples and the sync web player |
+| `store/` | Store listings and release notes |
+
+Releases: tagging `vX.Y.Z` (matching `version` in the brand config) runs
+[`build-android.yml`](.github/workflows/build-android.yml), which produces the signed
+APK and AAB for Google Play.
 
 ## License
 

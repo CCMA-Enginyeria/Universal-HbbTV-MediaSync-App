@@ -1,11 +1,13 @@
-# Native migration
+# Native apps
 
 The numbered implementation requirements, dependencies and acceptance criteria
 are tracked in [the migration PRD index](../docs/prds/README.md).
 
-This directory contains independent Kotlin/Compose Android and Swift/SwiftUI iOS
-applications that replace the React Native app. The React Native application
-remains unchanged as the shipping product and behavioral reference until cutover.
+This directory contains the Kotlin/Compose Android and Swift/SwiftUI iOS
+applications. They replaced the React Native app, which was removed from the
+repository and remains available in the Git history (last on `main` at `1a3f4e9`).
+Both keep the RN package/bundle ids and import its stored sync mode, so they
+update the published app in place.
 Per-requirement status and evidence: [parity matrix](../docs/prds/parity-matrix.md);
 security notes: [threat model](../docs/prds/threat-model.md).
 
@@ -28,7 +30,9 @@ replaced connections are ignored. Events are delivered on the owner's context
 
 ## Build and test
 
-From the repository root with Node.js 22, JDK 17+ and the Android SDK (36):
+From the repository root with Node.js 22, a JDK 17 or 21 to run Gradle 8.14 (newer JDKs
+such as Android Studio's bundled 25 are not supported; the build uses a Java 17 toolchain)
+and the Android SDK (36). On macOS/Linux use `./gradlew` instead of `.\gradlew.bat`:
 
 ```powershell
 node native/tools/sync-vectors.cjs --check
@@ -40,7 +44,9 @@ cd native/android
 The app build runs `export-brand.cjs` itself, so brand/strings changes in
 `src/brand`, `src/i18n`, `src/theme.js` or `native/i18n` are picked up
 automatically. Release builds read `MEDIASYNC_KEYSTORE`, `MEDIASYNC_KEYSTORE_PASSWORD`,
-`MEDIASYNC_KEY_ALIAS` and `MEDIASYNC_KEY_PASSWORD`; `MEDIASYNC_VERSION_CODE`
+`MEDIASYNC_KEY_ALIAS` and `MEDIASYNC_KEY_PASSWORD` (without them the release is unsigned);
+the [`build-android.yml`](../.github/workflows/build-android.yml) workflow maps the
+`ANDROID_KEYSTORE_*` secrets to them on `v*` tags. `MEDIASYNC_VERSION_CODE`
 overrides the version code.
 
 The app unit tests cover content-download cancellation while reading the body,
@@ -67,9 +73,21 @@ xcodebuild -project native/ios/App/MediaSync.xcodeproj -scheme MediaSync \
   -destination 'platform=iOS Simulator,name=iPhone 16' CODE_SIGNING_ALLOWED=NO test
 ```
 
-**The Swift code (core and app) has not been compiled yet**: the migration
-environment was Windows. The macOS CI job is its first verification. Physical
-devices and real TVs have not been tested on either platform.
+**iOS baseline verified on 2026-10-01:** Xcode 26.0.1 and XcodeGen 2.46.0;
+41 Swift core tests and 2 hosted app tests passed on the iPhone 17 Pro simulator.
+The Release arm64 archive also built successfully without signing. Use an
+installed simulator destination rather than assuming iPhone 16 is available.
+Real TVs and production signing remain unverified.
+
+Physical iPhone against the emulator without Apple's multicast entitlement: build
+Debug with `CODE_SIGN_ENTITLEMENTS=` and launch with
+`MEDIASYNC_SSDP_DESTINATION=<emulator IP>` (Debug-only unicast M-SEARCH), e.g.
+`xcrun devicectl device process launch --environment-variables '{"MEDIASYNC_SSDP_DESTINATION":"192.168.1.48"}' <bundle id>`.
+Everything after discovery uses unicast and is exercised normally.
+
+Native DASH on iOS is deferred: MobileVLCKit failed the device timing gate, and
+DASH stays on the brand's sync web player for now (known gap). See the
+[feasibility decision](../docs/ios-native-dash.md).
 
 ## Decisions and known gaps
 
@@ -119,17 +137,16 @@ source location. Run them from a full checkout, not an isolated copied package.
 
 ## Next steps
 
-1. Run the macOS CI job and fix any Swift compile/test failures.
+1. Repeat the locally verified baseline in macOS CI.
 2. Test on physical devices and TVs: multicast, permissions, TalkBack/VoiceOver,
    30-minute background sessions and battery (see the parity matrix).
-3. Close the documented gaps and pending product decisions, then start the beta
-   and cutover plan of PRD-014.
+3. Close the documented gaps and pending product decisions, then run the beta
+   and staged rollout of PRD-014 (the RN code is already retired).
 
 Keep brand values sourced from `src/brand/brand.config.js`; generated native
 resources must not be edited by hand. Preserve all existing localized UI languages.
 
-Do not put handwritten native applications in root `android/` or `ios/`: those
-directories are ignored Expo prebuild outputs. The versioned migration lives here.
+Root `android/` and `ios/` are ignored (former Expo prebuild outputs); the apps live here.
 
 ## Discovery contract
 

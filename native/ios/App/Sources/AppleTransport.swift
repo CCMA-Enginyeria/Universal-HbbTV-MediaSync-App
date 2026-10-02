@@ -35,7 +35,11 @@ final class AppleTransport: NSObject, Transport, URLSessionWebSocketDelegate {
         dispatchPrecondition(condition: .onQueue(.main))
         listeners[token] = events
         guard let target = URL(string: url) else {
-            DispatchQueue.main.async { self.finish(token, failed: true) }
+            // No socket exists to remove, so report the failure directly (unless it was closed meanwhile).
+            DispatchQueue.main.async { [weak self] in
+                guard let events = self?.listeners.removeValue(forKey: token) else { return }
+                events.onClosed(token, failed: true)
+            }
             return
         }
         var request = URLRequest(url: target)
@@ -47,7 +51,24 @@ final class AppleTransport: NSObject, Transport, URLSessionWebSocketDelegate {
         diagnostics.log("transport", "ws.open", ["token": token])
         task.resume()
         receive(token, task)
+        ping(token, task)
     }
+
+    /// Keeps silent sockets (CII between changes) from hitting the request timeout and detects dead TVs,
+    /// like OkHttp's ping interval on Android.
+    private func ping(_ token: Int64, _ task: URLSessionWebSocketTask) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.pingIntervalS) { [weak self] in
+            guard let self = self, self.sockets[token] === task else { return }
+            task.sendPing { error in
+                DispatchQueue.main.async {
+                    guard self.sockets[token] === task else { return }
+                    if error != nil { self.finish(token, failed: true) } else { self.ping(token, task) }
+                }
+            }
+        }
+    }
+
+    private static let pingIntervalS = 5.0
 
     private func receive(_ token: Int64, _ task: URLSessionWebSocketTask) {
         task.receive { [weak self] result in
@@ -163,7 +184,10 @@ private final class UdpChannel {
             defer { freeaddrinfo(result) }
             let socket = Darwin.socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
             guard socket >= 0 else { return onFailure() }
-            guard fcntl(socket, F_SETFL, O_NONBLOCK) != -1, connect(socket, address.pointee.ai_addr, address.pointee.ai_addrlen) == 0 else {
+            // Writes to a socket reclaimed while suspended raise SIGPIPE by default (TN2277).
+            var noSigPipe: Int32 = 1
+            guard setsockopt(socket, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size)) == 0,
+                  fcntl(socket, F_SETFL, O_NONBLOCK) != -1, connect(socket, address.pointee.ai_addr, address.pointee.ai_addrlen) == 0 else {
                 Darwin.close(socket)
                 return onFailure()
             }

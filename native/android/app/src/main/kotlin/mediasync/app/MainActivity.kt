@@ -39,7 +39,7 @@ import mediasync.app.web.CustomTabsCompanion
  * re-binds views. Phones stay portrait except fullscreen video and web pages.
  */
 class MainActivity : ComponentActivity() {
-    private val customTabs by lazy { CustomTabsCompanion(applicationContext, graph.session, graph.mainHandler) }
+    private val customTabs: CustomTabsCompanion get() = graph.customTabs
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
@@ -93,6 +93,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        customTabs.onHostResumed()
     }
 
     override fun onDestroy() {

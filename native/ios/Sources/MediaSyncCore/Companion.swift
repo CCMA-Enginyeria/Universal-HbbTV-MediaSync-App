@@ -1,6 +1,6 @@
 import Foundation
 
-/// Companion page protocol (`src/utils/companionProtocol.js`), shared by WKWebView and the DASH web player.
+/// Companion page protocol (formerly `src/utils/companionProtocol.js` in the React Native app), shared by WKWebView and the DASH web player.
 public enum CompanionProtocol {
     public static let version = 1
     public static let maxInboundChars = 65_536

@@ -154,19 +154,22 @@ private fun Section(title: String) {
 
 @Composable
 private fun ModeSelector(state: SessionController.UiState, controller: SessionController) {
+    // Shows the mode actually in use (PRD-006-R08); the stored preference can differ when
+    // the TV only offers the other stack.
+    val shown = state.effectiveMode ?: state.preferredMode
     Section(stringResource(R.string.discovery_modeTitle))
     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
         SyncMode.entries.forEachIndexed { index, mode ->
             val label = stringResource(if (mode == SyncMode.NATIVE) R.string.discovery_modeNative else R.string.discovery_modeCompat)
             SegmentedButton(
-                selected = state.preferredMode == mode,
+                selected = shown == mode,
                 enabled = mode in state.availableModes,
                 onClick = { controller.setPreferredMode(mode) },
                 shape = SegmentedButtonDefaults.itemShape(index, SyncMode.entries.size),
             ) { Text(label) }
         }
     }
-    Text(stringResource(if (state.preferredMode == SyncMode.NATIVE) R.string.discovery_modeNativeDescription else R.string.discovery_modeCompatDescription),
+    Text(stringResource(if (shown == SyncMode.NATIVE) R.string.discovery_modeNativeDescription else R.string.discovery_modeCompatDescription),
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(top = Tokens.spacing("xs")))
 }

@@ -9,12 +9,27 @@ struct CompanionScreen: View {
     let onClose: () -> Void
     @State private var failed = false
     @State private var reloadToken = 0
+    /// Redirect of the page announced as `from` (e.g. http -> https), and how many hops were followed.
+    @State private var redirect: (from: String, to: String, hops: Int)?
+    private static let maxRedirects = 3
+
+    private var page: String? {
+        guard let url = url else { return nil }
+        if let redirect = redirect, redirect.from == url { return redirect.to }
+        return url
+    }
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
             Theme.background.ignoresSafeArea()
-            if let url = url, CompanionProtocol.origin(url) != nil, !failed {
-                CompanionWebView(url: url, session: session, failed: $failed).id("\(url)#\(reloadToken)").ignoresSafeArea(edges: .bottom)
+            if let announced = url, let url = page, CompanionProtocol.origin(url) != nil, !failed {
+                CompanionWebView(url: url, session: session, failed: $failed) { target in
+                    let hops = redirect?.from == announced ? redirect!.hops : 0
+                    guard hops < Self.maxRedirects, CompanionProtocol.origin(target) != nil else { return false }
+                    redirect = (announced, target, hops + 1)
+                    return true
+                }
+                .id("\(url)#\(reloadToken)").ignoresSafeArea(edges: .bottom)
             } else {
                 VStack(spacing: Theme.spacing("md")) {
                     Text(L10n.t(failed ? "native.web.loadError" : "discovery.webNoContent")).foregroundColor(Theme.onSurface)
@@ -48,8 +63,10 @@ struct CompanionWebView: UIViewRepresentable {
     let url: String
     let session: SessionModel
     @Binding var failed: Bool
+    /// Reopens the screen on another origin; returns false when the hop is refused.
+    let onRedirect: (String) -> Bool
 
-    func makeCoordinator() -> Coordinator { Coordinator(url: url, session: session, failed: $failed) }
+    func makeCoordinator() -> Coordinator { Coordinator(url: url, session: session, failed: $failed, onRedirect: onRedirect) }
 
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
@@ -85,11 +102,15 @@ struct CompanionWebView: UIViewRepresentable {
         private let gate: CompanionBridgeGate
         private var ready = false
         private var failed: Binding<Bool>
+        private let onRedirect: (String) -> Bool
+        /// Generation of the committed document; messages from a page being replaced are dropped.
+        private var committedGeneration: Int64 = -1
 
-        init(url: String, session: SessionModel, failed: Binding<Bool>) {
+        init(url: String, session: SessionModel, failed: Binding<Bool>, onRedirect: @escaping (String) -> Bool) {
             gate = CompanionBridgeGate(pageUrl: url)
             self.session = session
             self.failed = failed
+            self.onRedirect = onRedirect
         }
 
         func deliver(_ envelope: String) {
@@ -103,7 +124,7 @@ struct CompanionWebView: UIViewRepresentable {
 
         func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
             guard message.frameInfo.isMainFrame, let text = message.body as? String,
-                  let inbound = gate.accept(sourceOrigin: origin(message.frameInfo.securityOrigin), generation: gate.pageGeneration, text: text)
+                  let inbound = gate.accept(sourceOrigin: origin(message.frameInfo.securityOrigin), generation: committedGeneration, text: text)
             else { return }
             session.onCompanionMessage(inbound)
         }
@@ -113,6 +134,16 @@ struct CompanionWebView: UIViewRepresentable {
             ready = false
         }
 
+        func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+            committedGeneration = gate.pageGeneration
+        }
+
+        /// The web content process was killed (e.g. memory pressure in the background): offer a reload.
+        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+            ready = false
+            failed.wrappedValue = true
+        }
+
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             guard CompanionProtocol.origin(webView.url?.absoluteString) == gate.allowedOrigin else { return }
             ready = true
@@ -120,7 +151,10 @@ struct CompanionWebView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-            if (error as NSError).code != NSURLErrorCancelled { failed.wrappedValue = true }
+            let error = error as NSError
+            // 102 = frame load interrupted by a policy decision (navigation handed elsewhere), not a load failure.
+            let policyChange = error.domain == WKError.errorDomain && error.code == 102
+            if error.code != NSURLErrorCancelled && !policyChange { failed.wrappedValue = true }
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
@@ -130,8 +164,24 @@ struct CompanionWebView: UIViewRepresentable {
                 return decisionHandler(scheme == "http" || scheme == "https" || scheme == "about" ? .allow : .cancel)
             }
             if CompanionProtocol.origin(target.absoluteString) == gate.allowedOrigin { return decisionHandler(.allow) }
-            if let scheme = target.scheme?.lowercased(), scheme == "http" || scheme == "https" { UIApplication.shared.open(target) }
+            guard let scheme = target.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return decisionHandler(.cancel) }
+            // Server redirects and page-driven navigations reopen with the bridge bound to the new origin (never downgrading
+            // https to http); only links the user taps leave for Safari.
+            let downgrade = gate.allowedOrigin?.hasPrefix("https:") == true && scheme != "https"
+            if action.navigationType != .linkActivated && !downgrade && onRedirect(target.absoluteString) {
+                return decisionHandler(.cancel)
+            }
+            UIApplication.shared.open(target)
             decisionHandler(.cancel)
+        }
+
+        /// `target=_blank` / `window.open`: same-origin pages load here, others open in Safari.
+        func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
+                     for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+            guard let target = action.request.url, let scheme = target.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return nil }
+            if CompanionProtocol.origin(target.absoluteString) == gate.allowedOrigin { webView.load(action.request) }
+            else { UIApplication.shared.open(target) }
+            return nil
         }
 
         /// Camera only by brand opt-in, for the page's own origin in the main frame; the OS still asks the user.

@@ -33,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -55,6 +56,7 @@ import mediasync.core.CompanionBridgeGate
 import mediasync.core.CompanionProtocol
 
 private const val BRIDGE = "__mediasyncBridge"
+private const val MAX_REDIRECTS = 3
 
 /**
  * Full-screen companion page. A new URL recreates the WebView (and its bridge),
@@ -65,8 +67,19 @@ private const val BRIDGE = "__mediasyncBridge"
 fun CompanionWebScreen(url: String?, controller: SessionController, onClose: () -> Unit) {
     BackHandler(onBack = onClose)
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()) {
-        if (url != null && CompanionProtocol.origin(url) != null) {
-            key(url) { CompanionWebView(url, controller, onClose) }
+        // A server redirect to another origin (e.g. http -> https) reopens the page with the bridge bound to the final origin.
+        var current by remember(url) { mutableStateOf(url) }
+        var redirects by remember(url) { mutableIntStateOf(0) }
+        val page = current
+        if (page != null && CompanionProtocol.origin(page) != null) {
+            key(page) {
+                CompanionWebView(page, controller, onClose) { target ->
+                    if (redirects >= MAX_REDIRECTS || CompanionProtocol.origin(target) == null) return@CompanionWebView false
+                    redirects++
+                    current = target
+                    true
+                }
+            }
         } else {
             Notice(stringResource(R.string.discovery_webNoContent), stringResource(R.string.discovery_webClose), onClose)
         }
@@ -86,7 +99,7 @@ private fun Notice(message: String, action: String, onAction: () -> Unit) {
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun CompanionWebView(url: String, controller: SessionController, onClose: () -> Unit) {
+private fun CompanionWebView(url: String, controller: SessionController, onClose: () -> Unit, onRedirect: (String) -> Boolean) {
     val context = LocalContext.current
     val gate = remember { CompanionBridgeGate(url) }
     var loading by remember { mutableStateOf(true) }
@@ -156,6 +169,8 @@ private fun CompanionWebView(url: String, controller: SessionController, onClose
 
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                     if (CompanionProtocol.origin(request.url.toString()) == gate.allowedOrigin) return false
+                    val downgrade = gate.allowedOrigin?.startsWith("https:") == true && request.url.scheme != "https"
+                    if (request.isForMainFrame && request.isRedirect && !downgrade && onRedirect(request.url.toString())) return true
                     if (request.url.scheme == "http" || request.url.scheme == "https") {
                         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, request.url)) }
                     }

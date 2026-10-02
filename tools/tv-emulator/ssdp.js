@@ -7,7 +7,7 @@ const dgram = require('dgram');
  *
  * The mobile app discovers TVs by multicasting an `M-SEARCH` with
  *   ST: urn:dial-multiscreen-org:service:dial:1
- * (see src/services/DIALDiscoveryService.js). We join the SSDP multicast group
+ * (see native/android/core/src/main/kotlin/mediasync/core/DialDiscoveryScan.kt). We join the SSDP multicast group
  * and reply with a unicast `HTTP/1.1 200 OK` whose LOCATION header points at
  * our device description XML. The app then fetches that XML over HTTP.
  *

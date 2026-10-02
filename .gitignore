@@ -4,7 +4,7 @@
 node_modules/
 _node-hbbtv/
 
-# Expo
+# Former React Native / Expo artifacts
 .expo/
 dist/
 web-build/

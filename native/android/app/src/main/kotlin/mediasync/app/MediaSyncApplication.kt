@@ -4,6 +4,9 @@ import android.app.Application
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import java.util.concurrent.TimeUnit
 import mediasync.app.content.ContentLoader
 import mediasync.app.data.Preferences
@@ -12,6 +15,7 @@ import mediasync.app.discovery.DiscoveryController
 import mediasync.app.net.AndroidTransport
 import mediasync.app.net.NetworkMonitor
 import mediasync.app.session.SessionController
+import mediasync.app.web.CustomTabsCompanion
 import okhttp3.OkHttpClient
 
 class MediaSyncApplication : Application() {
@@ -21,6 +25,9 @@ class MediaSyncApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         graph = AppGraph(this)
+        ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onStart(owner: LifecycleOwner) = graph.session.onAppForeground()
+        })
     }
 }
 
@@ -40,12 +47,13 @@ class AppGraph(val application: Application) {
         .retryOnConnectionFailure(false)
         .build()
     val diagnostics = Diagnostics()
-    val transport = AndroidTransport(http, mainHandler, diagnostics)
     val network = NetworkMonitor(application)
+    val transport = AndroidTransport(http, mainHandler, diagnostics) { network.state.value.network }
     val preferences = Preferences(application)
     val content = ContentLoader(http.newBuilder().followRedirects(true).followSslRedirects(true).build())
     val discovery = DiscoveryController(application, network, diagnostics, mainHandler)
     val session = SessionController(application, transport, content, preferences, diagnostics, mainHandler)
+    val customTabs = CustomTabsCompanion(application, session, mainHandler)
 }
 
 val Context.graph: AppGraph get() = (applicationContext as MediaSyncApplication).graph

@@ -14,18 +14,23 @@ object Subtitles {
     fun parseTtml(xml: String): List<Cue> {
         val root = SafeXml.parse(xml, MAX_DOCUMENT_CHARS) ?: return emptyList()
         if (root.localName != "tt") return emptyList()
-        val frameRate = root.getAttributeNS(TTP, "frameRate").toDoubleOrNull()?.takeIf { it > 0 } ?: 25.0
+        val declaredFrameRate = root.getAttributeNS(TTP, "frameRate").toDoubleOrNull()?.takeIf { it > 0 }
+        // 25 fps when undeclared, as in the RN parser (EBU-TT-D broadcasters).
+        val frameRate = declaredFrameRate ?: 25.0
         val multiplier = root.getAttributeNS(TTP, "frameRateMultiplier").split(' ')
             .mapNotNull { it.toDoubleOrNull() }.takeIf { it.size == 2 && it[1] != 0.0 }?.let { it[0] / it[1] } ?: 1.0
-        val tickRate = root.getAttributeNS(TTP, "tickRate").toDoubleOrNull()?.takeIf { it > 0 } ?: frameRate
-        val timing = Timing(frameRate * multiplier, tickRate)
+        val subFrameRate = root.getAttributeNS(TTP, "subFrameRate").toDoubleOrNull()?.takeIf { it > 0 } ?: 1.0
+        // TTML: without ttp:tickRate, ticks are frames x sub-frames when a frame rate is declared, otherwise 1 per second.
+        val tickRate = root.getAttributeNS(TTP, "tickRate").toDoubleOrNull()?.takeIf { it > 0 }
+            ?: if (declaredFrameRate != null) declaredFrameRate * multiplier * subFrameRate else 1.0
+        val timing = Timing(frameRate * multiplier, tickRate, subFrameRate)
         val cues = mutableListOf<Cue>()
         val body = SafeXml.child(root, "body") ?: return emptyList()
         walk(body, 0.0, timing, cues)
         return cues.sortedBy { it.startS }
     }
 
-    private class Timing(val frameRate: Double, val tickRate: Double)
+    private class Timing(val frameRate: Double, val tickRate: Double, val subFrameRate: Double)
 
     private fun walk(element: Element, parentBegin: Double, timing: Timing, cues: MutableList<Cue>) {
         if (cues.size >= MAX_CUES) return
@@ -72,7 +77,7 @@ object Subtitles {
         }
         frameTime.matchEntire(text)?.let { match ->
             val (h, m, s, frames, sub) = match.destructured
-            val frameValue = frames.toDouble() + (if (sub.isEmpty()) 0.0 else "0.$sub".toDouble())
+            val frameValue = frames.toDouble() + (if (sub.isEmpty()) 0.0 else sub.toDouble() / timing.subFrameRate)
             return h.toLong() * 3600 + m.toLong() * 60 + s.toLong() + frameValue / timing.frameRate
         }
         offsetTime.matchEntire(text)?.let { match ->

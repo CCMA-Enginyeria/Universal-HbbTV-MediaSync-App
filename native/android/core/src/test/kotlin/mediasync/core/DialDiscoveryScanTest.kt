@@ -20,7 +20,9 @@ class DialDiscoveryScanTest {
         val executor = Executors.newCachedThreadPool()
         val udp = DatagramSocket(InetSocketAddress(InetAddress.getLoopbackAddress(), 0))
         val http = HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0)
-        val base = "http://localhost:${http.address.port}"
+        val base = "http://127.0.0.1:${http.address.port}"
+        var location = "$base/device.xml"
+        var applicationUrl = "$base/apps/"
         val descriptions = AtomicInteger()
         val applications = AtomicInteger()
         var status = 200
@@ -34,7 +36,7 @@ class DialDiscoveryScanTest {
             http.executor = executor
             http.createContext("/device.xml") { exchange ->
                 descriptions.incrementAndGet()
-                exchange.responseHeaders.add("Application-URL", "$base/apps/")
+                exchange.responseHeaders.add("Application-URL", applicationUrl)
                 exchange.responseHeaders.add("Location", "$base/redirected")
                 val bytes = body.toByteArray()
                 exchange.sendResponseHeaders(status, if (chunked) 0 else bytes.size.toLong())
@@ -55,7 +57,7 @@ class DialDiscoveryScanTest {
             val packet = DatagramPacket(ByteArray(4096), 4096)
             udp.receive(packet)
             receivedSearch = String(packet.data, packet.offset, packet.length, Charsets.UTF_8)
-            val message = "HTTP/1.1 200 OK\r\nST: ${DialProtocol.SEARCH_TARGET}\r\nLOCATION: $base/device.xml\r\n\r\n".toByteArray()
+            val message = "HTTP/1.1 200 OK\r\nST: ${DialProtocol.SEARCH_TARGET}\r\nLOCATION: $location\r\n\r\n".toByteArray()
             repeat(3) { udp.send(DatagramPacket(message, message.size, packet.socketAddress)) }
         }
 
@@ -83,6 +85,29 @@ class DialDiscoveryScanTest {
             assertEquals(1, television.applications.get())
             assertEquals("DialApp/1.0", television.receivedAgent)
             assertEquals(DialProtocol.searchMessage, television.receivedSearch)
+        }
+    }
+
+    @Test fun ignoresLocationsNotServedByTheResponder() {
+        Television().use { television ->
+            television.location = "http://192.0.2.10:${television.http.address.port}/device.xml"
+            val responder = television.respond()
+            val result = DialDiscoveryScan(television.options()).use { it.run() }
+            responder.get(2, TimeUnit.SECONDS)
+            assertTrue(result.terminals.isEmpty() && result.failures.isEmpty(), "No request to a host that did not answer")
+            assertEquals(0, television.descriptions.get())
+        }
+    }
+
+    @Test fun rejectsApplicationUrlOnAnotherHost() {
+        Television().use { television ->
+            television.applicationUrl = "http://192.0.2.10/apps/"
+            val responder = television.respond()
+            val result = DialDiscoveryScan(television.options()).use { it.run() }
+            responder.get(2, TimeUnit.SECONDS)
+            assertTrue(result.terminals.isEmpty())
+            assertTrue(result.failures.any { it.message.contains("Application-URL host") })
+            assertEquals(0, television.applications.get())
         }
     }
 
