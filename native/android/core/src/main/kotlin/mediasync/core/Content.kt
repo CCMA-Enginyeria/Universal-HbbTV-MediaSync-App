@@ -89,6 +89,12 @@ data class SegmentTemplate(
     val presentationTimeOffsetSeconds: Double get() = presentationTimeOffset.toDouble() / timescale
 }
 
+/**
+ * Web application announced by the manifest itself, so one MPD can carry media and its
+ * companion experience. Only HTTP(S) pages are accepted; they open like web content IDs.
+ */
+data class WebApplication(val url: String, val name: String?, val language: String?)
+
 data class MediaManifest(
     val url: String,
     val isLive: Boolean,
@@ -98,6 +104,7 @@ data class MediaManifest(
     val suggestedPresentationDelayS: Double?,
     val durationS: Double?,
     val tracks: List<MediaTrack>,
+    val applications: List<WebApplication> = emptyList(),
 ) {
     val audio: List<MediaTrack> get() = tracks.filter { it.kind == TrackKind.AUDIO }
     val video: List<MediaTrack> get() = tracks.filter { it.kind == TrackKind.VIDEO }
@@ -132,6 +139,9 @@ data class PlaybackIntent(val kind: TrackKind, val language: String?, val role: 
 
 object MpdParser {
     const val MAX_BYTES = 4 * 1_048_576
+    /** EventStream scheme of [WebApplication] announcements; `value` is the format version. */
+    const val APPLICATION_SCHEME = "urn:3cat:ums:application:2026"
+    const val MAX_APPLICATIONS = 16
 
     fun parse(xml: String, manifestUrl: String): MediaManifest {
         val root = SafeXml.parse(xml, MAX_BYTES) ?: throw ManifestException("Malformed MPD")
@@ -139,6 +149,7 @@ object MpdParser {
         val isLive = root.getAttribute("type") == "dynamic"
         val mpdBase = resolve(manifestUrl, SafeXml.childText(root, "BaseURL")) ?: manifestUrl
         val tracks = mutableListOf<MediaTrack>()
+        val applications = mutableListOf<WebApplication>()
         var inferredStart = 0.0
         SafeXml.children(root, "Period").forEachIndexed { periodIndex, period ->
             val periodId = period.getAttribute("id").ifEmpty { "p$periodIndex" }
@@ -149,6 +160,7 @@ object MpdParser {
             SafeXml.children(period, "AdaptationSet").forEachIndexed { index, set ->
                 track(set, periodId, index, periodBase, start, duration)?.let(tracks::add)
             }
+            applications(period, periodBase, applications)
         }
         return MediaManifest(
             url = manifestUrl,
@@ -159,7 +171,33 @@ object MpdParser {
             suggestedPresentationDelayS = parseDuration(root.getAttribute("suggestedPresentationDelay")),
             durationS = if (isLive) null else parseDuration(root.getAttribute("mediaPresentationDuration")),
             tracks = tracks,
+            applications = applications,
         )
+    }
+
+    /**
+     * Collects `Application` elements (any namespace) from the period's application EventStreams.
+     * Event timing is not applied yet: every announced application is offered for the whole
+     * presentation. Unknown versions, non-web types, unsafe URLs and duplicates are skipped.
+     */
+    private fun applications(period: Element, periodBase: String, into: MutableList<WebApplication>) {
+        for (stream in SafeXml.children(period, "EventStream")) {
+            if (stream.getAttribute("schemeIdUri") != APPLICATION_SCHEME) continue
+            if (stream.getAttribute("value").let { it.isNotEmpty() && it != "1" }) continue
+            for (event in SafeXml.children(stream, "Event")) {
+                for (element in SafeXml.children(event, "Application")) {
+                    if (element.getAttribute("type") != "web") continue
+                    val url = resolve(periodBase, element.getAttribute("url")) ?: continue
+                    if (into.size >= MAX_APPLICATIONS) return
+                    if (into.any { it.url == url }) continue
+                    into += WebApplication(
+                        url = url,
+                        name = element.getAttribute("name").trim().take(200).ifEmpty { null },
+                        language = element.getAttribute("lang").trim().ifEmpty { null },
+                    )
+                }
+            }
+        }
     }
 
     private fun track(set: Element, periodId: String, index: Int, periodBase: String, periodStart: Double, periodDuration: Double?): MediaTrack? {

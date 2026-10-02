@@ -17,6 +17,7 @@ final class SessionModel: ObservableObject {
     struct WebPage: Equatable {
         let url: String
         let title: String?
+        var language: String? = nil
     }
 
     enum Failure { case format, protected, manifest }
@@ -44,6 +45,8 @@ final class SessionModel: ObservableObject {
     @Published private(set) var playerFailed = false
     @Published private(set) var suspendedBySystem = false
     @Published private(set) var webGone = false
+    /// Companion page the user opened last; see `openWebPage`.
+    @Published private(set) var webUrl: String?
     @Published private(set) var webPlayerUrl: String?
     @Published private(set) var volume: Float = 1
 
@@ -51,6 +54,27 @@ final class SessionModel: ObservableObject {
     var probing: Bool { availability.values.contains(.checking) }
     var noModes: Bool { ModeSelection.allUnavailable(availability) }
     var isActive: Bool { selected != nil }
+
+    /// Pages the current content offers: a web content ID or the applications announced by the manifest.
+    var webPages: [WebPage] {
+        switch content {
+        case .web(let page): return [page]
+        case .media(let manifest, _): return manifest.applications.map { WebPage(url: $0.url, title: $0.name, language: $0.language) }
+        default: return []
+        }
+    }
+
+    /// The opened page while the content still offers it. A sole page follows URL changes, so a
+    /// web -> web content change reloads it; nil means the page is gone.
+    var openWebPage: WebPage? {
+        guard let opened = webUrl else { return nil }
+        let pages = webPages
+        return pages.first { $0.url == opened } ?? (pages.count == 1 ? pages[0] : nil)
+    }
+
+    func openWeb(_ url: String) {
+        if webPages.contains(where: { $0.url == url }) { webUrl = url }
+    }
 
     let playerOwner = PlayerOwner()
     private let transport: AppleTransport
@@ -214,6 +238,7 @@ final class SessionModel: ObservableObject {
         snapshot = nil
         content = .none
         webGone = false
+        webUrl = nil
         playerFailed = false
     }
 
@@ -302,8 +327,7 @@ final class SessionModel: ObservableObject {
     }
 
     func seedCompanion(_ sink: CompanionSink) {
-        if case .web(let page) = content { sink.deliver(CompanionProtocol.initMessage(contentId: page.url)) }
-        else { sink.deliver(CompanionProtocol.initMessage(contentId: nil)) }
+        sink.deliver(CompanionProtocol.initMessage(contentId: openWebPage?.url))
         if let envelope = positionEnvelope() ?? lastPositionEnvelope { sink.deliver(envelope) }
         session?.retainedAppMessages.forEach { sink.deliver(CompanionProtocol.appMessage(rawMessage: $0.raw)) }
     }
@@ -360,14 +384,13 @@ final class SessionModel: ObservableObject {
     private func handleContent(_ contentId: String?) {
         contentTask?.cancel()
         selectSubtitle(nil)
-        var hadWeb = false
-        if case .web = content { hadWeb = true }
+        let hadWeb = !webPages.isEmpty
         let resolved = ContentClassifier.resolve(contentId, brandFallback: BrandConfig.defaultContentUrl)
         let kind = ContentClassifier.classify(resolved)
         diagnostics.log("content", "changed", ["kind": kind.rawValue])
         // The previous content's position must not seed pages opened for the new one.
         lastPositionEnvelope = nil
-        webGone = hadWeb && kind != .web
+        webGone = hadWeb && kind != .web && kind != .dash
         switch kind {
         case .none:
             stopPlayback()

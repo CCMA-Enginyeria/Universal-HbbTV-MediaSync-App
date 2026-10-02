@@ -4,7 +4,7 @@ import SwiftUI
 struct TerminalView: View {
     @EnvironmentObject private var session: SessionModel
     let onHelp: () -> Void
-    let onOpenWeb: () -> Void
+    let onOpenWeb: (String) -> Void
     let onFullscreen: () -> Void
     let onBack: () -> Void
 
@@ -67,19 +67,10 @@ struct TerminalView: View {
         case .failed(let reason):
             message(L10n.t(reason == .format ? "native.terminal.unsupportedContent"
                            : reason == .protected ? "native.terminal.protectedContent" : "native.terminal.manifestError"))
-        case .web(let page):
-            section(L10n.t("discovery.webSection"))
-            HStack {
-                Image(systemName: "globe").accessibilityHidden(true)
-                VStack(alignment: .leading) {
-                    Text(page.title ?? L10n.t("discovery.webAvailableTitle")).font(.headline)
-                    Text(L10n.t("discovery.webAvailableSubtitle")).font(.caption).foregroundColor(Theme.onSurfaceVariant)
-                }
-                Spacer()
-                Button(L10n.t("discovery.webOpen"), action: onOpenWeb).buttonStyle(.borderedProminent)
-            }
-            .foregroundColor(Theme.onSurface).padding(Theme.spacing("md")).background(Theme.surface).cornerRadius(Theme.radius("lg"))
+        case .web:
+            webSection
         case .media(let manifest, let kind):
+            webSection
             let tracks = manifest.tracks.filter { !$0.isProtected }
             let audio = tracks.filter { $0.kind == .audio }
             let video = tracks.filter { $0.kind == .video }
@@ -103,6 +94,26 @@ struct TerminalView: View {
                     SubtitleOverlay(text: session.subtitleText)
                         .frame(maxWidth: .infinity)
                 }
+            }
+        }
+    }
+
+    @ViewBuilder private var webSection: some View {
+        let pages = session.webPages
+        if !pages.isEmpty {
+            section(L10n.t("discovery.webSection"))
+            ForEach(pages, id: \.url) { page in
+                HStack {
+                    Image(systemName: "globe").accessibilityHidden(true)
+                    VStack(alignment: .leading) {
+                        let title = page.title ?? L10n.t("discovery.webAvailableTitle")
+                        Text(page.language.map { "\(title) · \(Labels.language($0, kind: .text))" } ?? title).font(.headline)
+                        Text(L10n.t("discovery.webAvailableSubtitle")).font(.caption).foregroundColor(Theme.onSurfaceVariant)
+                    }
+                    Spacer()
+                    Button(L10n.t("discovery.webOpen")) { onOpenWeb(page.url) }.buttonStyle(.borderedProminent)
+                }
+                .foregroundColor(Theme.onSurface).padding(Theme.spacing("md")).background(Theme.surface).cornerRadius(Theme.radius("lg"))
             }
         }
     }

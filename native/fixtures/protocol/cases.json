@@ -101,6 +101,23 @@
   ],
   "manifests": [
     {
+      "file": "applications.mpd",
+      "url": "https://broadcaster.example/vod/show/manifest.mpd",
+      "expect": {
+        "isLive": false,
+        "durationS": 10,
+        "availabilityStartTimeMs": null,
+        "tracks": [
+          { "id": "main/1", "kind": "AUDIO", "language": "ca", "role": null, "label": null, "bandwidth": 128000, "width": null, "height": null, "audioDescription": false, "signLanguage": false, "protected": false, "textFormat": null, "textUrl": null }
+        ],
+        "applications": [
+          { "url": "https://apps.example/experience/?lang=en", "name": "Interactive experience", "language": "en" },
+          { "url": "https://broadcaster.example/vod/show/experience/?lang=ca", "name": "Experiència interactiva", "language": "ca" },
+          { "url": "https://apps.example/second-period", "name": null, "language": null }
+        ]
+      }
+    },
+    {
       "file": "vod.mpd",
       "url": "https://broadcaster.example/vod/show/manifest.mpd",
       "expect": {

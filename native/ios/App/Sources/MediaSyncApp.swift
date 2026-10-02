@@ -64,7 +64,10 @@ struct RootView: View {
                     session.select(terminal)
                     showTerminal = true
                 }, onHelp: { showHelp = true })
-                NavigationLink(destination: TerminalView(onHelp: { showHelp = true }, onOpenWeb: { overlay = .web },
+                NavigationLink(destination: TerminalView(onHelp: { showHelp = true }, onOpenWeb: { url in
+                    session.openWeb(url)
+                    overlay = .web
+                },
                                                          onFullscreen: { overlay = .video }, onBack: {
                     session.leaveDetail()
                     showTerminal = false
@@ -77,7 +80,7 @@ struct RootView: View {
         .fullScreenCover(item: $overlay) { item in
             switch item {
             case .web:
-                CompanionScreen(url: webUrl) { overlay = nil }
+                CompanionScreen(url: session.openWebPage?.url) { overlay = nil }
             case .webPlayer(let url):
                 CompanionScreen(url: url) {
                     overlay = nil
@@ -100,11 +103,6 @@ struct RootView: View {
             AppDelegate.allowsLandscape = value != nil
             if value == nil { requestPortrait() }
         }
-    }
-
-    private var webUrl: String? {
-        if case .web(let page) = session.content { return page.url }
-        return nil
     }
 
     private func requestPortrait() {

@@ -238,6 +238,10 @@ final class ProtocolFixturesTests: XCTestCase {
                 XCTAssertEqual(track.textFormat, str(expected["textFormat"]), context)
                 XCTAssertEqual(track.textUrl, str(expected["textUrl"]), context)
             }
+            let applications = (expect["applications"] as? [[String: Any]] ?? []).map {
+                WebApplication(url: $0["url"] as! String, name: str($0["name"]), language: str($0["language"]))
+            }
+            XCTAssertEqual(manifest.applications, applications, file)
             guard let segments = item["segments"] as? [String: Any] else { continue }
             let track = try XCTUnwrap(manifest.text.first)
             let schedule = TextSegmentSchedule(template: try XCTUnwrap(track.segmentTemplate), baseUrl: try XCTUnwrap(track.baseUrl),

@@ -113,8 +113,9 @@ fun TerminalScreen(onBack: () -> Unit, onHelp: () -> Unit, onOpenWeb: (String) -
                 SessionController.Unsupported.PROTECTED -> R.string.native_terminal_protectedContent
                 SessionController.Unsupported.MANIFEST -> R.string.native_terminal_manifestError
             }))
-            is SessionController.Content.Web -> WebCard(content.page) { onOpenWeb(content.page.url) }
+            is SessionController.Content.Web -> WebSection(state.webPages, onOpenWeb)
             is SessionController.Content.Media -> {
+                WebSection(state.webPages, onOpenWeb)
                 val tracks = content.manifest.tracks.filterNot { it.protected }
                 val audio = tracks.filter { it.kind == TrackKind.AUDIO }
                 val video = tracks.filter { it.kind == TrackKind.VIDEO }
@@ -175,13 +176,22 @@ private fun ModeSelector(state: SessionController.UiState, controller: SessionCo
 }
 
 @Composable
-private fun WebCard(page: SessionController.WebPage, onOpen: () -> Unit) {
+private fun WebSection(pages: List<SessionController.WebPage>, onOpen: (String) -> Unit) {
+    if (pages.isEmpty()) return
     Section(stringResource(R.string.discovery_webSection))
-    Card(colors = CardDefaults.cardColors(containerColor = Tokens.surfaceContainer), modifier = Modifier.fillMaxWidth()) {
+    pages.forEach { page -> WebCard(page) { onOpen(page.url) } }
+}
+
+@Composable
+private fun WebCard(page: SessionController.WebPage, onOpen: () -> Unit) {
+    Card(colors = CardDefaults.cardColors(containerColor = Tokens.surfaceContainer),
+        modifier = Modifier.fillMaxWidth().padding(bottom = Tokens.spacing("sm"))) {
         Row(Modifier.padding(Tokens.spacing("md")), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.Language, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
             Column(Modifier.weight(1f).padding(horizontal = Tokens.spacing("md"))) {
-                Text(page.title ?: stringResource(R.string.discovery_webAvailableTitle), style = MaterialTheme.typography.titleMedium,
+                val title = page.title ?: stringResource(R.string.discovery_webAvailableTitle)
+                val language = page.language?.let { Labels.language(it, TrackKind.TEXT) }
+                Text(if (language != null) "$title · $language" else title, style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface)
                 Text(stringResource(R.string.discovery_webAvailableSubtitle), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)

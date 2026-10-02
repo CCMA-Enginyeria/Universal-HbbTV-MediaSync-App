@@ -108,6 +108,15 @@ DASH stays on the brand's sync web player for now (known gap). See the
 - CI also builds Android release APK/AAB and an unsigned iOS archive. These
   are validation artifacts, not approved store releases; production signing,
   upgrade testing and rollout authorization remain required.
+- A DASH manifest can announce companion web pages, so one MPD carries media and
+  its interactive experience. Each `Application type="web"` in a Period
+  `EventStream` with `schemeIdUri="urn:3cat:ums:application:2026"` (`value`
+  absent or `1`) is offered next to the tracks and opens like a web content ID;
+  `url` may be relative and must resolve to HTTP(S), `name` and `lang` are
+  optional, at most 16 are kept. The prefix needs a namespace declaration
+  (e.g. `xmlns:ums="urn:3cat:ums:2026"`), or the MPD is malformed. Event timing
+  is not applied yet: every application is offered for the whole presentation.
+  Fixture: `fixtures/protocol/applications.mpd`.
 - The apps keep the React Native package/bundle ids and migrate the stored sync
   mode preference, so they can update the RN app in place.
 - Debug builds use a `.dev` id suffix and can be installed side by side.

@@ -24,7 +24,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import mediasync.app.session.SessionController
 import mediasync.app.ui.DiscoveryScreen
 import mediasync.app.ui.FullscreenVideo
 import mediasync.app.ui.HelpScreen
@@ -76,6 +75,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onHelp = { navigation.navigate(HELP) },
                                 onOpenWeb = { url ->
+                                    graph.session.openWeb(url)
                                     if (customTabs.canTry(url)) customTabs.open(this@MainActivity, url) { navigation.navigate(WEB) }
                                     else navigation.navigate(WEB)
                                 },
@@ -84,8 +84,7 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         composable(WEB) {
-                            val page = (session.content as? SessionController.Content.Web)?.page
-                            CompanionWebScreen(page?.url, graph.session) { navigation.popBackStack() }
+                            CompanionWebScreen(session.openWebPage?.url, graph.session) { navigation.popBackStack() }
                         }
                         composable(HELP) { HelpScreen(onBack = { navigation.popBackStack() }) }
                     }

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" xmlns:ums="urn:3cat:ums:2026" type="static" mediaPresentationDuration="PT10S" profiles="urn:dvb:dash:profile:dvb-dash:2014">
+  <Period id="main">
+    <EventStream schemeIdUri="urn:3cat:ums:application:2026" value="1" timescale="1">
+      <Event id="1" presentationTime="0">
+        <ums:Application type="web" url="https://apps.example/experience/?lang=en" name="Interactive experience" lang="en"/>
+        <ums:Application type="web" url="experience/?lang=ca" name="  Experiència interactiva  " lang="ca"/>
+        <ums:Application type="web" url="javascript:alert(1)" name="Script"/>
+        <ums:Application type="web" url="https://user@apps.example/credentials"/>
+        <ums:Application type="native" url="https://apps.example/native"/>
+        <ums:Application url="https://apps.example/untyped"/>
+        <ums:Application type="web" url="https://apps.example/experience/?lang=en" name="Duplicate"/>
+      </Event>
+    </EventStream>
+    <EventStream schemeIdUri="urn:3cat:ums:application:2026" value="2">
+      <Event id="2"><ums:Application type="web" url="https://apps.example/future-version"/></Event>
+    </EventStream>
+    <EventStream schemeIdUri="urn:example:other">
+      <Event id="3"><ums:Application type="web" url="https://apps.example/other-scheme"/></Event>
+    </EventStream>
+    <AdaptationSet id="1" contentType="audio" mimeType="audio/mp4" lang="ca" codecs="mp4a.40.2">
+      <Representation id="a1" bandwidth="128000"/>
+    </AdaptationSet>
+  </Period>
+  <Period id="second">
+    <EventStream schemeIdUri="urn:3cat:ums:application:2026">
+      <Event id="4"><ums:Application type="web" url="https://apps.example/second-period"/></Event>
+    </EventStream>
+  </Period>
+</MPD>

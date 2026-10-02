@@ -59,7 +59,7 @@ class SessionController(
     private val diagnostics: Diagnostics,
     private val main: Handler,
 ) {
-    data class WebPage(val url: String, val title: String?, val iconUrl: String?)
+    data class WebPage(val url: String, val title: String?, val iconUrl: String?, val language: String? = null)
 
     enum class Unsupported { FORMAT, PROTECTED, MANIFEST }
 
@@ -91,11 +91,26 @@ class SessionController(
         val suspendedBySystem: Boolean = false,
         val webGone: Boolean = false,
         val volume: Float = 1f,
+        /** Companion page the user opened last; see [openWebPage]. */
+        val webUrl: String? = null,
     ) {
         val availableModes: List<SyncMode> get() = ModeSelection.available(availability)
         val probing: Boolean get() = availability.values.any { it == Availability.CHECKING }
         val noModes: Boolean get() = ModeSelection.allUnavailable(availability)
         val isActive: Boolean get() = selected != null
+
+        /** Pages the current content offers: a web content ID or the applications announced by the manifest. */
+        val webPages: List<WebPage> get() = when (val current = content) {
+            is Content.Web -> listOf(current.page)
+            is Content.Media -> current.manifest.applications.map { WebPage(it.url, it.name, null, it.language) }
+            else -> emptyList()
+        }
+
+        /**
+         * The opened page while the content still offers it. A sole page follows URL changes, so a
+         * web -> web content change reloads it; null means the page is gone.
+         */
+        val openWebPage: WebPage? get() = webUrl?.let { opened -> webPages.firstOrNull { it.url == opened } ?: webPages.singleOrNull() }
     }
 
     private val tuning = SyncTuning()
@@ -214,6 +229,10 @@ class SessionController(
         update { copy(suspendedBySystem = false) }
     }
 
+    fun openWeb(url: String) {
+        if (_state.value.webPages.any { it.url == url }) update { copy(webUrl = url) }
+    }
+
     fun attachCompanion(sink: CompanionSink) {
         companions.add(sink)
         feed.reset()
@@ -228,8 +247,7 @@ class SessionController(
 
     /** Pushes init, the last position and retained TV state once a page transport is ready. */
     fun seedCompanion(sink: CompanionSink) {
-        val page = (_state.value.content as? Content.Web)?.page
-        sink.deliver(CompanionProtocol.init(page?.url))
+        sink.deliver(CompanionProtocol.init(_state.value.openWebPage?.url))
         (lastPositionEnvelope ?: positionEnvelope())?.let(sink::deliver)
         session?.retainedAppMessages?.forEach { sink.deliver(CompanionProtocol.appMessage(it.raw)) }
     }
@@ -349,11 +367,11 @@ class SessionController(
         metadataJob?.cancel()
         subtitles.select(null, null)
         owner?.selectSubtitle(null)
-        val hadWeb = _state.value.content is Content.Web
+        val hadWeb = _state.value.webPages.isNotEmpty()
         val resolved = ContentClassifier.resolve(contentId, BrandConfig.DEFAULT_CONTENT_URL)
         val kind = ContentClassifier.classify(resolved)
         diagnostics.log("content", "changed", "kind" to kind.name)
-        update { copy(subtitle = null, subtitleText = null, webGone = hadWeb && kind != ContentKind.WEB) }
+        update { copy(subtitle = null, subtitleText = null, webGone = hadWeb && kind != ContentKind.WEB && kind != ContentKind.DASH) }
         when (kind) {
             ContentKind.NONE -> {
                 stopPlayback()

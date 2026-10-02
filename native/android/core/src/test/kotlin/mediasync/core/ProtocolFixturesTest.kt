@@ -155,6 +155,9 @@ class ProtocolFixturesTest {
                 assertEquals(t.str("textFormat"), track.textFormat, context)
                 assertEquals(t.str("textUrl"), track.textUrl, context)
             }
+            val applications = (e["applications"] as? JsonArray).orEmpty().map { it.jsonObject }
+                .map { WebApplication(it.str("url")!!, it.str("name"), it.str("language")) }
+            assertEquals(applications, manifest.applications, file)
             val segments = case["segments"] as? JsonObject ?: continue
             val track = manifest.text.first()
             val schedule = TextSegmentSchedule(assertNotNull(track.segmentTemplate), track.baseUrl!!, manifest.isLive,

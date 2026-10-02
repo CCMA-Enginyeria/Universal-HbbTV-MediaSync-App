@@ -153,6 +153,20 @@ public struct MediaTrack: Equatable {
     public var representationId: String? = nil
 }
 
+/// Web application announced by the manifest itself, so one MPD can carry media and its
+/// companion experience. Only HTTP(S) pages are accepted; they open like web content IDs.
+public struct WebApplication: Equatable {
+    public let url: String
+    public let name: String?
+    public let language: String?
+
+    public init(url: String, name: String?, language: String?) {
+        self.url = url
+        self.name = name
+        self.language = language
+    }
+}
+
 public struct MediaManifest: Equatable {
     public let url: String
     public let isLive: Bool
@@ -162,6 +176,7 @@ public struct MediaManifest: Equatable {
     public let suggestedPresentationDelayS: Double?
     public let durationS: Double?
     public let tracks: [MediaTrack]
+    public var applications: [WebApplication] = []
 
     public var audio: [MediaTrack] { tracks.filter { $0.kind == .audio } }
     public var video: [MediaTrack] { tracks.filter { $0.kind == .video } }
@@ -207,12 +222,16 @@ public struct PlaybackIntent: Equatable {
 
 public enum MpdParser {
     public static let maxBytes = 4 * 1_048_576
+    /// EventStream scheme of `WebApplication` announcements; `value` is the format version.
+    public static let applicationScheme = "urn:3cat:ums:application:2026"
+    public static let maxApplications = 16
 
     public static func parse(_ xml: String, url manifestUrl: String) throws -> MediaManifest {
         guard let root = XmlElement.parse(xml, maxChars: maxBytes), root.name == "MPD" else { throw ManifestError() }
         let isLive = root.attribute("type") == "dynamic"
         let mpdBase = resolve(manifestUrl, root.childText("BaseURL")) ?? manifestUrl
         var tracks: [MediaTrack] = []
+        var applications: [WebApplication] = []
         var inferredStart = 0.0
         for (periodIndex, period) in root.children("Period").enumerated() {
             let periodId = period.attribute("id").isEmpty ? "p\(periodIndex)" : period.attribute("id")
@@ -224,6 +243,7 @@ public enum MpdParser {
                 if let track = try track(set, period: period, periodId: periodId, index: index, periodBase: periodBase,
                                          periodStart: start, periodDuration: duration) { tracks.append(track) }
             }
+            collectApplications(period, periodBase: periodBase, into: &applications)
         }
         return MediaManifest(url: manifestUrl, isLive: isLive,
                              availabilityStartTimeMs: parseDateTime(root.attribute("availabilityStartTime")),
@@ -231,7 +251,28 @@ public enum MpdParser {
                              minimumUpdatePeriodS: parseDuration(root.attribute("minimumUpdatePeriod")),
                              suggestedPresentationDelayS: parseDuration(root.attribute("suggestedPresentationDelay")),
                              durationS: isLive ? nil : parseDuration(root.attribute("mediaPresentationDuration")),
-                             tracks: tracks)
+                             tracks: tracks, applications: applications)
+    }
+
+    /// Collects `Application` elements (any namespace) from the period's application EventStreams.
+    /// Event timing is not applied yet: every announced application is offered for the whole
+    /// presentation. Unknown versions, non-web types, unsafe URLs and duplicates are skipped.
+    private static func collectApplications(_ period: XmlElement, periodBase: String, into applications: inout [WebApplication]) {
+        for stream in period.children("EventStream") where stream.attribute("schemeIdUri") == applicationScheme {
+            let version = stream.attribute("value")
+            guard version.isEmpty || version == "1" else { continue }
+            for event in stream.children("Event") {
+                for element in event.children("Application") where element.attribute("type") == "web" {
+                    guard let url = resolve(periodBase, element.attribute("url")) else { continue }
+                    if applications.count >= maxApplications { return }
+                    if applications.contains(where: { $0.url == url }) { continue }
+                    let name = String(element.attribute("name").trimmingCharacters(in: .whitespacesAndNewlines).prefix(200))
+                    let language = element.attribute("lang").trimmingCharacters(in: .whitespacesAndNewlines)
+                    applications.append(WebApplication(url: url, name: name.isEmpty ? nil : name,
+                                                       language: language.isEmpty ? nil : language))
+                }
+            }
+        }
     }
 
     private static func track(_ set: XmlElement, period: XmlElement, periodId: String, index: Int, periodBase: String,
