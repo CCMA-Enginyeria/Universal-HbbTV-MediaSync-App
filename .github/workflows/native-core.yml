@@ -87,6 +87,10 @@ jobs:
     needs: shared
     steps:
       - uses: actions/checkout@v4
+      # The runner image's default Xcode and simulator runtimes change over time; pin the latest stable.
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -96,10 +100,23 @@ jobs:
         run: |
           brew install xcodegen
           sh native/ios/App/generate.sh
+      - name: Pick an available iPhone simulator
+        run: |
+          # Device names differ between images, so take the first concrete iPhone simulator xcodebuild offers.
+          ID=$(xcodebuild -project native/ios/App/MediaSync.xcodeproj -scheme MediaSync -showdestinations 2>/dev/null \
+            | grep 'platform:iOS Simulator' | grep 'name:iPhone' | grep -v placeholder | head -1 \
+            | sed -E 's/.*id:([^,]+),.*/\1/')
+          if [ -z "$ID" ]; then
+            xcodebuild -project native/ios/App/MediaSync.xcodeproj -scheme MediaSync -showdestinations
+            echo "::error::No iPhone simulator is available on this runner."
+            exit 1
+          fi
+          echo "Using simulator $ID"
+          echo "SIMULATOR_ID=$ID" >> "$GITHUB_ENV"
       - name: Build and test the iOS app on the simulator
         run: |
           xcodebuild -project native/ios/App/MediaSync.xcodeproj -scheme MediaSync \
-            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
             -resultBundlePath "$RUNNER_TEMP/MediaSync-tests.xcresult" CODE_SIGNING_ALLOWED=NO test
       - name: Archive iOS release without signing
         run: |
