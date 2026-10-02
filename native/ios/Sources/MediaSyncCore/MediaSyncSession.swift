@@ -1,6 +1,6 @@
 import Foundation
 
-/// Values used by the React Native reference (`src/utils/config.js`).
+/// Values inherited from the former React Native app (`src/utils/config.js`).
 public struct SyncTuning {
     public var native: SyncController.Options = {
         var options = SyncController.Options()

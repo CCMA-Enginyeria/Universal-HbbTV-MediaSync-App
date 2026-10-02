@@ -1,5 +1,10 @@
 # Media Synchronisation — How It Works
 
+> **Note:** the file paths below (`src/...`) refer to the retired React Native app, which
+> is only in the Git history (last on `main` at `1a3f4e9`). The mechanics and tuning still
+> apply: they are ported to `native/android/core` and `native/ios/Sources/MediaSyncCore`
+> (`SyncController`, `PlaybackCorrector`, `WallClock`, `MediaSyncSession`).
+
 This document explains, end to end, how the companion app keeps the phone's
 audio/video **in sync with the TV** using DVB‑CSS over HbbTV, and how the
 **predictive drift controller** keeps playback locked without hunting.

@@ -4,7 +4,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-/** Values used by the React Native reference (`src/utils/config.js`). */
+/** Values inherited from the former React Native app (`src/utils/config.js`). */
 data class SyncTuning(
     val native: SyncController.Options = SyncController.Options(
         emaAlpha = 0.25, enterBandS = 0.1, exitBandS = 0.01, horizonS = 3.0,

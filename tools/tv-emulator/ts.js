@@ -3,7 +3,7 @@
 /**
  * CSS-TS (Timeline Synchronisation) WebSocket handler.
  *
- * Protocol (see src/services/CSSTSService.js):
+ * Protocol (see native/android/core/src/main/kotlin/mediasync/core/Timeline.kt):
  *   - The app connects and sends a "setup" message: { timelineSelector }.
  *   - The TV replies with "Control Timestamps":
  *       { contentTime, wallClockTime, timelineSpeedMultiplier }

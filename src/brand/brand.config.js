@@ -4,9 +4,8 @@
  * This is the ONE file a broadcaster needs to edit to fork and rebrand the app:
  * app name, identifiers, colors, splash, default language and the App2App channel.
  *
- * It is written as a CommonJS module so it can be consumed both by:
- *   - `app.config.js` (Node / Expo CLI, via require), and
- *   - the React Native code (via `import brand from './brand/brand.config'`).
+ * It is a CommonJS module read by `native/tools/export-brand.cjs`, which generates
+ * the brand resources of the native Android and iOS apps at build time.
  */
 
 const brand = {
@@ -59,7 +58,7 @@ const brand = {
   // URL of the hosted `sync_webplayer` page (dash.js). Used on iOS to play DASH
   // (MPD) content, since iOS AVPlayer cannot play MPEG-DASH natively: the app
   // opens this page in a full-screen WebView and feeds it the DVB-CSS sync with
-  // the companion protocol (see `src/utils/companionProtocol.js`). Host it like
+  // the companion protocol (see `native/android/core/src/main/kotlin/mediasync/core/Companion.kt`). Host it like
   // the companion `sync_app` page (per fork).
   // When the TV announces HLS (M3U8) instead, iOS uses the native player and
   // ignores this. The repo source lives at

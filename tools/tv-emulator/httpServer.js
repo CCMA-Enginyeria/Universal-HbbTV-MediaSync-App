@@ -5,7 +5,7 @@ const http = require('http');
 /**
  * HTTP + DIAL server for the emulated TV.
  *
- * Two responsibilities, both consumed by src/services/DIALDiscoveryService.js:
+ * Two responsibilities, both consumed by native/android/core/src/main/kotlin/mediasync/core/DialDiscoveryScan.kt:
  *
  *  1. GET /dd.xml — the UPnP device description. The app reads the
  *     `Application-URL` response header (critical for HbbTV) to know where the

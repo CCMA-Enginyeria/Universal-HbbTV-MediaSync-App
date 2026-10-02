@@ -10,7 +10,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
- * Companion page protocol (`src/utils/companionProtocol.js`): versioned JSON
+ * Companion page protocol (formerly `src/utils/companionProtocol.js` in the React Native app): versioned JSON
  * envelopes shared by WebView, WKWebView and Custom Tabs transports.
  */
 object CompanionProtocol {
