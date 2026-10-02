@@ -100,16 +100,38 @@ jobs:
         run: |
           brew install xcodegen
           sh native/ios/App/generate.sh
-      - name: Pick an available iPhone simulator
+      - name: Pick or create an iPhone simulator
         run: |
-          # Device names differ between images, so take the first concrete iPhone simulator xcodebuild offers.
-          ID=$(xcodebuild -project native/ios/App/MediaSync.xcodeproj -scheme MediaSync -showdestinations 2>/dev/null \
-            | grep 'platform:iOS Simulator' | grep 'name:iPhone' | grep -v placeholder | head -1 \
-            | sed -E 's/.*id:([^,]+),.*/\1/')
+          # Device names and preinstalled runtimes differ between images: take the first concrete iPhone
+          # simulator xcodebuild offers, otherwise create one (downloading the iOS platform if missing).
+          find_simulator() {
+            xcodebuild -project native/ios/App/MediaSync.xcodeproj -scheme MediaSync -showdestinations 2>/dev/null \
+              | grep 'platform:iOS Simulator' | grep 'name:iPhone' | grep -v placeholder | head -1 \
+              | sed -E 's/.*id:([^,]+),.*/\1/'
+          }
+          latest_runtime() {
+            xcrun simctl list runtimes -j | python3 -c '
+          import json, sys
+          runtimes = [r for r in json.load(sys.stdin)["runtimes"] if r["platform"] == "iOS" and r["isAvailable"]]
+          if runtimes:
+              r = runtimes[-1]
+              phones = [t["identifier"] for t in r["supportedDeviceTypes"] if t["productFamily"] == "iPhone"]
+              print(r["identifier"], phones[-1] if phones else "")'
+          }
+          ID=$(find_simulator)
           if [ -z "$ID" ]; then
-            xcodebuild -project native/ios/App/MediaSync.xcodeproj -scheme MediaSync -showdestinations
-            echo "::error::No iPhone simulator is available on this runner."
-            exit 1
+            read -r RUNTIME TYPE <<< "$(latest_runtime)"
+            if [ -z "$RUNTIME" ]; then
+              echo "No iOS simulator runtime installed; downloading the iOS platform."
+              xcodebuild -downloadPlatform iOS
+              read -r RUNTIME TYPE <<< "$(latest_runtime)"
+            fi
+            if [ -z "$RUNTIME" ] || [ -z "$TYPE" ]; then
+              xcrun simctl list runtimes
+              echo "::error::No iOS simulator runtime with an iPhone device type is available."
+              exit 1
+            fi
+            ID=$(xcrun simctl create "CI iPhone" "$TYPE" "$RUNTIME")
           fi
           echo "Using simulator $ID"
           echo "SIMULATOR_ID=$ID" >> "$GITHUB_ENV"
