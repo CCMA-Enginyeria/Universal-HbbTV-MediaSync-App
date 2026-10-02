@@ -1,8 +1,6 @@
 package mediasync.app.playback
 
 import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.BroadcastReceiver
@@ -11,7 +9,9 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import mediasync.app.MainActivity
@@ -64,10 +64,11 @@ class SyncService : Service() {
     }
 
     private fun notification(title: String): Notification {
-        val manager = getSystemService(NotificationManager::class.java)
-        if (manager.getNotificationChannel(CHANNEL_ID) == null) {
-            manager.createNotificationChannel(NotificationChannel(CHANNEL_ID, getString(R.string.native_notification_channel),
-                NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false); setSound(null, null) })
+        // Compat: channels only exist from API 26; below that this is a no-op.
+        val manager = NotificationManagerCompat.from(this)
+        if (manager.getNotificationChannelCompat(CHANNEL_ID) == null) {
+            manager.createNotificationChannel(NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_LOW)
+                .setName(getString(R.string.native_notification_channel)).setShowBadge(false).setSound(null, null).build())
         }
         val flags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         // Same intent as the launcher icon: brings the task to front without clearing an open Custom Tab.

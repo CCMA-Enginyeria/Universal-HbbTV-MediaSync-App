@@ -41,7 +41,7 @@ android {
 
     defaultConfig {
         applicationId = brand["androidPackage"] as String
-        minSdk = 26
+        minSdk = 24
         targetSdk = 36
         versionCode = (brand["versionCode"] as Number).toInt()
         versionName = brand["version"] as String
@@ -89,6 +89,8 @@ android {
     }
 
     compileOptions {
+        // java.time (MPD availabilityStartTime in :core) is only native from API 26; minSdk matches the RN app (24).
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -112,6 +114,7 @@ kotlin {
 tasks.named("preBuild") { dependsOn(generateBrandResources) }
 
 dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     implementation(project(":core"))
 
     val composeBom = platform("androidx.compose:compose-bom:2025.08.00")
