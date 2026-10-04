@@ -128,14 +128,18 @@ is a request; answering with the same `id` correlates the response.
 
 ## Companion side (Universal HbbTV MediaSync App)
 
-The mobile app detects the compatibility channel and connects to
-`<X_HbbTV_App2AppURL>/<prefix>-cii`, preferring it over native DVB-CSS and
-falling back automatically. See `native/android/core/src/main/kotlin/mediasync/core/MediaSyncSession.kt`
-(`connect()` compat-first logic).
+The mobile app probes both transports when the user selects a TV. It connects
+to `<X_HbbTV_App2AppURL>/<prefix>-cii` for the *Compatibility* mode and to the
+native `X_HbbTV_InterDevSyncURL` for the *High precision* mode. Compatibility is
+the default; the app uses native DVB-CSS when the probe confirms it or the user
+selects it for that TV model. See `TransportProbe` and `MediaSyncSession` in
+[`native/android/core`](../../native/android/core/src/main/kotlin/mediasync/core)
+and their Swift ports in `native/ios/Sources/MediaSyncCore`.
 
-The application channel is handled by `native/android/core/src/main/kotlin/mediasync/core/App2AppChannel.kt`
-and exposed through `MediaSyncService.sendAppMessage()`, `requestApp()` and the
-`app-message` event. It is opened whenever the terminal advertises an App2App
-base URL, regardless of the DVB-CSS transport in use. Messages are relayed
-verbatim to the companion web page over the Chrome Custom Tabs channel, so the
-app itself stays agnostic of the payload schema.
+The application channel is handled by `App2AppChannel` and exposed through
+`MediaSyncSession.sendAppMessage()`. The app opens it whenever the terminal
+advertises an App2App base URL, whatever DVB-CSS transport is in use. Messages
+are relayed verbatim to the companion web page (Custom Tab, WebView or
+WKWebView) as `app-message` envelopes, so the app itself stays agnostic of the
+payload schema. See the [broadcaster guide](../../docs/BROADCASTERS.md#4-a-web-page-as-the-content-id)
+for the page side.

@@ -44,6 +44,7 @@ See `native/README.md` for details, contracts and known gaps.
 
 - **`native-core.yml`** — on push to `main`/`native-apps`, pull requests and manual dispatch: reference vectors, brand check, Android tests/build/lint (incl. emulator end to end), Swift tests, iOS simulator tests and unsigned archive.
 - **`build-android.yml`** — on `v*` tags (tag must equal `v` + brand `version`) or manual dispatch: signed release APK + AAB of the native app, signatures verified, attached to the GitHub release. Secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` (the Play upload key).
+- **`build-ios.yml`** — on `v*` tags (uploads to App Store Connect/TestFlight) or manual dispatch (upload optional, build number override): signed App Store IPA of the native app with manual signing via the untracked `native/ios/App/Config/Signing.xcconfig`; checks the profile carries the multicast entitlement. Secrets: `IOS_DIST_CERT_P12_BASE64`, `IOS_DIST_CERT_PASSWORD`, `IOS_PROVISIONING_PROFILE_BASE64`, `APPSTORE_API_KEY_ID`, `APPSTORE_API_ISSUER_ID`, `APPSTORE_API_PRIVATE_KEY`. Submitting for review stays manual.
 - **`publish-landing-page.yml`** — deploys `www/landing` and the IBC demonstrations to GitHub Pages.
 
 ## Code Style

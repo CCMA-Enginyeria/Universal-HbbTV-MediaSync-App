@@ -196,11 +196,12 @@
                     second-screen experiences.
                 </p>
                 <div class="flex flex-col md:flex-row gap-md justify-center">
-                    <button
-                        class="bg-gradient-brand text-white px-xl py-md rounded-lg font-bold flex items-center justify-center gap-sm hover:shadow-[0_0_20px_rgba(46,125,255,0.4)] transition-all">
+                    <a href="https://github.com/CCMA-Enginyeria/Universal-HbbTV-MediaSync-App"
+                        class="bg-gradient-brand text-white px-xl py-md rounded-lg font-bold flex items-center justify-center gap-sm hover:shadow-[0_0_20px_rgba(46,125,255,0.4)] transition-all"
+                        target="_blank" rel="noopener noreferrer">
                         <span class="material-symbols-outlined">code</span>
                         View on GitHub
-                    </button>
+                    </a>
                     <a href="https://ccma-enginyeria.github.io/Universal-HbbTV-MediaSync-App/ibc_demostrations/"
                         class="border border-tertiary text-tertiary px-xl py-md rounded-lg font-bold flex items-center justify-center gap-sm hover:bg-tertiary hover:text-on-tertiary transition-all"
                         target="_blank" rel="noopener noreferrer"
@@ -294,8 +295,9 @@
                 </div>
                 <div class="mt-xl p-lg bg-surface-container rounded-xl border border-outline-variant text-center">
                     <p class="text-on-surface-variant italic">
-                        The app can offer alternative audio, additional video, sign-language video, or other
-                        second-screen experiences, depending on what the broadcaster makes available.
+                        The app can offer alternative audio, additional video, sign-language video, subtitles or
+                        interactive web experiences synchronized with the programme, depending on what the
+                        broadcaster makes available.
                     </p>
                 </div>
             </div>
@@ -310,10 +312,22 @@
                         <p class="text-on-surface-variant mb-lg font-body-lg text-primary font-bold">Zero custom apps to
                             build or maintain. Zero backend to run. Zero complex infrastructure to configure.</p>
                         <p class="text-on-surface-variant mb-lg">
-                            Broadcasters only need to add a lightweight HbbTV snippet that points to the companion DASH
-                            MPD. The app handles the rest: it discovers the TV on the local network, loads the manifest,
-                            and synchronizes with the TV content in real time.
+                            Broadcasters only need to add a lightweight HbbTV snippet that points to the companion
+                            content: a DASH MPD, an HLS playlist or a web page. The app handles the rest: it discovers
+                            the TV on the local network, loads the content, and synchronizes with the TV in real time.
                         </p>
+                        <p class="text-on-surface-variant mb-lg">
+                            The same MPD can also announce <strong>interactive web experiences</strong>, one per
+                            language if needed. They appear next to the audio and video tracks and receive the TV
+                            timeline when the viewer opens them.
+                        </p>
+                        <pre class="mb-lg overflow-x-auto rounded-lg border border-outline-variant bg-surface-container-low p-md text-xs text-on-surface-variant"><code>&lt;EventStream schemeIdUri="urn:3cat:ums:application:2026" value="1"&gt;
+  &lt;Event id="1" presentationTime="0"&gt;
+    &lt;ums:Application type="web" lang="en"
+      url="https://apps.example.com/experience/"
+      name="Immersive experience"/&gt;
+  &lt;/Event&gt;
+&lt;/EventStream&gt;</code></pre>
                         <div class="flex flex-wrap gap-md mb-xl">
                             <div
                                 class="flex items-center gap-xs bg-surface-container-high px-md py-sm rounded-lg border border-outline-variant">
@@ -335,7 +349,18 @@
                                 <span class="material-symbols-outlined text-primary">verified</span>
                                 <span class="font-bold text-on-surface">HbbTV standards-based</span>
                             </div>
+                            <div
+                                class="flex items-center gap-xs bg-surface-container-high px-md py-sm rounded-lg border border-outline-variant">
+                                <span class="material-symbols-outlined text-primary">public</span>
+                                <span class="font-bold text-on-surface">Web experiences in the MPD</span>
+                            </div>
                         </div>
+                        <a class="inline-flex items-center gap-sm bg-gradient-brand text-white px-xl py-md rounded-lg font-bold transition-all hover:scale-105 active:scale-95 shadow-lg"
+                            href="https://github.com/CCMA-Enginyeria/Universal-HbbTV-MediaSync-App/blob/main/docs/BROADCASTERS.md"
+                            target="_blank" rel="noopener noreferrer">
+                            <span class="material-symbols-outlined">menu_book</span>
+                            Read the integration guide
+                        </a>
                     </div>
                     <div class="bg-surface-container-low p-xl rounded-xl border border-outline-variant">
                         <h4 class="font-bold text-on-surface mb-lg uppercase tracking-widest text-xs">Initiative
@@ -486,10 +511,34 @@
                             class="material-symbols-outlined text-primary text-4xl group-hover:scale-110 transition-transform">public</span>
                         <div>
                             <h3 class="font-bold text-on-surface mb-xs">Synchronized Web</h3>
-                            <p class="text-on-surface-variant text-sm">Broadcasters can point the content ID to a
-                                companion <strong>web app</strong> instead of a DASH track. The mobile opens it
-                                fullscreen and streams the TV timeline to it via post-messages, so the page renders in
-                                perfect sync with the broadcast.</p>
+                            <p class="text-on-surface-variant text-sm">Broadcasters can announce companion
+                                <strong>web experiences</strong> inside the DASH manifest, next to the tracks, or point
+                                the content ID straight to a web page. The phone opens it fullscreen and streams the TV
+                                timeline to it, so the page renders in perfect sync with the broadcast.</p>
+                        </div>
+                    </div>
+                    <!-- Card 5: Subtitles & Accessibility -->
+                    <div
+                        class="bg-surface-container-low rounded-xl p-lg border border-outline-variant hover:border-primary transition-colors flex flex-col gap-md group">
+                        <span
+                            class="material-symbols-outlined text-primary text-4xl group-hover:scale-110 transition-transform">closed_caption</span>
+                        <div>
+                            <h3 class="font-bold text-on-surface mb-xs">Subtitles &amp; Accessibility</h3>
+                            <p class="text-on-surface-variant text-sm">TTML and WebVTT subtitles from the manifest,
+                                with audio description and sign-language tracks clearly labeled. Controls are labeled
+                                for the TalkBack and VoiceOver screen readers.</p>
+                        </div>
+                    </div>
+                    <!-- Card 6: Native apps -->
+                    <div
+                        class="bg-surface-container-low rounded-xl p-lg border border-outline-variant hover:border-primary transition-colors flex flex-col gap-md group">
+                        <span
+                            class="material-symbols-outlined text-primary text-4xl group-hover:scale-110 transition-transform">devices</span>
+                        <div>
+                            <h3 class="font-bold text-on-surface mb-xs">Native Android &amp; iOS</h3>
+                            <p class="text-on-surface-variant text-sm">Built natively with Kotlin/Jetpack Compose and
+                                Swift/SwiftUI on a shared, tested protocol core. Choose between high-precision DVB-CSS
+                                and an App2App compatibility mode for TVs with an unreliable sync stack.</p>
                         </div>
                     </div>
                 </div>
@@ -527,9 +576,10 @@
                                 class="w-12 h-12 rounded-full bg-gradient-brand text-white flex items-center justify-center font-bold z-10 shadow-lg flex-shrink-0">
                                 2</div>
                             <div>
-                                <h4 class="font-bold text-on-surface">The TV publishes the target MPD</h4>
-                                <p class="text-on-surface-variant">The HbbTV app enables MediaSync and shares which DASH
-                                    MPD the second device should receive.</p>
+                                <h4 class="font-bold text-on-surface">The TV publishes the companion content</h4>
+                                <p class="text-on-surface-variant">The HbbTV app enables MediaSync and shares which
+                                    content the second device should receive: a DASH MPD, an HLS playlist or a web page.
+                                    The app picks the most reliable sync transport the TV offers.</p>
                             </div>
                         </div>
                         <div
@@ -540,7 +590,8 @@
                             <div>
                                 <h4 class="font-bold text-on-surface">The mobile reads the manifest components</h4>
                                 <p class="text-on-surface-variant">Once it receives the MPD, the app parses every
-                                    available component: audio, video, accessibility, language, and role metadata.</p>
+                                    available component: audio, video, subtitles, accessibility, language and role
+                                    metadata, plus the web experiences announced in the manifest.</p>
                             </div>
                         </div>
                         <div
@@ -551,7 +602,8 @@
                             <div>
                                 <h4 class="font-bold text-on-surface">The user chooses what to watch or hear</h4>
                                 <p class="text-on-surface-variant">Viewers select the component they need, from an
-                                    alternate audio track to a sign-language video or companion feed.</p>
+                                    alternate audio track to a sign-language video, subtitles or an interactive web
+                                    experience.</p>
                             </div>
                         </div>
                         <div
@@ -709,8 +761,12 @@
                                 </summary>
                                 <div class="px-lg pb-lg text-on-surface-variant">
                                     Add a lightweight HbbTV snippet to your service that points to the companion DASH
-                                    MPD. There is no backend to run and no media-file changes required &mdash; the app
-                                    discovers the TV, loads the manifest and synchronizes in real time. Need help
+                                    MPD, HLS playlist or web page. There is no backend to run and no media-file changes
+                                    required &mdash; the app discovers the TV, loads the content and synchronizes in
+                                    real time. Step-by-step instructions are in the
+                                    <a class="text-primary hover:underline"
+                                        href="https://github.com/CCMA-Enginyeria/Universal-HbbTV-MediaSync-App/blob/main/docs/BROADCASTERS.md"
+                                        target="_blank" rel="noopener noreferrer">integration guide</a>. Need help
                                     getting started?
                                     <a class="text-primary hover:underline" href="mailto:rbermudez.h@3cat.cat">Contact
                                         us</a>.
@@ -726,7 +782,45 @@
                                 </summary>
                                 <div class="px-lg pb-lg text-on-surface-variant">
                                     Over broadband, any service that uses an MPD manifest is supported: live streams
-                                    (with and without DVR), VOD, and audio on demand.
+                                    (with and without DVR), VOD, and audio on demand. HLS playlists and companion web
+                                    pages work too. Tracks can be alternative audio, audio description, extra video or
+                                    sign language, with TTML or WebVTT subtitles. DRM-protected tracks are not supported
+                                    yet.
+                                </div>
+                            </details>
+                            <details
+                                class="group bg-surface-container rounded-xl border border-outline-variant overflow-hidden">
+                                <summary
+                                    class="flex items-center justify-between gap-sm p-lg cursor-pointer list-none font-bold text-on-surface hover:text-primary transition-colors">
+                                    How do I offer an interactive web experience?
+                                    <span
+                                        class="material-symbols-outlined text-on-surface-variant transition-transform group-open:rotate-180">expand_more</span>
+                                </summary>
+                                <div class="px-lg pb-lg text-on-surface-variant">
+                                    Add an <code>EventStream</code> with the scheme
+                                    <code>urn:3cat:ums:application:2026</code> to your MPD, with one
+                                    <code>Application type="web"</code> per page and language. The app lists each one
+                                    next to the tracks; when opened, the page receives the TV position through
+                                    post-messages. If the experience is only a web page, you can also use its URL as the
+                                    content ID. See the
+                                    <a class="text-primary hover:underline"
+                                        href="https://github.com/CCMA-Enginyeria/Universal-HbbTV-MediaSync-App/blob/main/docs/BROADCASTERS.md#3-announce-web-experiences-inside-the-mpd"
+                                        target="_blank" rel="noopener noreferrer">integration guide</a>.
+                                </div>
+                            </details>
+                            <details
+                                class="group bg-surface-container rounded-xl border border-outline-variant overflow-hidden">
+                                <summary
+                                    class="flex items-center justify-between gap-sm p-lg cursor-pointer list-none font-bold text-on-surface hover:text-primary transition-colors">
+                                    What if the TV's DVB-CSS implementation is unreliable?
+                                    <span
+                                        class="material-symbols-outlined text-on-surface-variant transition-transform group-open:rotate-180">expand_more</span>
+                                </summary>
+                                <div class="px-lg pb-lg text-on-surface-variant">
+                                    Add the open-source <code>hbbtv-compat</code> script to your HbbTV application. It
+                                    serves the same sync protocol over the App2App channel, and the app uses it
+                                    automatically when the TV offers it. It also lets your TV application and the companion web page exchange
+                                    messages.
                                 </div>
                             </details>
                             <details
@@ -778,7 +872,7 @@
                     The common companion app for synchronized HbbTV experiences. Enabling broadcasters to deliver
                     high-quality second-screen content without fragmented development.
                 </p>
-                <p class="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-widest text-[10px]">Â©
+                <p class="text-label-sm font-label-sm text-on-surface-variant uppercase tracking-widest text-[10px]">&copy;
                     2026 CCNA S,A. Released under MIT License.</p>
                 <p class="mt-sm text-sm"><a class="text-on-surface-variant hover:text-primary transition-colors underline"
                         href="privacy.html">Privacy Policy</a></p>

@@ -5,3 +5,6 @@ PRODUCT_NAME = MediaSync
 MARKETING_VERSION = $(BRAND_MARKETING_VERSION)
 CURRENT_PROJECT_VERSION = $(BRAND_BUILD_NUMBER)
 DEVELOPMENT_LANGUAGE = $(BRAND_DEVELOPMENT_LANGUAGE)
+// The app target reads its identity from here (project.yml), because XcodeGen's target preset would
+// otherwise override CODE_SIGN_IDENTITY; Signing.xcconfig switches it to Apple Distribution.
+MEDIASYNC_CODE_SIGN_IDENTITY = Apple Development

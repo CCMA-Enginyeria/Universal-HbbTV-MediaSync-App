@@ -25,12 +25,17 @@ targets:
           - Info.plist
           - "*.entitlements"
           - Brand.xcconfig
+          - PrivacyInfo.xcprivacy
+      # Privacy manifest required by App Store Connect; copied as a bundle resource.
+      - path: Generated/PrivacyInfo.xcprivacy
+        buildPhase: resources
     dependencies:
       - package: MediaSyncCore
     settings:
       base:
         INFOPLIST_FILE: Generated/Info.plist
         CODE_SIGN_ENTITLEMENTS: Generated/MediaSync.entitlements
+        CODE_SIGN_IDENTITY: $(MEDIASYNC_CODE_SIGN_IDENTITY)
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "5.9"

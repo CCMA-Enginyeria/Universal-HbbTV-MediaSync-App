@@ -1,3 +1,7 @@
 #include "Base.xcconfig"
 
 PRODUCT_BUNDLE_IDENTIFIER = $(BRAND_BUNDLE_IDENTIFIER)
+
+// Optional, not versioned: App Store signing written by build-ios.yml (or by hand on a Mac).
+// Kept out of the command line so it does not leak into the Swift package targets.
+#include? "Signing.xcconfig"

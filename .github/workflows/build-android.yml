@@ -3,33 +3,23 @@ name: Build Android release
 # Signed release of the native Android app (native/android) for Google Play.
 # Uses the same upload keystore secrets as the former React Native builds, so
 # the native app updates the published app in place (same package and key).
+# Debug builds and tests run in native-core.yml ("Native apps").
 
 on:
   push:
     tags:
       - 'v*'
   workflow_dispatch:
-    inputs:
-      build_type:
-        description: 'Build type'
-        required: true
-        default: 'release'
-        type: choice
-        options:
-          - release
-          - debug
 
 permissions:
   contents: read
 
 jobs:
   build:
-    name: Build Android ${{ github.event.inputs.build_type || 'release' }}
+    name: Build signed Android release
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    env:
-      RELEASE: ${{ github.event_name == 'push' || github.event.inputs.build_type == 'release' }}
 
     steps:
       - name: Checkout repository
@@ -64,7 +54,6 @@ jobs:
           fi
 
       - name: Decode keystore
-        if: env.RELEASE == 'true'
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
@@ -75,7 +64,6 @@ jobs:
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > "$RUNNER_TEMP/release.keystore"
 
       - name: Verify keystore
-        if: env.RELEASE == 'true'
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -93,7 +81,6 @@ jobs:
           keytool -list -v -keystore "$KS" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" | grep -E 'SHA256:'
 
       - name: Build signed release APK + AAB
-        if: env.RELEASE == 'true'
         working-directory: native/android
         env:
           MEDIASYNC_KEYSTORE: ${{ runner.temp }}/release.keystore
@@ -103,7 +90,6 @@ jobs:
         run: bash gradlew :app:assembleRelease :app:bundleRelease --no-daemon
 
       - name: Verify release signatures
-        if: env.RELEASE == 'true'
         run: |
           OUT=native/android/app/build/outputs
           # Without signing Gradle names the APK app-release-unsigned.apk, and Play rejects unsigned bundles.
@@ -116,28 +102,14 @@ jobs:
           cp "$OUT/bundle/release/app-release.aab" "dist/$ARTIFACT_NAME.aab"
 
       - name: Remove keystore
-        if: always() && env.RELEASE == 'true'
+        if: always()
         run: rm -f "$RUNNER_TEMP/release.keystore"
 
-      - name: Build debug APK
-        if: env.RELEASE != 'true'
-        working-directory: native/android
-        run: bash gradlew :app:assembleDebug --no-daemon
-
       - name: Upload release APK + AAB
-        if: env.RELEASE == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARTIFACT_NAME }}-release
           path: dist/
-          retention-days: 30
-
-      - name: Upload debug APK
-        if: env.RELEASE != 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.ARTIFACT_NAME }}-debug
-          path: native/android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
 
       - name: Attach APK + AAB to the GitHub release

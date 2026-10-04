@@ -147,13 +147,113 @@ function write(file, content) {
   fs.writeFileSync(file, content);
 }
 
-function copyAsset(relative, destination, brandFile) {
+function resolveAsset(relative, brandFile) {
   const source = path.resolve(path.dirname(brandFile), '..', '..', relative);
   const fallback = path.resolve(ROOT, relative);
   const file = fs.existsSync(source) ? source : fallback;
   if (!fs.existsSync(file)) fail(`asset not found: ${relative}`);
+  return file;
+}
+
+function copyAsset(relative, destination, brandFile) {
+  const file = resolveAsset(relative, brandFile);
   fs.mkdirSync(path.dirname(destination), { recursive: true });
   fs.copyFileSync(file, destination);
+}
+
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+function crc32(buffer) {
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type, data) {
+  const header = Buffer.alloc(8);
+  header.writeUInt32BE(data.length, 0);
+  header.write(type, 4, 'ascii');
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(Buffer.concat([header.subarray(4), data])), 0);
+  return Buffer.concat([header, data, crc]);
+}
+
+/**
+ * App Store Connect rejects an app icon with an alpha channel, even a fully opaque one, and brand icons are
+ * usually exported as RGBA. Composites an 8-bit, non-interlaced RGB/RGBA PNG over the splash background and
+ * re-encodes it as RGB, so a fork can keep a single icon file for both platforms.
+ */
+function opaquePng(file, backgroundHex) {
+  const zlib = require('node:zlib');
+  const png = fs.readFileSync(file);
+  if (!png.subarray(0, 8).equals(PNG_SIGNATURE)) fail(`icon is not a PNG: ${file}`);
+  let offset = 8;
+  let header = null;
+  const idat = [];
+  while (offset < png.length) {
+    const length = png.readUInt32BE(offset);
+    const type = png.toString('ascii', offset + 4, offset + 8);
+    const data = png.subarray(offset + 8, offset + 8 + length);
+    if (type === 'IHDR') header = data;
+    else if (type === 'IDAT') idat.push(data);
+    else if (type === 'tRNS' || type === 'PLTE') fail(`icon must be an RGB or RGBA PNG without palette/tRNS: ${file}`);
+    offset += 12 + length;
+  }
+  const width = header.readUInt32BE(0);
+  const height = header.readUInt32BE(4);
+  const [bitDepth, colorType, , , interlace] = header.subarray(8, 13);
+  if (bitDepth !== 8 || (colorType !== 2 && colorType !== 6) || interlace !== 0) {
+    fail(`icon must be an 8-bit, non-interlaced RGB or RGBA PNG: ${file}`);
+  }
+  const channels = colorType === 6 ? 4 : 3;
+  const stride = width * channels;
+  const raw = zlib.inflateSync(Buffer.concat(idat));
+  const pixels = Buffer.alloc(height * stride);
+  for (let y = 0; y < height; y += 1) {
+    const filter = raw[y * (stride + 1)];
+    const line = raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1));
+    const row = y * stride;
+    for (let x = 0; x < stride; x += 1) {
+      const left = x >= channels ? pixels[row + x - channels] : 0;
+      const up = y > 0 ? pixels[row - stride + x] : 0;
+      const upLeft = y > 0 && x >= channels ? pixels[row - stride + x - channels] : 0;
+      let predictor = 0;
+      if (filter === 1) predictor = left;
+      else if (filter === 2) predictor = up;
+      else if (filter === 3) predictor = (left + up) >> 1;
+      else if (filter === 4) {
+        const estimate = left + up - upLeft;
+        const dLeft = Math.abs(estimate - left);
+        const dUp = Math.abs(estimate - up);
+        const dUpLeft = Math.abs(estimate - upLeft);
+        predictor = dLeft <= dUp && dLeft <= dUpLeft ? left : dUp <= dUpLeft ? up : upLeft;
+      } else if (filter !== 0) fail(`invalid PNG filter in ${file}`);
+      pixels[row + x] = (line[x] + predictor) & 0xff;
+    }
+  }
+  const background = String(backgroundHex).replace('#', '');
+  const backgroundRgb = [0, 2, 4].map((index) => parseInt(background.substr(index, 2), 16));
+  const out = Buffer.alloc(height * (width * 3 + 1));
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const source = y * stride + x * channels;
+      const alpha = channels === 4 ? pixels[source + 3] : 255;
+      for (let c = 0; c < 3; c += 1) {
+        out[y * (width * 3 + 1) + 1 + x * 3 + c] = Math.round((pixels[source + c] * alpha + backgroundRgb[c] * (255 - alpha)) / 255);
+      }
+    }
+  }
+  const newHeader = Buffer.from(header);
+  newHeader[9] = 2;
+  return Buffer.concat([
+    PNG_SIGNATURE,
+    pngChunk('IHDR', newHeader),
+    pngChunk('IDAT', zlib.deflateSync(out, { level: 9 })),
+    pngChunk('IEND', Buffer.alloc(0)),
+  ]);
 }
 
 const argb = (hex) => {
@@ -358,6 +458,18 @@ function exportIos(outDir, inputs, strings, summary) {
   write(path.join(outDir, 'Info.plist'), plist(info));
   // Physical-device multicast needs Apple's approved entitlement (see native/README.md).
   write(path.join(outDir, 'MediaSync.entitlements'), plist({ 'com.apple.developer.networking.multicast': true }));
+  // App Store Connect rejects uploads that use required-reason APIs without declaring them. Keep in sync with
+  // the app: UserDefaults stores the sync mode (CA92.1); systemUptime/CLOCK_UPTIME_RAW measure elapsed time
+  // on the device for sync and diagnostics (35F9.1). No tracking and no collected data (see privacy.html).
+  write(path.join(outDir, 'PrivacyInfo.xcprivacy'), plist({
+    NSPrivacyTracking: false,
+    NSPrivacyTrackingDomains: [],
+    NSPrivacyCollectedDataTypes: [],
+    NSPrivacyAccessedAPITypes: [
+      { NSPrivacyAccessedAPIType: 'NSPrivacyAccessedAPICategoryUserDefaults', NSPrivacyAccessedAPITypeReasons: ['CA92.1'] },
+      { NSPrivacyAccessedAPIType: 'NSPrivacyAccessedAPICategorySystemBootTime', NSPrivacyAccessedAPITypeReasons: ['35F9.1'] },
+    ],
+  }));
   const swiftString = (value) => (value == null ? 'nil' : JSON.stringify(value));
   const hex = (value) => `0x${String(value).replace('#', '').toUpperCase()}`;
   write(path.join(outDir, 'BrandConfig.swift'), [
@@ -392,7 +504,8 @@ function exportIos(outDir, inputs, strings, summary) {
     images: [{ filename: 'icon-1024.png', idiom: 'universal', platform: 'ios', size: '1024x1024' }],
     info: { author: 'xcode', version: 1 },
   }, null, 2));
-  copyAsset(inputs.brand.assets.icon, path.join(assets, 'AppIcon.appiconset', 'icon-1024.png'), inputs.brandFile);
+  write(path.join(assets, 'AppIcon.appiconset', 'icon-1024.png'),
+    opaquePng(resolveAsset(inputs.brand.assets.icon, inputs.brandFile), summary.splashBackgroundColor));
   write(path.join(assets, 'SplashIcon.imageset', 'Contents.json'), JSON.stringify({
     images: [{ filename: 'splash.png', idiom: 'universal' }],
     info: { author: 'xcode', version: 1 },
