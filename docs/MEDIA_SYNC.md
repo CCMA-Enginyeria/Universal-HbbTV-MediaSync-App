@@ -357,12 +357,14 @@ actually changes.
 
 Sync must survive the app being backgrounded:
 
-- **Android:** a foreground service ([`modules/foreground-sync`](../modules/foreground-sync))
-  keeps the JS thread, sockets and audio alive. A native **heartbeat** pokes the
-  wall clock so CSS‑WC keeps measuring even though `setInterval` is frozen.
-  Wall‑clock UDP uses [`modules/udp-wall-clock`](../modules/udp-wall-clock).
-- **iOS:** relies on `UIBackgroundModes: ['audio']` while audio plays; multicast
-  uses [`modules/udp-multicast`](../modules/udp-multicast).
+- **Android:** a foreground service ([`SyncService`](../native/android/app/src/main/kotlin/mediasync/app/playback/SyncService.kt))
+  keeps the process, sockets, wall clock and player alive while a session is
+  active. Wall‑clock UDP goes through
+  [`AndroidTransport`](../native/android/app/src/main/kotlin/mediasync/app/net/AndroidTransport.kt).
+- **iOS:** relies on `UIBackgroundModes: ['audio']` while audio plays; wall‑clock
+  UDP goes through [`AppleTransport`](../native/ios/App/Sources/AppleTransport.swift)
+  and SSDP multicast through
+  [`DialDiscoveryScan`](../native/ios/Sources/MediaSyncCore/DialDiscoveryScan.swift).
 
 Because incoming CSS‑TS WebSocket messages wake JS in the background, the
 `position-update` → `runDriftCorrection` fallback keeps correcting even when

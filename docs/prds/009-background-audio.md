@@ -41,5 +41,5 @@ capacidades autorizadas por cada plataforma, y parar de forma predecible.
 Definir politica de auto-reanudacion y presupuesto de bateria. La elegibilidad
 background del SO no garantiza ejecucion indefinida ni excepcion a sus restricciones.
 
-Referencias: [wrapper actual](../../src/utils/ForegroundSync.js),
-[modulo actual](../../modules/foreground-sync), [configuracion](../../app.config.js).
+Referencias: [servicio Android](../../native/android/app/src/main/kotlin/mediasync/app/playback/SyncService.kt),
+[configuracion iOS](../../native/tools/export-brand.cjs) (`UIBackgroundModes`).
