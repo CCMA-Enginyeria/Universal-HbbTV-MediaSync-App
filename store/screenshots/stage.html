@@ -1,0 +1,230 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Store screenshots stage</title>
+<!--
+  Lays out every store panel side by side on ONE continuous background, then
+  shows a single panel by shifting the stage. `build.cjs` renders each panel at
+  the store size with headless Edge/Chrome.
+
+  Query: ?platform=android|ios&lang=en&slice=0..N-1 (slice=all → whole strip)
+  Hash:  #<url-encoded JSON> with { appName, background, primary } from the brand.
+-->
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #0b1326; }
+  body { font-family: "Segoe UI Variable Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  #viewport { position: relative; overflow: hidden; }
+  #stage { position: absolute; left: 0; top: 0; }
+  #bg { position: absolute; left: 0; top: 0; }
+  .panel { position: absolute; top: 0; }
+  .brand { display: flex; align-items: center; gap: calc(var(--u) * 22); margin-bottom: calc(var(--u) * 34); }
+  .brand img { width: calc(var(--u) * 92); height: calc(var(--u) * 92); border-radius: calc(var(--u) * 22);
+               box-shadow: 0 0 0 calc(var(--u) * 2) rgba(255,255,255,.08); }
+  .brand span { color: #dae2fd; font-size: calc(var(--u) * 40); font-weight: 600; letter-spacing: .01em; }
+  .caption { position: absolute; left: calc(var(--u) * 80); right: calc(var(--u) * 80); text-align: center; }
+  .caption.left { text-align: left; }
+  .caption h1 { margin: 0; color: #ffffff; font-weight: 700; line-height: 1.08;
+                font-size: calc(var(--u) * var(--title-size)); letter-spacing: -0.015em; text-wrap: balance; }
+  .caption p { margin: calc(var(--u) * 26) 0 0; color: var(--sub-color); line-height: 1.3;
+               font-size: calc(var(--u) * 44); font-weight: 450; text-wrap: balance; }
+  .phone { position: absolute; background: #05080f; border-radius: calc(var(--u) * 78);
+           padding: calc(var(--u) * 16);
+           box-shadow: 0 0 0 calc(var(--u) * 3) #2d3449, 0 calc(var(--u) * 40) calc(var(--u) * 90) rgba(0,0,0,.55),
+                       0 0 calc(var(--u) * 140) rgba(110, 92, 255, .22); }
+  .screen { position: relative; overflow: hidden; aspect-ratio: 1080 / 2400; border-radius: calc(var(--u) * 62); background: #0b1326; }
+  .screen img { display: block; width: 100%; position: relative; }
+  /* Clean status bar over the captured one (it shows personal notifications). */
+  .statusbar { position: absolute; left: 0; right: 0; top: 0; height: 4.7%; background: var(--app-bg);
+               display: flex; align-items: center; justify-content: space-between;
+               padding: 0 8.5% 0 8.5%; box-sizing: border-box; color: #fff;
+               font-size: calc(var(--u) * 24); font-weight: 600; }
+  .statusbar svg { height: calc(var(--u) * 22); display: block; }
+  .statusbar .icons { display: flex; gap: calc(var(--u) * 10); align-items: center; }
+</style>
+<script src="captions.js"></script>
+</head>
+<body>
+<div id="viewport"><div id="stage"><svg id="bg" xmlns="http://www.w3.org/2000/svg"></svg></div></div>
+<script>
+(() => {
+  const SIZES = {
+    // Google Play phone: 9:16, 1080x1920.
+    android: { w: 1080, h: 1920 },
+    // App Store 6.9" display (also accepted for 6.7"): 1290x2796.
+    ios: { w: 1290, h: 2796 },
+  };
+  const SHOTS = ['discovery.png', 'select.png', 'play_audio.png', 'play_video.png'];
+  // Fraction of the screenshot scrolled out at the top, per platform, so the
+  // key content stays above the bottom crop (Play's 9:16 frame is shorter).
+  const SCROLL = { android: [0, 0, 0, 0.10], ios: [0, 0, 0, 0] };
+  const SHOT_DIR = '../../www/landing/app-screenshots/';
+
+  const q = new URLSearchParams(location.search);
+  const platform = SIZES[q.get('platform')] ? q.get('platform') : 'android';
+  const lang = window.STORE_CAPTIONS[q.get('lang')] ? q.get('lang') : 'en';
+  const sliceParam = q.get('slice') ?? 'all';
+  let brand = {};
+  try { brand = JSON.parse(decodeURIComponent(location.hash.slice(1)) || '{}'); } catch (e) {}
+  const appName = brand.appName || 'Universal MediaSync';
+  const appBg = brand.background || '#0b1326';
+  const primary = brand.primary || '#c0c1ff';
+
+  const { w: W, h: H } = SIZES[platform];
+  const N = SHOTS.length;
+  const TW = W * N;
+  const u = W / 1000; // layout unit: 1000 units per panel width
+  const captions = window.STORE_CAPTIONS[lang];
+
+  const root = document.documentElement.style;
+  root.setProperty('--u', u + 'px');
+  root.setProperty('--app-bg', appBg);
+  root.setProperty('--sub-color', primary);
+
+  const viewport = document.getElementById('viewport');
+  const stage = document.getElementById('stage');
+  const all = sliceParam === 'all';
+  const slice = all ? 0 : Math.max(0, Math.min(N - 1, parseInt(sliceParam, 10) || 0));
+  viewport.style.width = (all ? TW : W) + 'px';
+  viewport.style.height = H + 'px';
+  stage.style.width = TW + 'px';
+  stage.style.height = H + 'px';
+  stage.style.transform = `translateX(${-slice * W}px)`;
+
+  // ---- Continuous background ------------------------------------------------
+  // Everything uses userSpaceOnUse coordinates over the full strip, so the
+  // gradients, glows and the waveform flow seamlessly from panel to panel.
+  const svg = document.getElementById('bg');
+  svg.setAttribute('width', TW);
+  svg.setAttribute('height', H);
+  svg.setAttribute('viewBox', `0 0 ${TW} ${H}`);
+  const NS = 'http://www.w3.org/2000/svg';
+  const el = (name, attrs, parent = svg) => {
+    const node = document.createElementNS(NS, name);
+    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+    parent.appendChild(node);
+    return node;
+  };
+  const defs = el('defs', {});
+  const lin = (id, stops, x1 = 0, x2 = TW, y1 = 0, y2 = 0) => {
+    const g = el('linearGradient', { id, gradientUnits: 'userSpaceOnUse', x1, y1, x2, y2 }, defs);
+    stops.forEach(([o, c, a = 1]) => el('stop', { offset: o, 'stop-color': c, 'stop-opacity': a }, g));
+  };
+  const rad = (id, color, alpha) => {
+    const g = el('radialGradient', { id }, defs);
+    el('stop', { offset: 0, 'stop-color': color, 'stop-opacity': alpha }, g);
+    el('stop', { offset: 1, 'stop-color': color, 'stop-opacity': 0 }, g);
+  };
+  // The icon's blue → violet ramp, stretched across the whole strip.
+  lin('wave', [[0, '#1e8fff'], [0.5, '#5b5cff'], [1, '#8a3dff']]);
+  lin('base', [[0, appBg], [1, '#10173a']], 0, 0, 0, H);
+  rad('glowBlue', '#1e8fff', 0.30);
+  rad('glowViolet', '#7a3dff', 0.30);
+  rad('glowPink', '#c03dff', 0.18);
+
+  el('rect', { x: 0, y: 0, width: TW, height: H, fill: 'url(#base)' });
+  // Soft glows placed across panel boundaries so no panel edge looks cut.
+  [
+    [0.15, 0.20, 0.9, 'glowBlue'], [1.0, 0.62, 1.1, 'glowViolet'], [1.85, 0.25, 0.8, 'glowBlue'],
+    [2.6, 0.75, 1.0, 'glowPink'], [3.4, 0.35, 1.0, 'glowViolet'], [4.0, 0.85, 0.9, 'glowBlue'],
+  ].forEach(([px, py, r, fill]) => el('ellipse', {
+    cx: px * W, cy: py * H, rx: r * W, ry: r * W, fill: `url(#${fill})`,
+  }));
+
+  // Waveform bars (the icon motif) running through every panel.
+  const barsY = H * 0.6;
+  const step = 34 * u;
+  const barW = 14 * u;
+  const amp = (x) => {
+    const t = x / W;
+    const env = 0.55 + 0.45 * Math.sin(t * 1.7 + 0.6);
+    const v = Math.abs(Math.sin(t * 9.3) * 0.6 + Math.sin(t * 23.1 + 1.3) * 0.3 + Math.sin(t * 51.7) * 0.15);
+    return Math.max(0.06, env * v);
+  };
+  const bars = el('g', { opacity: 0.42 });
+  for (let x = step / 2; x < TW; x += step) {
+    const h = amp(x) * H * 0.42 + barW;
+    el('rect', { x: x - barW / 2, y: barsY - h / 2, width: barW, height: h, rx: barW / 2, fill: 'url(#wave)' }, bars);
+  }
+  // Two flowing lines that cross the panel seams.
+  const wavePath = (yBase, a, f, ph) => {
+    let d = '';
+    for (let x = 0; x <= TW; x += 8) {
+      const y = yBase + a * Math.sin((x / W) * f + ph);
+      d += (x === 0 ? 'M' : 'L') + x.toFixed(1) + ' ' + y.toFixed(1);
+    }
+    return d;
+  };
+  // A luminous ribbon (area between two out-of-phase waves) sweeping across
+  // every seam: the main visual link between consecutive screenshots.
+  const ribbon = (yBase, a, f, ph, thick) => {
+    const top = [], bottom = [];
+    for (let x = 0; x <= TW; x += 8) {
+      const t = (x / W) * f + ph;
+      top.push([x, yBase + a * Math.sin(t)]);
+      bottom.push([x, yBase + a * Math.sin(t + 0.9) + thick * (0.6 + 0.4 * Math.sin(t * 0.5))]);
+    }
+    const pts = top.concat(bottom.reverse());
+    return pts.map(([x, y], k) => (k ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1)).join('') + 'Z';
+  };
+  el('path', { d: ribbon(H * 0.70, H * 0.07, 1.6, 0.2, H * 0.10), fill: 'url(#wave)', opacity: 0.40 });
+  el('path', { d: ribbon(H * 0.73, H * 0.06, 1.6, 1.1, H * 0.05), fill: 'url(#wave)', opacity: 0.40 });
+  el('path', { d: wavePath(H * 0.34, H * 0.05, 2.1, 0.4), fill: 'none', stroke: 'url(#wave)', 'stroke-width': 4 * u, opacity: 0.55 });
+  el('path', { d: wavePath(H * 0.88, H * 0.04, 2.7, 2.2), fill: 'none', stroke: 'url(#wave)', 'stroke-width': 3 * u, opacity: 0.35 });
+
+  // ---- Panels ---------------------------------------------------------------
+  const statusBar = `
+    <span>9:41</span>
+    <span class="icons">
+      <svg viewBox="0 0 24 18"><path fill="#fff" d="M12 3C7.6 3 3.6 4.7.6 7.5L12 18 23.4 7.5C20.4 4.7 16.4 3 12 3z"/></svg>
+      <svg viewBox="0 0 22 18"><path fill="#fff" d="M2 16h3v2H2zM7 12h3v6H7zM12 8h3v10h-3zM17 3h3v15h-3z"/></svg>
+      <svg viewBox="0 0 30 16"><rect x="1" y="1" width="25" height="14" rx="3.5" fill="none" stroke="#fff" stroke-width="1.6"/><rect x="3.5" y="3.5" width="18" height="9" rx="1.6" fill="#fff"/><rect x="27.3" y="5" width="2" height="6" rx="1" fill="#fff"/></svg>
+    </span>`;
+  const titleSize = Math.max(...captions.map((c) => c.title.length)) > 26 ? 76 : 86;
+  root.setProperty('--title-size', titleSize);
+
+  const placed = [];
+  SHOTS.forEach((shot, i) => {
+    const panel = document.createElement('div');
+    panel.className = 'panel';
+    panel.style.left = i * W + 'px';
+    panel.style.width = W + 'px';
+    panel.style.height = H + 'px';
+
+    const cap = document.createElement('div');
+    cap.className = 'caption';
+    cap.style.top = 90 * u + 'px';
+    const c = captions[i];
+    cap.innerHTML = (i === 0
+      ? `<div class="brand" style="justify-content:center"><img src="../../assets/icon.png"><span></span></div>` : '')
+      + '<h1></h1><p></p>';
+    if (i === 0) cap.querySelector('.brand span').textContent = appName;
+    cap.querySelector('h1').textContent = c.title;
+    cap.querySelector('p').textContent = c.subtitle;
+    panel.appendChild(cap);
+
+    const phoneW = 720 * u;
+    const pad = 16 * u;
+    const phone = document.createElement('div');
+    phone.className = 'phone';
+    phone.style.width = phoneW - 2 * pad + 'px';
+    phone.style.left = (W - phoneW) / 2 + 'px';
+    phone.innerHTML = `<div class="screen"><img src="${SHOT_DIR}${shot}"><div class="statusbar">${statusBar}</div></div>`;
+    phone.querySelector('.screen img').style.top = -SCROLL[platform][i] * 100 + '%';
+    panel.appendChild(phone);
+    stage.appendChild(panel);
+
+    placed.push({ cap, phone, i });
+  });
+
+  // Phones share one baseline (below the tallest caption) so they line up
+  // across the strip; a slight alternating offset gives it rhythm.
+  const top = Math.max(...placed.map(({ cap }) => cap.offsetTop + cap.offsetHeight)) + 70 * u;
+  placed.forEach(({ phone, i }) => {
+    phone.style.top = top + (i % 2 ? 28 : 0) * u + 'px';
+  });
+  document.body.dataset.ready = '1';
+})();
+</script>
+</body>
+</html>

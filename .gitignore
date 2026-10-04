@@ -42,3 +42,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Rendered store screenshots (node store/screenshots/build.cjs)
+store/screenshots/out/
