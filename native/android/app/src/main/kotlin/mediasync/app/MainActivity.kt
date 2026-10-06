@@ -31,6 +31,7 @@ import mediasync.app.ui.MediaSyncTheme
 import mediasync.app.ui.TerminalScreen
 import mediasync.app.web.CompanionWebScreen
 import mediasync.app.web.CustomTabsCompanion
+import mediasync.app.web.LoopbackCompanion
 
 /**
  * Single activity. Navigation state is saved by the NavController; session
@@ -39,6 +40,7 @@ import mediasync.app.web.CustomTabsCompanion
  */
 class MainActivity : ComponentActivity() {
     private val customTabs: CustomTabsCompanion get() = graph.customTabs
+    private val loopback: LoopbackCompanion get() = graph.loopback
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
@@ -53,6 +55,7 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(fullscreen, route) { applyOrientation(fullscreen || route == WEB) }
                 LaunchedEffect(session.selected?.kind) { if (session.selected?.kind != mediasync.core.TrackKind.VIDEO) fullscreen = false }
                 LaunchedEffect(session.terminal) {
+                    if (session.terminal == null) loopback.close()
                     if (session.terminal == null && (route == TERMINAL || route == WEB)) navigation.popBackStack(DISCOVERY, false)
                 }
                 DisposableEffect(fullscreen) {
@@ -76,8 +79,16 @@ class MainActivity : ComponentActivity() {
                                 onHelp = { navigation.navigate(HELP) },
                                 onOpenWeb = { url ->
                                     graph.session.openWeb(url)
-                                    if (customTabs.canTry(url)) customTabs.open(this@MainActivity, url) { navigation.navigate(WEB) }
-                                    else navigation.navigate(WEB)
+                                    val inApp = {
+                                        if (customTabs.canTry(url)) customTabs.open(this@MainActivity, url) { navigation.navigate(WEB) }
+                                        else navigation.navigate(WEB)
+                                    }
+                                    // Horizon OS: only a regular Quest Browser tab offers WebXR.
+                                    if (loopback.canTry(url)) loopback.open(this@MainActivity, url, inApp)
+                                    else {
+                                        loopback.close()
+                                        inApp()
+                                    }
                                 },
                                 onFullscreen = { fullscreen = true },
                                 fullscreen = fullscreen,
@@ -100,7 +111,10 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        if (isFinishing) customTabs.close()
+        if (isFinishing) {
+            customTabs.close()
+            loopback.close()
+        }
         super.onDestroy()
     }
 

@@ -16,6 +16,7 @@ import mediasync.app.net.AndroidTransport
 import mediasync.app.net.NetworkMonitor
 import mediasync.app.session.SessionController
 import mediasync.app.web.CustomTabsCompanion
+import mediasync.app.web.LoopbackCompanion
 import okhttp3.OkHttpClient
 
 class MediaSyncApplication : Application() {
@@ -54,6 +55,7 @@ class AppGraph(val application: Application) {
     val discovery = DiscoveryController(application, network, diagnostics, mainHandler)
     val session = SessionController(application, transport, content, preferences, diagnostics, mainHandler)
     val customTabs = CustomTabsCompanion(application, session, mainHandler)
+    val loopback = LoopbackCompanion(application, session, mainHandler, diagnostics)
 }
 
 val Context.graph: AppGraph get() = (applicationContext as MediaSyncApplication).graph

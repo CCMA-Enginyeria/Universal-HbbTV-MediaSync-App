@@ -184,6 +184,13 @@ How the page opens:
   `delegate_permission/common.use_as_origin` relation for the app. Copy the
   repository's [`assetlinks.json`](../.well-known/assetlinks.json), which lists
   the published app's package and certificate fingerprints.
+- **Meta Quest (Horizon OS):** in a regular Quest Browser tab, because only
+  those offer WebXR (the browser's Custom Tabs and the Android WebView report no
+  immersive sessions). HTTPS pages only. The app adds
+  `#mediasync-ws=<loopback WebSocket URL>` to the page URL and accepts that
+  WebSocket only from the page's origin; see
+  [Meta Quest tabs](#meta-quest-tabs). The browser asks the viewer once to let
+  the site reach apps on the device.
 - **iOS:** in an in-app WKWebView.
 
 ### Receiving the timeline
@@ -224,7 +231,8 @@ defines it.
 Inside the WebView and WKWebView, the app provides
 `window.ReactNativeWebView.postMessage(string)`, so pages written for the former
 React Native app work unchanged. In a Custom Tab, reply through the port that the
-browser attaches to incoming messages (`event.ports[0]`).
+browser attaches to incoming messages (`event.ports[0]`). In a Meta Quest tab,
+send through the loopback WebSocket.
 
 ```js
 var tabPort = null;
@@ -249,6 +257,28 @@ application.
 
 A ready-to-run page that shows the synchronized timecode:
 [`www/hbbtv_examples/sync_app/index.html`](../www/hbbtv_examples/sync_app/index.html).
+
+### Meta Quest tabs
+
+On Meta Quest the same envelopes travel as WebSocket text frames. Read the
+address from the fragment once, keep it for reloads in the same tab, and
+reconnect if the socket closes: the app sends `init`, the last position and the
+retained TV state again on every connection.
+
+```js
+var params = new URLSearchParams(location.hash.slice(1));
+var socketUrl = params.get('mediasync-ws') || sessionStorage.getItem('mediasync-ws');
+if (socketUrl && socketUrl.indexOf('ws://127.0.0.1:') === 0) {
+  sessionStorage.setItem('mediasync-ws', socketUrl);
+  var socket = new WebSocket(socketUrl);
+  socket.onmessage = function (event) { handle(JSON.parse(event.data)); };
+  // send(envelope): socket.send(JSON.stringify(envelope));
+}
+```
+
+The address is valid until the viewer opens another page or leaves the TV in the
+app. Remove the parameter from the visible URL (`history.replaceState`) so it is
+not shared.
 
 ## 5. Compatibility mode and application messages
 

@@ -16,7 +16,7 @@ security notes: [threat model](../docs/prds/threat-model.md).
 | Path | Contents |
 | --- | --- |
 | `android/core` | Pure Kotlin/JVM core: DIAL discovery, DVB-CSS CII/WC/TS, App2App, session and probe state machines, playback corrector, MPD/HLS/TTML/VTT parsers, companion protocol |
-| `android/app` | Android app: Compose UI, Media3 player, foreground service, Custom Tabs/WebView companion |
+| `android/app` | Android app: Compose UI, Media3 player, foreground service, Custom Tabs/WebView companion (Quest Browser tab + loopback WebSocket on Meta Quest) |
 | `ios/Sources/MediaSyncCore` | Swift port of the core (same fixtures) |
 | `ios/App` | iOS app: SwiftUI, AVPlayer, WKWebView companion, XcodeGen `project.yml` |
 | `fixtures/protocol` | Cross-platform protocol cases and sample manifests/subtitles |

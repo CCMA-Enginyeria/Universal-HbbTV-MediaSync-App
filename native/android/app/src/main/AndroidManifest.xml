@@ -20,6 +20,8 @@
         <intent>
             <action android:name="android.support.customtabs.action.CustomTabsService" />
         </intent>
+        <!-- Meta Horizon OS browser: WebXR pages open there (see LoopbackCompanion). -->
+        <package android:name="com.oculus.browser" />
     </queries>
 
     <application
