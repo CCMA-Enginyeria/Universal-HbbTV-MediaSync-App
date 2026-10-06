@@ -372,6 +372,12 @@ class PlaybackCorrectorTest {
             PlaybackCorrector.Player(50.0, 1_000_090.0, true, false, 1.0), SyncMode.NATIVE, true)
         assertEquals(PlaybackCorrector.Command.Seek(60.4), result.commands.single())
     }
+
+    @Test fun compatLiveSeeksInsteadOfSlowRateCorrection() {
+        val result = corrector.update(0, PlaybackCorrector.Tv(100.0, 1_000_100.0, true, true),
+            PlaybackCorrector.Player(50.0, 1_000_090.0, true, false, 1.0), SyncMode.COMPAT, true)
+        assertEquals(PlaybackCorrector.Command.Seek(60.4), result.commands.single())
+    }
 }
 
 class BackoffTest {

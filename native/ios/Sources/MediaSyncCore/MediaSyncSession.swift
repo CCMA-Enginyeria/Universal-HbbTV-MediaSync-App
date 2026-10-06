@@ -10,7 +10,9 @@ public struct SyncTuning {
     }()
     public var compat: SyncController.Options
     public var seekThresholdLiveS = 5.0
-    public var compatSeekThresholdLiveS = 20.0
+    /// Live starts several seconds off the TV and cannot speed past the live edge, so
+    /// rate-only correction (±5 %) would take minutes; 5 s is still far above App2App jitter.
+    public var compatSeekThresholdLiveS = 5.0
     public var seekCooldownMs: Int64 = 1_500
     public var seekLeadS = 0.4
     public var minCorrectionIntervalMs: Int64 = 80

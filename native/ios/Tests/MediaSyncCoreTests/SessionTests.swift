@@ -352,6 +352,10 @@ final class PlaybackCorrectorTests: XCTestCase {
             player: PlaybackCorrector.Player(mediaTimeS: 50, liveEpochS: 1_000_090, isPlaying: true, isBuffering: false, rate: 1),
             mode: .native, isLive: true)
         XCTAssertEqual(live.commands, [.seek(60.4)])
+        let compatLive = PlaybackCorrector().update(nowMs: 0, tv: PlaybackCorrector.Tv(positionS: 100, liveEpochS: 1_000_100, isPlaying: true, reliable: true),
+            player: PlaybackCorrector.Player(mediaTimeS: 50, liveEpochS: 1_000_090, isPlaying: true, isBuffering: false, rate: 1),
+            mode: .compat, isLive: true)
+        XCTAssertEqual(compatLive.commands, [.seek(60.4)], "Compat live seeks rather than rate-correcting for minutes")
         let lost = PlaybackCorrector().update(nowMs: 0, tv: nil, player: player(10, rate: 1.02), mode: .native, isLive: false)
         XCTAssertEqual(lost.commands, [.pause, .setRate(1)])
     }

@@ -12,7 +12,11 @@ data class SyncTuning(
     ),
     val compat: SyncController.Options = native.copy(enterBandS = 0.25, exitBandS = 0.02, seekThresholdS = 20.0),
     val seekThresholdLiveS: Double = 5.0,
-    val compatSeekThresholdLiveS: Double = 20.0,
+    /**
+     * Live starts several seconds off the TV and cannot speed past the live edge, so
+     * rate-only correction (±5 %) would take minutes; 5 s is still far above App2App jitter.
+     */
+    val compatSeekThresholdLiveS: Double = 5.0,
     val seekCooldownMs: Long = 1_500,
     val seekLeadS: Double = 0.4,
     val minCorrectionIntervalMs: Long = 80,
