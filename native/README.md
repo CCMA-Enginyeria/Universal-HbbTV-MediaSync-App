@@ -101,6 +101,15 @@ DASH stays on the brand's sync web player for now (known gap). See the
 - iOS plays DASH through the brand's sync web player. HLS subtitle selection
   now uses Media3/AVPlayer with a single app overlay; device timing and visual
   verification remain pending. External TTML/VTT selection is exposed on iOS.
+- Subtitles can be shown on their own, without listening to or watching a track
+  (Android and iOS). On Meta Quest, Android also offers XR subtitles: the app
+  serves the bundled WebXR page `android/app/src/main/assets/xr-subtitles.html`
+  from its loopback server (`http://127.0.0.1:47913/<secret>/`, a secure
+  context) and opens it in a Quest Browser tab. The page gets `position` and
+  `subtitle-cues` envelopes, picks the active cue itself and draws it in
+  passthrough, either following the view or fixed in the room where the user
+  points it (hit test when available, anchors persisted by the Quest Browser).
+  iOS has no equivalent: Safari on iPhone offers no immersive WebXR.
 - Live catalogs refresh every 1-60 seconds with cancellation and stable track
   selection. Finite text SegmentTimeline/SegmentList indexes are supported,
   capped at 10000 segments. Byte ranges, unresolved open timelines, fMP4 wvtt

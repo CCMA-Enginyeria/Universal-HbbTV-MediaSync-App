@@ -201,18 +201,22 @@ public final class TextSegmentSchedule {
     private let availabilityStartTimeMs: Int64?
     private let representationId: String?
     private let maxSegments: Int
+    /// Segments past the current one that are requested too, so their cues are loaded
+    /// before the position reaches them instead of showing up late and cut short.
+    private let lookahead: Int64
     private var buffer: [(Int64, [Cue])] = []
     private var lastFetched: Int64?
     private static let placeholder = Pattern("\\$(Number|Time|RepresentationID)(%0(\\d+)d)?\\$")
 
     public init(template: SegmentTemplate, baseUrl: String, isLive: Bool, availabilityStartTimeMs: Int64?,
-                representationId: String? = nil, maxSegments: Int = 20) {
+                representationId: String? = nil, maxSegments: Int = 20, lookahead: Int = 0) {
         self.template = template
         self.baseUrl = baseUrl
         self.isLive = isLive
         self.availabilityStartTimeMs = availabilityStartTimeMs
         self.representationId = representationId
         self.maxSegments = maxSegments
+        self.lookahead = Int64(max(0, lookahead))
     }
 
     public func currentSegment(nowEpochMs: Int64, positionS: Double?) -> Int64 {
@@ -229,12 +233,13 @@ public final class TextSegmentSchedule {
 
     public func pending(nowEpochMs: Int64, positionS: Double?) -> [Int64] {
         let current = currentSegment(nowEpochMs: nowEpochMs, positionS: positionS)
-        if let last = lastFetched, last > current || current - last > Int64(maxSegments) { reset() }
+        let target = current + lookahead
+        if let last = lastFetched, last > target || current - last > Int64(maxSegments) { reset() }
         let start: Int64
-        if let last = lastFetched, last <= current, current - last <= Int64(maxSegments) { start = last + 1 } else { start = current - 1 }
+        if let last = lastFetched, last <= target, current - last <= Int64(maxSegments) { start = last + 1 } else { start = current - 1 }
         let first = max(start, template.startNumber)
-        guard first <= current else { return [] }
-        return Array(Array(first...current).suffix(maxSegments))
+        guard first <= target else { return [] }
+        return Array(Array(first...target).suffix(maxSegments))
     }
 
     public func url(_ number: Int64) -> String? {

@@ -234,6 +234,20 @@ class ProtocolFixturesTest {
         assertEquals(listOf(3L), schedule.pending(0, 4.0))
     }
 
+    @Test fun subtitleScheduleLooksAheadWithoutResetting() {
+        val template = SegmentTemplate(null, "text-${'$'}Number${'$'}.m4s", 1, 2, 1, 0)
+        val schedule = TextSegmentSchedule(template, "https://example.test/", false, null, lookahead = 2)
+        assertEquals(listOf(10L, 11L, 12L, 13L), schedule.pending(0, 20.0))
+        listOf(10L, 11L, 12L).forEach { schedule.complete(it, listOf(Cue(it * 2.0 - 2, it * 2.0, "c$it"))) }
+        // Segment 13 is not published yet: it stays pending, nothing fetched is dropped.
+        assertEquals(listOf(13L), schedule.pending(0, 21.0))
+        assertEquals(listOf(13L, 14L), schedule.pending(0, 22.0))
+        assertEquals(3, schedule.cues().size)
+        // A seek back still starts over.
+        assertEquals(listOf(1L, 2L, 3L, 4L), schedule.pending(0, 2.0))
+        assertTrue(schedule.cues().isEmpty())
+    }
+
     @Test fun textTimelineAndListResolvePeriodOffsets() {
         val xml = """<MPD xmlns="urn:mpeg:dash:schema:mpd:2011"><Period start="PT10S" duration="PT6S">
             <SegmentTemplate timescale="10" presentationTimeOffset="100" media="text-${'$'}Time${'$'}.xml"/>
@@ -256,6 +270,32 @@ class ProtocolFixturesTest {
         val listedSchedule = TextSegmentSchedule(listed.segmentTemplate!!, listed.baseUrl!!, false, null)
         assertEquals("https://example.test/two.vtt", listedSchedule.url(2))
         assertNull(listedSchedule.url(3))
+    }
+
+    /** 3Cat live DASH: number-based stpp segments whose TTML times count from availabilityStartTime. */
+    @Test fun liveStppSegmentsAlignWithTheAvailabilityTimeline() {
+        val xml = """<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="dynamic" availabilityStartTime="2026-07-31T21:01:53Z"><Period id="p0" start="PT0S">
+            <AdaptationSet contentType="text" lang="ca" mimeType="application/mp4" segmentAlignment="true" startWithSAP="1">
+              <Role schemeIdUri="urn:mpeg:dash:role:2011" value="main"/>
+              <SegmentTemplate timescale="90000" duration="540000" initialization="ttml/ttml-1785531654-init.mp4"
+                media="ttml/geo-ttml-1785531654-${'$'}Number${'$'}.m4s" startNumber="0" presentationTimeOffset="0"/>
+              <Representation id="5" bandwidth="4451" codecs="stpp"/>
+            </AdaptationSet></Period></MPD>"""
+        val manifest = MpdParser.parse(xml, "https://directes.example/live-content/tvc-dash/manifest-ttml.mpd")
+        val track = manifest.text.single()
+        assertEquals("ttml", track.textFormat)
+        val schedule = TextSegmentSchedule(track.segmentTemplate!!, track.baseUrl!!, true, manifest.availabilityStartTimeMs, track.representationId)
+        val positionS = 960_296 * 6.0 + 1
+        assertEquals(listOf(960_295L, 960_296L), schedule.pending(0, positionS))
+        assertEquals("https://directes.example/live-content/tvc-dash/ttml/geo-ttml-1785531654-960296.m4s", schedule.url(960_296))
+
+        val ttml = """<?xml version="1.0" encoding="UTF-8"?><tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttp="http://www.w3.org/ns/ttml#parameter" ttp:timeBase="media">
+            <body><div><p begin="1600:29:36.521" end="1600:29:39.079"><span>la formació del nucli de</span><br/><span>precipitació.</span></p></div></body></tt>"""
+        fun box(type: String, payload: ByteArray) = java.nio.ByteBuffer.allocate(4).putInt(8 + payload.size).array() + type.toByteArray() + payload
+        val segment = box("styp", ByteArray(28)) + box("moof", ByteArray(96)) + box("mdat", ttml.toByteArray())
+        schedule.complete(960_296, Subtitles.parseTtml(assertNotNull(Subtitles.extractTtmlFromMp4(segment))))
+        assertEquals("la formació del nucli de\nprecipitació.", CueTrack(schedule.cues()).activeText(positionS))
+        assertNull(CueTrack(schedule.cues()).activeText(positionS + 3))
     }
 
         @Test fun unsupportedTextTimelineDoesNotDiscardAudio() {

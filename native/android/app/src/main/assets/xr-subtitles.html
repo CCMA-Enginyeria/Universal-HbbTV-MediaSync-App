@@ -1,0 +1,725 @@
+<!doctype html>
+<!--
+  XR subtitles page, served by the app over its loopback server (see XrSubtitlesCompanion).
+  It receives `position` and `subtitle-cues` envelopes on ws://<same host>/<secret> and draws
+  the active cue in an immersive WebXR session, either following the view or anchored in the
+  room. Localized strings are inlined by the app. No external resources: the CSP forbids them.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title></title>
+<style>
+  :root { font-family: system-ui, sans-serif; background: #101418; color: #e8eaed; }
+  body { margin: 0; }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 24px; }
+  h1 { font-size: 1.8rem; margin: 0 0 8px; }
+  p { line-height: 1.5; }
+  #status { color: #f6c26b; min-height: 1.5em; }
+  #preview { min-height: 7.5em; display: flex; align-items: flex-end; justify-content: center; margin: 16px 0; }
+  #preview span { background: rgba(0, 0, 0, .85); color: #fff; font-size: 1.6rem; font-weight: 600; padding: 4px 12px;
+    white-space: pre-line; text-align: center; border-radius: 4px; }
+  fieldset { border: 1px solid #3c4043; border-radius: 12px; padding: 12px 16px; margin: 0 0 16px; }
+  legend { padding: 0 6px; }
+  label { display: flex; align-items: center; gap: 10px; padding: 8px 0; font-size: 1.1rem; }
+  input[type=radio] { width: 22px; height: 22px; }
+  input[type=range] { flex: 1; }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
+  button { font: inherit; font-size: 1.1rem; border-radius: 24px; padding: 12px 24px; border: 1px solid #8ab4f8; cursor: pointer; }
+  #enter { background: #8ab4f8; color: #0b1a2e; font-weight: 600; }
+  #enter:disabled { opacity: .4; cursor: default; }
+  #reset { background: transparent; color: #8ab4f8; }
+  #hint { color: #bdc1c6; }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title"></h1>
+  <p id="intro"></p>
+  <p id="status" role="status"></p>
+  <div id="preview" aria-hidden="true"></div>
+  <fieldset>
+    <legend id="modeTitle"></legend>
+    <label><input type="radio" name="mode" value="head"><span id="modeHead"></span></label>
+    <label><input type="radio" name="mode" value="world"><span id="modeWorld"></span></label>
+  </fieldset>
+  <label><span id="sizeLabel"></span><input id="size" type="range" min="0.6" max="2" step="0.1"></label>
+  <div class="actions">
+    <button id="enter" disabled></button>
+    <button id="reset"></button>
+  </div>
+  <p id="hint" role="status"></p>
+</main>
+<script type="application/json" id="strings">"__MEDIASYNC_STRINGS__"</script>
+<script>
+(() => {
+  'use strict';
+
+  // ---------------------------------------------------------------- strings and settings
+  const inlined = JSON.parse(document.getElementById('strings').textContent);
+  const S = typeof inlined === 'object' && inlined ? inlined : {};
+  const $ = (id) => document.getElementById(id);
+  document.documentElement.lang = S.lang || 'en';
+  document.title = S.title || '';
+  for (const [id, key] of [['title', 'title'], ['intro', 'intro'], ['modeTitle', 'modeTitle'], ['modeHead', 'modeHead'],
+    ['modeWorld', 'modeWorld'], ['sizeLabel', 'size'], ['enter', 'enter'], ['reset', 'resetPlacement']]) {
+    $(id).textContent = S[key] || '';
+  }
+
+  const store = {
+    get(key, fallback) {
+      try { const value = localStorage.getItem('xrsubtitles.' + key); return value === null ? fallback : JSON.parse(value); } catch (e) { return fallback; }
+    },
+    set(key, value) {
+      try { localStorage.setItem('xrsubtitles.' + key, JSON.stringify(value)); } catch (e) { /* storage disabled */ }
+    },
+  };
+  const MIN_SCALE = 0.6, MAX_SCALE = 2;
+  const clampScale = (value) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, Number(value) || 1));
+  const settings = {
+    mode: store.get('mode', 'world') === 'head' ? 'head' : 'world',
+    scale: clampScale(store.get('scale', 1)),
+  };
+  function setMode(mode) {
+    settings.mode = mode;
+    store.set('mode', mode);
+    for (const input of document.querySelectorAll('input[name=mode]')) input.checked = input.value === mode;
+  }
+  function setScale(scale) {
+    settings.scale = Math.round(clampScale(scale) * 100) / 100;
+    store.set('scale', settings.scale);
+    $('size').value = String(settings.scale);
+  }
+  setMode(settings.mode);
+  setScale(settings.scale);
+  for (const input of document.querySelectorAll('input[name=mode]')) input.addEventListener('change', () => setMode(input.value));
+  $('size').addEventListener('input', () => setScale($('size').value));
+  $('reset').addEventListener('click', () => {
+    // The persistent anchor can only be deleted inside a session; remember it for the next one.
+    const uuid = store.get('anchor', null);
+    if (uuid) store.set('staleAnchors', [...new Set([...store.get('staleAnchors', []), uuid])].slice(-8));
+    store.set('anchor', null);
+    $('hint').textContent = S.placementReset || '';
+  });
+
+  // ---------------------------------------------------------------- bridge with the app
+  const feed = { connected: false, everConnected: false, active: false, cues: [], position: null };
+  let retry = 0;
+  function connect() {
+    const socket = new WebSocket('ws://' + location.host + location.pathname.replace(/\/+$/, ''));
+    socket.onopen = () => { retry = 0; feed.connected = feed.everConnected = true; showStatus(); };
+    socket.onmessage = (event) => {
+      let message;
+      try { message = JSON.parse(event.data); } catch (e) { return; }
+      if (!message || message.version !== 1) return;
+      if (message.type === 'position') {
+        feed.position = { seconds: message.positionSeconds, playing: message.isPlaying === true,
+          speed: typeof message.speed === 'number' ? message.speed : 1, at: message.generatedAt };
+      } else if (message.type === 'subtitle-cues') {
+        feed.active = message.active === true;
+        feed.cues = mergeSplitCues((Array.isArray(message.cues) ? message.cues : [])
+          .filter((cue) => cue && typeof cue.start === 'number' && typeof cue.end === 'number' && typeof cue.text === 'string')
+          .sort((a, b) => a.start - b.start));
+      }
+      showStatus();
+    };
+    socket.onclose = () => {
+      feed.connected = false;
+      showStatus();
+      setTimeout(connect, Math.min(10000, 1000 * 2 ** retry++));
+    };
+  }
+  function showStatus() {
+    $('status').textContent = !feed.connected ? (feed.everConnected ? S.disconnected : S.connecting) || ''
+      : !feed.active ? S.noSubtitles || '' : '';
+  }
+
+  /** TV position extrapolated from the last envelope; positions older than 5 s are not trusted. */
+  function tvPosition() {
+    const p = feed.position;
+    if (!feed.connected || !p || typeof p.seconds !== 'number' || typeof p.at !== 'number') return null;
+    const age = Date.now() - p.at;
+    if (age > 5000) return null;
+    return p.seconds + (p.playing ? Math.max(0, age) / 1000 * p.speed : 0);
+  }
+
+  /**
+   * Segmented live TTML splits a subtitle at every segment boundary; joins the halves
+   * so a boundary is not a text change.
+   */
+  function mergeSplitCues(cues) {
+    const merged = [];
+    for (const cue of cues) {
+      const twin = merged.slice(-8).find((other) => other.text === cue.text && Math.abs(cue.start - other.end) <= 0.05);
+      if (twin) twin.end = Math.max(twin.end, cue.end); else merged.push({ start: cue.start, end: cue.end, text: cue.text });
+    }
+    return merged;
+  }
+
+  /** Lines of one region pair start a few ms apart; shown together so the panel does not jump. */
+  const JOIN_S = 0.12;
+  /** Gaps shorter than this between consecutive subtitles keep the previous one instead of blinking. */
+  const BRIDGE_S = 0.5;
+
+  /**
+   * Cues visible at `time`, as CueTrack.activeText (overlapping cues stack), plus the next group
+   * when it starts within JOIN_S (with its lines up to JOIN_S apart). The early group replaces
+   * the cues that end before it starts, so text never stacks twice.
+   */
+  function cuesAt(time) {
+    const visible = [];
+    let early = Infinity;
+    let horizon = time + JOIN_S;
+    for (const cue of feed.cues) {
+      if (cue.start > horizon) break;
+      if (cue.start > time && early === Infinity) {
+        early = cue.start;
+        horizon = early + JOIN_S;
+      }
+      if (cue.start > time || time < cue.end) visible.push(cue);
+    }
+    if (early === Infinity) return visible;
+    return visible.filter((cue) => cue.start > time || cue.end > early + 0.001);
+  }
+
+  function activeText() {
+    const time = tvPosition();
+    if (time === null || !feed.active) return '';
+    let visible = cuesAt(time);
+    if (!visible.length) {
+      let previous = null, next = null;
+      for (const cue of feed.cues) {
+        if (cue.start > time) { next = cue; break; }
+        if (cue.end <= time && (!previous || cue.end > previous.end)) previous = cue;
+      }
+      if (previous && next && next.start - previous.end <= BRIDGE_S) visible = cuesAt(previous.end - 0.001);
+    }
+    return visible.slice(-4).map((cue) => cue.text).join('\n');
+  }
+
+  let previewText = null;
+  function previewLoop() {
+    const text = activeText();
+    if (text !== previewText) {
+      previewText = text;
+      const preview = $('preview');
+      preview.textContent = '';
+      if (text) {
+        const span = document.createElement('span');
+        span.textContent = text;
+        preview.appendChild(span);
+      }
+    }
+    requestAnimationFrame(previewLoop);
+  }
+
+  // ---------------------------------------------------------------- vector helpers
+  const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const scale = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const length = (a) => Math.hypot(a[0], a[1], a[2]);
+  const normalize = (a) => { const l = length(a) || 1; return scale(a, 1 / l); };
+  const lerp = (a, b, t) => add(a, scale(sub(b, a), t));
+  const angle = (a, b) => Math.acos(Math.min(1, Math.max(-1, dot(normalize(a), normalize(b)))));
+
+  /** Rigid pose as axes and origin; the panel's +z faces the viewer. */
+  const poseFromMatrix = (m) => ({ x: [m[0], m[1], m[2]], y: [m[4], m[5], m[6]], z: [m[8], m[9], m[10]], t: [m[12], m[13], m[14]] });
+  const matrixFromPose = (p) => new Float32Array([...p.x, 0, ...p.y, 0, ...p.z, 0, ...p.t, 1]);
+  /** Upright pose at `t` turned (yaw only) towards `eye`, so text never tilts. */
+  function facing(t, eye) {
+    let fx = eye[0] - t[0], fz = eye[2] - t[2];
+    const l = Math.hypot(fx, fz);
+    if (l < 1e-4) { fx = 0; fz = 1; } else { fx /= l; fz /= l; }
+    return { x: [fz, 0, -fx], y: [0, 1, 0], z: [fx, 0, fz], t };
+  }
+  function yawQuaternion(pose) {
+    const yaw = Math.atan2(pose.z[0], pose.z[2]);
+    return { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) };
+  }
+  /** Ray/rectangle hit in panel-local coordinates, or null. */
+  function hitRect(origin, direction, pose, rect) {
+    const denominator = dot(direction, pose.z);
+    if (Math.abs(denominator) < 1e-5) return null;
+    const distance = dot(sub(pose.t, origin), pose.z) / denominator;
+    if (distance <= 0) return null;
+    const local = sub(add(origin, scale(direction, distance)), pose.t);
+    const lx = dot(local, pose.x), ly = dot(local, pose.y);
+    if (lx < rect.x || lx > rect.x + rect.w || ly < rect.y || ly > rect.y + rect.h) return null;
+    return { distance, u: (lx - rect.x) / rect.w, v: 1 - (ly - rect.y) / rect.h };
+  }
+
+  // ---------------------------------------------------------------- canvas textures
+  const TEXT_WIDTH = 1024, LINE_HEIGHT = 76, FONT = 58, PAD_Y = 10;
+  function wrap(context, text, maxWidth) {
+    const out = [];
+    for (const paragraph of text.split('\n')) {
+      let line = '';
+      for (const word of paragraph.split(/\s+/).filter(Boolean)) {
+        const candidate = line ? line + ' ' + word : word;
+        if (line && context.measureText(candidate).width > maxWidth) { out.push(line); line = word; } else line = candidate;
+      }
+      out.push(line);
+    }
+    return out;
+  }
+  /** Subtitle text as TV subtitles (white on a black box), or a dashed placeholder while editing. */
+  function drawSubtitle(canvas, text, placeholder) {
+    const context = canvas.getContext('2d');
+    const content = text || placeholder;
+    context.font = `600 ${FONT}px system-ui, sans-serif`;
+    const lines = content ? wrap(context, content, TEXT_WIDTH - 80) : [];
+    canvas.width = TEXT_WIDTH;
+    canvas.height = Math.max(1, lines.length) * LINE_HEIGHT + PAD_Y * 2;
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    if (!lines.length) return;
+    if (!text) {
+      context.setLineDash([18, 12]);
+      context.lineWidth = 4;
+      context.strokeStyle = 'rgba(138, 180, 248, 0.9)';
+      context.fillStyle = 'rgba(16, 20, 24, 0.55)';
+      context.beginPath();
+      context.roundRect(2, 2, canvas.width - 4, canvas.height - 4, 18);
+      context.fill();
+      context.stroke();
+    }
+    context.font = `${text ? 600 : 500} ${text ? FONT : FONT * 0.62}px system-ui, sans-serif`;
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    lines.forEach((line, index) => {
+      const y = PAD_Y + index * LINE_HEIGHT;
+      if (text) {
+        const width = context.measureText(line).width;
+        context.fillStyle = 'rgba(0, 0, 0, 0.82)';
+        context.fillRect((TEXT_WIDTH - width) / 2 - 18, y, width + 36, LINE_HEIGHT);
+      }
+      context.fillStyle = text ? '#ffffff' : '#e8eaed';
+      context.fillText(line, TEXT_WIDTH / 2, y + LINE_HEIGHT / 2 + 2);
+    });
+  }
+  const TOOLBAR = { width: 1024, height: 120 };
+  const BUTTONS = [
+    { id: 'head', x: 0, w: 380 },
+    { id: 'world', x: 392, w: 380 },
+    { id: 'smaller', x: 784, w: 114 },
+    { id: 'larger', x: 910, w: 114 },
+  ];
+  function drawToolbar(canvas, hovered) {
+    const context = canvas.getContext('2d');
+    canvas.width = TOOLBAR.width;
+    canvas.height = TOOLBAR.height;
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    for (const button of BUTTONS) {
+      const selected = button.id === settings.mode;
+      context.fillStyle = selected ? '#8ab4f8' : button.id === hovered ? '#3c4a5e' : 'rgba(32, 36, 42, 0.92)';
+      context.beginPath();
+      context.roundRect(button.x + 2, 2, button.w - 4, TOOLBAR.height - 4, 24);
+      context.fill();
+      if (button.id === hovered) {
+        context.lineWidth = 4;
+        context.strokeStyle = '#e8eaed';
+        context.stroke();
+      }
+      const label = button.id === 'head' ? S.modeHead : button.id === 'world' ? S.modeWorld : button.id === 'smaller' ? 'A−' : 'A+';
+      let size = button.id === 'smaller' || button.id === 'larger' ? 52 : 40;
+      do { context.font = `600 ${size}px system-ui, sans-serif`; size -= 2; } while (size > 18 && context.measureText(label || '').width > button.w - 28);
+      context.fillStyle = selected ? '#0b1a2e' : '#e8eaed';
+      context.fillText(label || '', button.x + button.w / 2, TOOLBAR.height / 2 + 2);
+    }
+  }
+
+  // ---------------------------------------------------------------- WebGL
+  const VERTEX_TEXTURED = `
+    attribute vec2 a; uniform mat4 projection, view, model; uniform vec4 rect; varying vec2 uv;
+    void main() { uv = vec2(a.x, 1.0 - a.y); gl_Position = projection * view * model * vec4(rect.x + a.x * rect.z, rect.y + a.y * rect.w, 0.0, 1.0); }`;
+  const FRAGMENT_TEXTURED = `
+    precision mediump float; uniform sampler2D image; uniform float opacity; varying vec2 uv;
+    void main() { gl_FragColor = texture2D(image, uv) * opacity; }`;
+  const VERTEX_LINE = `
+    attribute vec3 p; uniform mat4 projection, view;
+    void main() { gl_Position = projection * view * vec4(p, 1.0); }`;
+  const FRAGMENT_LINE = `
+    precision mediump float; uniform vec4 color;
+    void main() { gl_FragColor = color; }`;
+
+  function program(gl, vertex, fragment) {
+    const compile = (type, source) => {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader));
+      return shader;
+    };
+    const linked = gl.createProgram();
+    gl.attachShader(linked, compile(gl.VERTEX_SHADER, vertex));
+    gl.attachShader(linked, compile(gl.FRAGMENT_SHADER, fragment));
+    gl.linkProgram(linked);
+    if (!gl.getProgramParameter(linked, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(linked));
+    const uniforms = {};
+    for (let i = 0; i < gl.getProgramParameter(linked, gl.ACTIVE_UNIFORMS); i++) {
+      const name = gl.getActiveUniform(linked, i).name;
+      uniforms[name] = gl.getUniformLocation(linked, name);
+    }
+    return { program: linked, uniforms };
+  }
+
+  /** A canvas-backed texture re-uploaded only when its key changes. */
+  function canvasTexture(gl) {
+    const canvas = document.createElement('canvas');
+    const texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    return {
+      canvas, texture, key: null,
+      update(key, draw) {
+        if (key === this.key) return;
+        this.key = key;
+        draw(canvas);
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
+      },
+    };
+  }
+
+  // ---------------------------------------------------------------- XR session
+  const HEAD_DISTANCE = 1.4, HEAD_WIDTH = 0.55, WORLD_WIDTH = 1.0, WORLD_DEFAULT_DISTANCE = 2.5;
+  const FOLLOW_START = 14 * Math.PI / 180, FOLLOW_STOP = 2 * Math.PI / 180;
+  let xrMode = null;
+  let active = null;
+
+  async function detectXr() {
+    if (navigator.xr) {
+      for (const mode of ['immersive-ar', 'immersive-vr']) {
+        try { if (await navigator.xr.isSessionSupported(mode)) { xrMode = mode; break; } } catch (e) { /* try the next mode */ }
+      }
+    }
+    $('enter').disabled = !xrMode;
+    if (!xrMode) $('hint').textContent = S.unsupported || '';
+  }
+
+  async function enterXr() {
+    if (!xrMode || active) return;
+    let session;
+    try {
+      session = await navigator.xr.requestSession(xrMode, { optionalFeatures: ['local-floor', 'hit-test', 'anchors'] });
+    } catch (e) {
+      $('hint').textContent = S.failed || '';
+      return;
+    }
+    try {
+      active = await startSession(session);
+    } catch (e) {
+      $('hint').textContent = S.failed || '';
+      session.end().catch(() => {});
+    }
+  }
+
+  async function startSession(session) {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl', { xrCompatible: true, alpha: true, antialias: true });
+    if (!gl) throw new Error('webgl');
+    session.updateRenderState({ baseLayer: new XRWebGLLayer(session, gl, { alpha: true, antialias: true }) });
+    let space;
+    try { space = await session.requestReferenceSpace('local-floor'); } catch (e) { space = await session.requestReferenceSpace('local'); }
+
+    const textured = program(gl, VERTEX_TEXTURED, FRAGMENT_TEXTURED);
+    const line = program(gl, VERTEX_LINE, FRAGMENT_LINE);
+    const quad = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
+    const lines = gl.createBuffer();
+    const subtitleTexture = canvasTexture(gl);
+    const toolbarTexture = canvasTexture(gl);
+    const passthrough = session.environmentBlendMode && session.environmentBlendMode !== 'opaque';
+
+    const state = {
+      session, space, gl,
+      headPose: null, following: false,
+      worldPose: null, anchor: null, anchorRestoring: false, anchorWaitUntil: 0, pendingAnchor: false,
+      drag: null, hitSources: new Map(),
+      hover: new Map(), controlsUntil: performance.now() + 6000, lastTime: null,
+      rays: [], layout: null, lastTextAt: 0,
+    };
+
+    // Forget anchors the user reset on the 2D page, then restore the saved placement.
+    if (session.deletePersistentAnchor) {
+      for (const uuid of store.get('staleAnchors', [])) session.deletePersistentAnchor(uuid).catch(() => {});
+      store.set('staleAnchors', []);
+    }
+    const saved = store.get('anchor', null);
+    if (saved && session.restorePersistentAnchor) {
+      state.anchorRestoring = true;
+      state.anchorWaitUntil = performance.now() + 5000;
+      session.restorePersistentAnchor(saved).then((anchor) => {
+        // Too late: the user already placed the subtitles elsewhere.
+        if (state.anchor || state.drag) { if (anchor.delete) anchor.delete(); } else state.anchor = anchor;
+      })
+        .catch(() => { store.set('anchor', null); })
+        .finally(() => { state.anchorRestoring = false; });
+    }
+
+    const showControls = (ms = 4000) => { state.controlsUntil = Math.max(state.controlsUntil, performance.now() + ms); };
+    function act(button) {
+      if (button === 'head' || button === 'world') {
+        setMode(button);
+        state.drag = null;
+        state.headPose = null;
+      } else setScale(settings.scale + (button === 'larger' ? 0.15 : -0.15));
+      showControls(6000);
+    }
+
+    session.addEventListener('selectstart', (event) => {
+      const source = event.inputSource;
+      const hover = state.hover.get(source);
+      showControls();
+      if (hover && hover.button) return act(hover.button);
+      if (settings.mode !== 'world') return;
+      const pose = state.worldPose;
+      const ray = state.rays.find((entry) => entry.source === source);
+      const distance = hover && hover.distance ? hover.distance
+        : pose && ray ? Math.max(0.5, length(sub(pose.t, ray.origin))) : WORLD_DEFAULT_DISTANCE;
+      state.drag = { source, distance, useHits: true };
+      // The old anchor would pull the panel back until the new one exists; its stored handle goes once replaced.
+      if (state.anchor) {
+        if (state.anchor.delete) state.anchor.delete();
+        state.anchor = null;
+      }
+      if (session.requestHitTestSource && source.targetRaySpace) {
+        session.requestHitTestSource({ space: source.targetRaySpace }).then((hitSource) => {
+          if (state.drag && state.drag.source === source) state.hitSources.set(source, hitSource); else hitSource.cancel();
+        }).catch(() => {});
+      }
+    });
+    session.addEventListener('selectend', (event) => {
+      const source = event.inputSource;
+      const hitSource = state.hitSources.get(source);
+      if (hitSource) { hitSource.cancel(); state.hitSources.delete(source); }
+      if (state.drag && state.drag.source === source) {
+        state.drag = null;
+        state.pendingAnchor = true;
+        showControls();
+      }
+    });
+    session.addEventListener('squeezestart', () => act(settings.mode === 'world' ? 'head' : 'world'));
+    session.addEventListener('end', () => {
+      for (const hitSource of state.hitSources.values()) hitSource.cancel();
+      active = null;
+      $('hint').textContent = '';
+    });
+
+    /** Anchors the placed pose so it stays put as tracking refines; persists it where supported. */
+    function anchorPlacement(frame) {
+      state.pendingAnchor = false;
+      const pose = state.worldPose;
+      if (!pose || !frame.createAnchor) return;
+      const q = yawQuaternion(pose);
+      frame.createAnchor(new XRRigidTransform({ x: pose.t[0], y: pose.t[1], z: pose.t[2] }, q), space).then(async (anchor) => {
+        if (state.drag) { if (anchor.delete) anchor.delete(); return; }
+        const previous = state.anchor;
+        state.anchor = anchor;
+        if (previous && previous.delete) previous.delete();
+        if (!anchor.requestPersistentHandle) return;
+        const old = store.get('anchor', null);
+        try {
+          const uuid = await anchor.requestPersistentHandle();
+          store.set('anchor', uuid);
+          if (old && old !== uuid && session.deletePersistentAnchor) session.deletePersistentAnchor(old).catch(() => {});
+        } catch (e) { /* placement still works for this session */ }
+      }).catch(() => {});
+    }
+
+    function update(frame, viewer, now) {
+      const dt = state.lastTime === null ? 0 : Math.min(0.1, (now - state.lastTime) / 1000);
+      state.lastTime = now;
+      const head = poseFromMatrix(viewer.transform.matrix);
+      const eye = head.t;
+      const forward = scale(head.z, -1);
+
+      state.rays = [];
+      for (const source of session.inputSources) {
+        if (source.targetRayMode === 'gaze' || !source.targetRaySpace) continue;
+        const rayPose = frame.getPose(source.targetRaySpace, space);
+        if (!rayPose) continue;
+        const m = rayPose.transform.matrix;
+        state.rays.push({ source, origin: [m[12], m[13], m[14]], direction: normalize([-m[8], -m[9], -m[10]]), gamepad: source.gamepad });
+      }
+
+      if (settings.mode === 'head') {
+        const width = HEAD_WIDTH;
+        const target = sub(add(eye, scale(forward, HEAD_DISTANCE)), [0, HEAD_DISTANCE * 0.16, 0]);
+        let point = state.headPose ? state.headPose.t : target;
+        const offset = angle(sub(point, eye), sub(target, eye));
+        if (offset > FOLLOW_START) state.following = true;
+        if (state.following) {
+          point = lerp(point, target, 1 - Math.exp(-dt * 5));
+          if (offset < FOLLOW_STOP) state.following = false;
+        }
+        state.headPose = facing(point, eye);
+        state.layout = layout(state.headPose, width);
+      } else {
+        if (state.anchor) {
+          const anchored = frame.trackedAnchors && !frame.trackedAnchors.has(state.anchor) ? null : frame.getPose(state.anchor.anchorSpace, space);
+          if (anchored && !state.drag) state.worldPose = poseFromMatrix(anchored.transform.matrix);
+        }
+        // A saved anchor gets a few seconds to restore and locate before the default placement.
+        if (!state.worldPose && now >= state.anchorWaitUntil) {
+          const flat = normalize([forward[0], 0, forward[2]]);
+          state.worldPose = facing(add(add(eye, scale(flat, WORLD_DEFAULT_DISTANCE)), [0, -0.35, 0]), eye);
+          // A restored anchor that is not located yet still wins once it is.
+          state.pendingAnchor = !state.anchor && !state.anchorRestoring;
+        }
+        const drag = state.drag;
+        const ray = drag && state.rays.find((entry) => entry.source === drag.source);
+        if (ray) {
+          const stick = ray.gamepad && ray.gamepad.axes.length >= 4 ? ray.gamepad.axes[3] : 0;
+          if (Math.abs(stick) > 0.2) {
+            drag.useHits = false;
+            drag.distance = Math.min(8, Math.max(0.5, drag.distance - stick * dt * 2));
+          }
+          let point = add(ray.origin, scale(ray.direction, drag.distance));
+          const hitSource = state.hitSources.get(drag.source);
+          const hits = hitSource && drag.useHits ? frame.getHitTestResults(hitSource) : [];
+          const hitPose = hits.length ? hits[0].getPose(space) : null;
+          if (hitPose) {
+            const hit = [hitPose.transform.position.x, hitPose.transform.position.y, hitPose.transform.position.z];
+            // A little in front of the surface, so the text is not hidden in it.
+            point = add(hit, scale(normalize(sub(eye, hit)), 0.03));
+            drag.distance = length(sub(point, ray.origin));
+          }
+          state.worldPose = facing(point, eye);
+        }
+        if (state.pendingAnchor && !state.drag && state.worldPose) anchorPlacement(frame);
+        state.layout = state.worldPose ? layout(state.worldPose, WORLD_WIDTH) : null;
+      }
+
+      // Hover: pointing at the subtitles or the toolbar shows the toolbar.
+      state.hover.clear();
+      const l = state.layout;
+      if (!l) return;
+      for (const ray of state.rays) {
+        const onToolbar = state.controlsVisible ? hitRect(ray.origin, ray.direction, l.pose, l.toolbar) : null;
+        if (onToolbar) {
+          const x = onToolbar.u * TOOLBAR.width;
+          const button = BUTTONS.find((entry) => x >= entry.x && x <= entry.x + entry.w);
+          state.hover.set(ray.source, { button: button && button.id, distance: onToolbar.distance });
+          showControls(1500);
+          continue;
+        }
+        const onText = hitRect(ray.origin, ray.direction, l.pose, l.text);
+        if (onText) {
+          state.hover.set(ray.source, { distance: onText.distance });
+          showControls(2500);
+        }
+      }
+    }
+
+    /** Panel-local rectangles: text grows upwards from the pose origin, the toolbar sits below it. */
+    function layout(pose, baseWidth) {
+      const width = baseWidth * settings.scale;
+      const aspect = subtitleTexture.canvas.height / subtitleTexture.canvas.width || 0.15;
+      const textHeight = Math.max(width * aspect, width * 0.15);
+      const toolbarWidth = baseWidth * 0.75;
+      const toolbarHeight = toolbarWidth * TOOLBAR.height / TOOLBAR.width;
+      const gap = baseWidth * 0.03;
+      return {
+        pose,
+        text: { x: -width / 2, y: 0, w: width, h: textHeight },
+        drawText: { x: -width / 2, y: 0, w: width, h: width * aspect },
+        toolbar: { x: -toolbarWidth / 2, y: -gap - toolbarHeight, w: toolbarWidth, h: toolbarHeight },
+      };
+    }
+
+    function drawQuad(texture, model, rect, projection, view, opacity) {
+      gl.useProgram(textured.program);
+      gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+      const location = gl.getAttribLocation(textured.program, 'a');
+      gl.enableVertexAttribArray(location);
+      gl.vertexAttribPointer(location, 2, gl.FLOAT, false, 0, 0);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, texture.texture);
+      gl.uniform1i(textured.uniforms.image, 0);
+      gl.uniform1f(textured.uniforms.opacity, opacity);
+      gl.uniformMatrix4fv(textured.uniforms.projection, false, projection);
+      gl.uniformMatrix4fv(textured.uniforms.view, false, view);
+      gl.uniformMatrix4fv(textured.uniforms.model, false, model);
+      gl.uniform4f(textured.uniforms.rect, rect.x, rect.y, rect.w, rect.h);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
+
+    function drawRays(projection, view) {
+      if (!state.rays.length) return;
+      const points = [];
+      for (const ray of state.rays) {
+        const hover = state.hover.get(ray.source);
+        const reach = hover && hover.distance ? hover.distance : state.drag && state.drag.source === ray.source ? state.drag.distance : 2;
+        points.push(...ray.origin, ...add(ray.origin, scale(ray.direction, reach)));
+      }
+      gl.useProgram(line.program);
+      gl.bindBuffer(gl.ARRAY_BUFFER, lines);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(points), gl.DYNAMIC_DRAW);
+      const location = gl.getAttribLocation(line.program, 'p');
+      gl.enableVertexAttribArray(location);
+      gl.vertexAttribPointer(location, 3, gl.FLOAT, false, 0, 0);
+      gl.uniformMatrix4fv(line.uniforms.projection, false, projection);
+      gl.uniformMatrix4fv(line.uniforms.view, false, view);
+      gl.uniform4f(line.uniforms.color, 0.54, 0.71, 0.97, 0.9);
+      gl.drawArrays(gl.LINES, 0, points.length / 3);
+    }
+
+    function onFrame(time, frame) {
+      session.requestAnimationFrame(onFrame);
+      const viewer = frame.getViewerPose(space);
+      const layer = session.renderState.baseLayer;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, layer.framebuffer);
+      gl.clearColor(0, 0, 0, passthrough ? 0 : 1);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      if (!viewer) return;
+
+      const now = performance.now();
+      state.controlsVisible = now < state.controlsUntil || state.drag !== null;
+      const text = activeText();
+      if (text) state.lastTextAt = now;
+      // The placement placeholder waits out the pause between subtitles, so it does not flash in gaps.
+      const editing = !text && (state.drag !== null || (state.controlsVisible && now - state.lastTextAt > 1500));
+      const placeholder = editing ? (S.placeholder || '') + '\n' + ((settings.mode === 'world' ? S.hintWorld : S.hintHead) || '') : '';
+      subtitleTexture.update(text + '\u0000' + placeholder, (canvas) => drawSubtitle(canvas, text, placeholder));
+      update(frame, viewer, now);
+      const hovered = [...state.hover.values()].map((entry) => entry.button).find(Boolean) || null;
+      toolbarTexture.update(settings.mode + '|' + hovered + '|' + S.modeHead, (canvas) => drawToolbar(canvas, hovered));
+
+      gl.disable(gl.DEPTH_TEST);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      const l = state.layout;
+      const model = l && matrixFromPose(l.pose);
+      for (const view of viewer.views) {
+        const viewport = layer.getViewport(view);
+        gl.viewport(viewport.x, viewport.y, viewport.width, viewport.height);
+        const viewMatrix = view.transform.inverse.matrix;
+        if (l && (text || editing)) drawQuad(subtitleTexture, model, l.drawText, view.projectionMatrix, viewMatrix, 1);
+        if (l && state.controlsVisible) drawQuad(toolbarTexture, model, l.toolbar, view.projectionMatrix, viewMatrix, 1);
+        drawRays(view.projectionMatrix, viewMatrix);
+      }
+    }
+    session.requestAnimationFrame(onFrame);
+    $('hint').textContent = '';
+    return state;
+  }
+
+  $('enter').addEventListener('click', enterXr);
+  showStatus();
+  connect();
+  detectXr();
+  requestAnimationFrame(previewLoop);
+})();
+</script>
+</body>
+</html>

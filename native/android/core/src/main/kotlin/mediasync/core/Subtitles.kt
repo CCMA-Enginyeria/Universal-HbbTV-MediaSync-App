@@ -163,6 +163,7 @@ object Subtitles {
 class CueTrack(cues: List<Cue> = emptyList()) {
     private val sorted = cues.sortedBy { it.startS }
     val size: Int get() = sorted.size
+    val cues: List<Cue> get() = sorted
 
     fun activeText(timeS: Double?): String? {
         if (timeS == null || sorted.isEmpty()) return null
@@ -179,6 +180,8 @@ class CueTrack(cues: List<Cue> = emptyList()) {
 /**
  * Plans which segmented-TTML segments to download (live by wall clock, VOD by
  * position) and keeps a bounded cue buffer. I/O is done by the caller.
+ * [lookahead] segments past the current one are requested too, so their cues are
+ * loaded before the position reaches them instead of showing up late and cut short.
  */
 class TextSegmentSchedule(
     private val template: SegmentTemplate,
@@ -187,6 +190,7 @@ class TextSegmentSchedule(
     private val availabilityStartTimeMs: Long?,
     private val representationId: String? = null,
     private val maxSegments: Int = 20,
+    private val lookahead: Int = 0,
 ) {
     private val buffer = ArrayDeque<Pair<Long, List<Cue>>>()
     private var lastFetched: Long? = null
@@ -202,13 +206,14 @@ class TextSegmentSchedule(
         return template.startNumber + Math.floor(elapsed / template.segmentSeconds).toLong()
     }
 
-    /** Segments not fetched yet up to the current one, starting one before it. */
+    /** Segments not fetched yet up to [lookahead] past the current one, starting one before it. */
     fun pending(nowEpochMs: Long, positionS: Double?): List<Long> {
         val current = currentSegment(nowEpochMs, positionS)
-        if (lastFetched?.let { it > current || current - it > maxSegments } == true) reset()
+        val target = current + lookahead
+        if (lastFetched?.let { it > target || current - it > maxSegments } == true) reset()
         val last = lastFetched
-        val start = if (last == null || last > current || current - last > maxSegments) current - 1 else last + 1
-        return (maxOf(start, template.startNumber)..current).toList().takeLast(maxSegments)
+        val start = if (last == null || last > target || current - last > maxSegments) current - 1 else last + 1
+        return (maxOf(start, template.startNumber)..target).toList().takeLast(maxSegments)
     }
 
     fun url(number: Long): String? {

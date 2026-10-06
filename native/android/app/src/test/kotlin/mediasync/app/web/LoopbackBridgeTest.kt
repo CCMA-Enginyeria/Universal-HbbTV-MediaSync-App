@@ -156,6 +156,43 @@ class LoopbackBridgeTest {
     }
 
     @Test
+    fun servesPageOnlyAtSecretPathAndLoopbackHost() {
+        val page = "<!doctype html><p>xr</p>".toByteArray()
+        val server = LoopbackServer(null, Recorder(), page = page)
+        try {
+            val client = OkHttpClient()
+            fun get(path: String, host: String? = null) = client.newCall(Request.Builder().url("http://127.0.0.1:${server.port}$path")
+                .apply { if (host != null) header("Host", host) }.build()).execute()
+            get("/${server.token}/").use { response ->
+                assertEquals(200, response.code)
+                assertEquals("<!doctype html><p>xr</p>", response.body?.string())
+                assertTrue(response.header("Content-Security-Policy")!!.contains("connect-src ws://127.0.0.1:${server.port};"))
+                assertEquals("no-store", response.header("Cache-Control"))
+            }
+            assertEquals("http://127.0.0.1:${server.port}/${server.token}/", server.pageUrl)
+            get("/guess/").use { assertEquals(403, it.code) }
+            get("/${server.token}/", host = "rebound.example:${server.port}").use { assertEquals(403, it.code) }
+        } finally {
+            server.stop()
+        }
+    }
+
+    @Test
+    fun servedPageConnectsFromItsOwnOrigin() {
+        val recorder = Recorder()
+        val server = LoopbackServer(null, recorder, page = ByteArray(0))
+        try {
+            connect(server, Client(), origin = "http://127.0.0.1:${server.port}")
+            assertEquals("connected:1", recorder.events.next())
+            val foreign = Client()
+            connect(server, foreign, origin = origin)
+            assertEquals("failure:403", foreign.received.next())
+        } finally {
+            server.stop()
+        }
+    }
+
+    @Test
     fun refusesOtherOriginsAndSecrets() {
         val recorder = Recorder()
         val server = LoopbackServer(origin, recorder)

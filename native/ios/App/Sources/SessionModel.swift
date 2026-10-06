@@ -268,7 +268,8 @@ final class SessionModel: ObservableObject {
         let loader = self.loader
         if let template = track.segmentTemplate, let base = track.baseUrl {
             let schedule = TextSegmentSchedule(template: template, baseUrl: base, isLive: manifest.isLive,
-                                               availabilityStartTimeMs: manifest.availabilityStartTimeMs, representationId: track.representationId)
+                                               availabilityStartTimeMs: manifest.availabilityStartTimeMs, representationId: track.representationId,
+                                               lookahead: 2)
             subtitleTask = Task { @MainActor [weak self] in
                 while !Task.isCancelled {
                     let now = Int64(Date().timeIntervalSince1970 * 1000)
@@ -283,7 +284,8 @@ final class SessionModel: ObservableObject {
                         schedule.complete(number, cues: parsed)
                     }
                     self?.cues = CueTrack(schedule.cues())
-                    let delay = manifest.isLive ? min(max(template.segmentSeconds, 1), 10) : 1
+                    // Lookahead segments not published yet are retried soon, before the position reaches them.
+                    let delay = manifest.isLive ? min(max(template.segmentSeconds / 3, 1), 2) : 1
                     try? await Task.sleep(nanoseconds: UInt64(delay * 1e9))
                 }
             }

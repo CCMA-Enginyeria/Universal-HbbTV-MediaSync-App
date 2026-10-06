@@ -78,6 +78,22 @@ internal object WebSocketFrames {
         ("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
             "Sec-WebSocket-Accept: $accept\r\n\r\n").toByteArray(Charsets.ISO_8859_1)
 
+    /**
+     * True for a plain GET of the served page: exact secret path (constant time) and the
+     * loopback Host, which rejects DNS-rebinding requests that reach the port by name.
+     */
+    fun isPageRequest(request: Request, expectedPath: String, expectedHost: String): Boolean =
+        request.method == "GET" && !hasToken(request.headers["upgrade"], "websocket") &&
+            request.headers["host"] == expectedHost &&
+            MessageDigest.isEqual(request.path.toByteArray(), expectedPath.toByteArray())
+
+    /** HTML response that may only run its inline code and connect back to [socketOrigin]. */
+    fun page(body: ByteArray, socketOrigin: String): ByteArray =
+        ("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: ${body.size}\r\n" +
+            "Cache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\n" +
+            "Content-Security-Policy: default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; " +
+            "connect-src $socketOrigin; frame-ancestors 'none'\r\nConnection: close\r\n\r\n").toByteArray(Charsets.ISO_8859_1) + body
+
     val FORBIDDEN: ByteArray = "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray(Charsets.ISO_8859_1)
 
     /**

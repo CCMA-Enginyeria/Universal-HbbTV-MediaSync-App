@@ -88,6 +88,22 @@ final class ProtocolFixturesTests: XCTestCase {
                 XCTAssertEqual(emptyRole.refreshedTrack(noRole.audio.first), emptyRole.audio.first)
         }
 
+        func testSubtitleScheduleLooksAheadWithoutResetting() {
+        let template = SegmentTemplate(initialization: nil, media: "text-$Number$.m4s", timescale: 1,
+                                       duration: 2, startNumber: 1, presentationTimeOffset: 0)
+        let schedule = TextSegmentSchedule(template: template, baseUrl: "https://example.test/", isLive: false,
+                                           availabilityStartTimeMs: nil, lookahead: 2)
+        XCTAssertEqual(schedule.pending(nowEpochMs: 0, positionS: 20), [10, 11, 12, 13])
+        for number: Int64 in [10, 11, 12] {
+            schedule.complete(number, cues: [Cue(startS: Double(number) * 2 - 2, endS: Double(number) * 2, text: "c\(number)")])
+        }
+        XCTAssertEqual(schedule.pending(nowEpochMs: 0, positionS: 21), [13])
+        XCTAssertEqual(schedule.pending(nowEpochMs: 0, positionS: 22), [13, 14])
+        XCTAssertEqual(schedule.cues().count, 3)
+        XCTAssertEqual(schedule.pending(nowEpochMs: 0, positionS: 2), [1, 2, 3, 4])
+        XCTAssertTrue(schedule.cues().isEmpty)
+    }
+
         func testSubtitleScheduleResetsAfterSeek() {
         let template = SegmentTemplate(initialization: nil, media: "text-$Number$.m4s", timescale: 1,
                                        duration: 2, startNumber: 1, presentationTimeOffset: 0)

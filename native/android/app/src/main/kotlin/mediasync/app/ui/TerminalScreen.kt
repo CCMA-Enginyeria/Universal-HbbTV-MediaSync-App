@@ -24,6 +24,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -67,7 +68,8 @@ import mediasync.core.TimelineMath
 import mediasync.core.TrackKind
 
 @Composable
-fun TerminalScreen(onBack: () -> Unit, onHelp: () -> Unit, onOpenWeb: (String) -> Unit, onFullscreen: () -> Unit, fullscreen: Boolean = false) {
+fun TerminalScreen(onBack: () -> Unit, onHelp: () -> Unit, onOpenWeb: (String) -> Unit, onFullscreen: () -> Unit, fullscreen: Boolean = false,
+                   onOpenXr: (() -> Unit)? = null) {
     val context = LocalContext.current
     val controller = context.graph.session
     val state by controller.state.collectAsStateWithLifecycle()
@@ -132,6 +134,18 @@ fun TerminalScreen(onBack: () -> Unit, onHelp: () -> Unit, onOpenWeb: (String) -
                         text.forEach { track ->
                             FilterChip(selected = state.subtitle == track, onClick = { controller.selectSubtitle(track) },
                                 label = { Text(Labels.trackTitle(track)) })
+                        }
+                    }
+                    // Without audio/video there is no player panel, so the text is shown here.
+                    if (state.selected == null && state.subtitleText != null) {
+                        Box(Modifier.fillMaxWidth().padding(top = Tokens.spacing("sm")), contentAlignment = Alignment.Center) {
+                            SubtitleOverlay(state.subtitleText)
+                        }
+                    }
+                    if (state.subtitle != null && onOpenXr != null) {
+                        OutlinedButton(onClick = onOpenXr, modifier = Modifier.padding(top = Tokens.spacing("sm"))) {
+                            Icon(Icons.Filled.ViewInAr, contentDescription = null)
+                            Text(stringResource(R.string.native_terminal_subtitlesXr), modifier = Modifier.padding(start = Tokens.spacing("sm")))
                         }
                     }
                 }

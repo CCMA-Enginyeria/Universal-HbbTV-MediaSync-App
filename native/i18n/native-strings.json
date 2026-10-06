@@ -30,6 +30,7 @@
       "manifestError": "The list of tracks could not be loaded.",
       "subtitles": "Subtitles",
       "subtitlesOff": "Off",
+      "subtitlesXr": "View in XR",
       "fullscreen": "Full screen",
       "exitFullscreen": "Exit full screen",
       "retry": "Retry",
@@ -61,6 +62,25 @@
     "help": {
       "support": "Support",
       "exportDiagnostics": "Share diagnostics"
+    },
+    "xr": {
+      "title": "XR subtitles",
+      "intro": "Read the TV subtitles in mixed reality. Choose where they stay, then enter XR.",
+      "enter": "Enter XR",
+      "unsupported": "This browser does not offer immersive WebXR.",
+      "failed": "XR could not be started.",
+      "connecting": "Connecting to the app...",
+      "disconnected": "Connection with the app lost. Open XR subtitles again from the app.",
+      "noSubtitles": "Select a subtitle track in the app.",
+      "modeTitle": "Position",
+      "modeHead": "Follow my view",
+      "modeWorld": "Fixed in the room",
+      "size": "Text size",
+      "resetPlacement": "Forget saved position",
+      "placementReset": "Saved position forgotten.",
+      "placeholder": "Subtitles appear here",
+      "hintHead": "Point at the subtitles to change their position or size.",
+      "hintWorld": "Point and hold the trigger or pinch to move the subtitles. While holding, push the thumbstick to bring them closer or farther."
     }
   },
   "ca": {
@@ -94,6 +114,7 @@
       "manifestError": "No s'ha pogut carregar la llista de pistes.",
       "subtitles": "Subtítols",
       "subtitlesOff": "Desactivats",
+      "subtitlesXr": "Veure en XR",
       "fullscreen": "Pantalla completa",
       "exitFullscreen": "Surt de la pantalla completa",
       "retry": "Torna-ho a provar",
@@ -125,6 +146,25 @@
     "help": {
       "support": "Suport",
       "exportDiagnostics": "Comparteix el diagn?stic"
+    },
+    "xr": {
+      "title": "Subtítols en XR",
+      "intro": "Llegeix els subtítols de la TV en realitat mixta. Tria on es queden i entra en XR.",
+      "enter": "Entra en XR",
+      "unsupported": "Aquest navegador no ofereix WebXR immersiu.",
+      "failed": "No s'ha pogut iniciar l'XR.",
+      "connecting": "Connectant amb l'aplicació...",
+      "disconnected": "S'ha perdut la connexió amb l'aplicació. Torna a obrir els subtítols en XR des de l'aplicació.",
+      "noSubtitles": "Selecciona una pista de subtítols a l'aplicació.",
+      "modeTitle": "Posició",
+      "modeHead": "Segueixen la mirada",
+      "modeWorld": "Fixos a l'habitació",
+      "size": "Mida del text",
+      "resetPlacement": "Oblida la posició desada",
+      "placementReset": "S'ha oblidat la posició desada.",
+      "placeholder": "Aquí apareixen els subtítols",
+      "hintHead": "Apunta als subtítols per canviar-ne la posició o la mida.",
+      "hintWorld": "Apunta i mantén premut el gallet o pessiga per moure els subtítols. Mentre el mantens, mou el joystick per apropar-los o allunyar-los."
     }
   },
   "es": {
@@ -158,6 +198,7 @@
       "manifestError": "No se ha podido cargar la lista de pistas.",
       "subtitles": "Subtítulos",
       "subtitlesOff": "Desactivados",
+      "subtitlesXr": "Ver en XR",
       "fullscreen": "Pantalla completa",
       "exitFullscreen": "Salir de pantalla completa",
       "retry": "Reintentar",
@@ -189,6 +230,25 @@
     "help": {
       "support": "Soporte",
       "exportDiagnostics": "Compartir diagn?stico"
+    },
+    "xr": {
+      "title": "Subtítulos en XR",
+      "intro": "Lee los subtítulos de la TV en realidad mixta. Elige dónde se quedan y entra en XR.",
+      "enter": "Entrar en XR",
+      "unsupported": "Este navegador no ofrece WebXR inmersivo.",
+      "failed": "No se ha podido iniciar el XR.",
+      "connecting": "Conectando con la aplicación...",
+      "disconnected": "Se ha perdido la conexión con la aplicación. Vuelve a abrir los subtítulos en XR desde la aplicación.",
+      "noSubtitles": "Selecciona una pista de subtítulos en la aplicación.",
+      "modeTitle": "Posición",
+      "modeHead": "Siguen la mirada",
+      "modeWorld": "Fijos en la habitación",
+      "size": "Tamaño del texto",
+      "resetPlacement": "Olvidar la posición guardada",
+      "placementReset": "Se ha olvidado la posición guardada.",
+      "placeholder": "Aquí aparecen los subtítulos",
+      "hintHead": "Apunta a los subtítulos para cambiar su posición o tamaño.",
+      "hintWorld": "Apunta y mantén pulsado el gatillo o pellizca para mover los subtítulos. Mientras lo mantienes, mueve el joystick para acercarlos o alejarlos."
     }
   },
   "eu": {
@@ -222,6 +282,7 @@
       "manifestError": "Ezin izan da pisten zerrenda kargatu.",
       "subtitles": "Azpitituluak",
       "subtitlesOff": "Desaktibatuta",
+      "subtitlesXr": "Ikusi XRn",
       "fullscreen": "Pantaila osoa",
       "exitFullscreen": "Irten pantaila osotik",
       "retry": "Saiatu berriro",
@@ -253,6 +314,25 @@
     "help": {
       "support": "Laguntza teknikoa",
       "exportDiagnostics": "Partekatu diagnostikoa"
+    },
+    "xr": {
+      "title": "Azpitituluak XRn",
+      "intro": "Irakurri telebistako azpitituluak errealitate mistoan. Aukeratu non geratzen diren eta sartu XRn.",
+      "enter": "Sartu XRn",
+      "unsupported": "Nabigatzaile honek ez du WebXR murgiltzailerik.",
+      "failed": "Ezin izan da XR abiarazi.",
+      "connecting": "Aplikazioarekin konektatzen...",
+      "disconnected": "Aplikazioarekiko konexioa galdu da. Ireki berriro XR azpitituluak aplikaziotik.",
+      "noSubtitles": "Hautatu azpititulu-pista bat aplikazioan.",
+      "modeTitle": "Kokapena",
+      "modeHead": "Begiradari jarraitzen diote",
+      "modeWorld": "Gelan finko",
+      "size": "Testuaren tamaina",
+      "resetPlacement": "Ahaztu gordetako kokapena",
+      "placementReset": "Gordetako kokapena ahaztu da.",
+      "placeholder": "Azpitituluak hemen agertzen dira",
+      "hintHead": "Seinalatu azpitituluak haien kokapena edo tamaina aldatzeko.",
+      "hintWorld": "Seinalatu eta eutsi katua sakatuta edo atximurtu azpitituluak mugitzeko. Eusten duzun bitartean, mugitu joystick-a hurbiltzeko edo urruntzeko."
     }
   },
   "de": {
@@ -286,6 +366,7 @@
       "manifestError": "Die Liste der Spuren konnte nicht geladen werden.",
       "subtitles": "Untertitel",
       "subtitlesOff": "Aus",
+      "subtitlesXr": "In XR ansehen",
       "fullscreen": "Vollbild",
       "exitFullscreen": "Vollbild beenden",
       "retry": "Erneut versuchen",
@@ -317,6 +398,25 @@
     "help": {
       "support": "Support",
       "exportDiagnostics": "Diagnose teilen"
+    },
+    "xr": {
+      "title": "Untertitel in XR",
+      "intro": "Lies die TV-Untertitel in Mixed Reality. Wähle, wo sie bleiben, und starte XR.",
+      "enter": "XR starten",
+      "unsupported": "Dieser Browser bietet kein immersives WebXR.",
+      "failed": "XR konnte nicht gestartet werden.",
+      "connecting": "Verbindung mit der App wird hergestellt...",
+      "disconnected": "Verbindung zur App verloren. Öffne die XR-Untertitel erneut in der App.",
+      "noSubtitles": "Wähle in der App eine Untertitelspur.",
+      "modeTitle": "Position",
+      "modeHead": "Folgen dem Blick",
+      "modeWorld": "Fest im Raum",
+      "size": "Textgröße",
+      "resetPlacement": "Gespeicherte Position vergessen",
+      "placementReset": "Die gespeicherte Position wurde gelöscht.",
+      "placeholder": "Hier erscheinen die Untertitel",
+      "hintHead": "Zeige auf die Untertitel, um Position oder Größe zu ändern.",
+      "hintWorld": "Zeige und halte den Trigger oder führe Daumen und Zeigefinger zusammen, um die Untertitel zu verschieben. Bewege dabei den Thumbstick, um sie näher oder weiter weg zu rücken."
     }
   },
   "it": {
@@ -350,6 +450,7 @@
       "manifestError": "Impossibile caricare l'elenco delle tracce.",
       "subtitles": "Sottotitoli",
       "subtitlesOff": "Disattivati",
+      "subtitlesXr": "Guarda in XR",
       "fullscreen": "Schermo intero",
       "exitFullscreen": "Esci da schermo intero",
       "retry": "Riprova",
@@ -381,6 +482,25 @@
     "help": {
       "support": "Assistenza",
       "exportDiagnostics": "Condividi diagnostica"
+    },
+    "xr": {
+      "title": "Sottotitoli in XR",
+      "intro": "Leggi i sottotitoli della TV in realtà mista. Scegli dove restano ed entra in XR.",
+      "enter": "Entra in XR",
+      "unsupported": "Questo browser non offre WebXR immersivo.",
+      "failed": "Impossibile avviare l'XR.",
+      "connecting": "Connessione all'app in corso...",
+      "disconnected": "Connessione con l'app persa. Riapri i sottotitoli in XR dall'app.",
+      "noSubtitles": "Seleziona una traccia di sottotitoli nell'app.",
+      "modeTitle": "Posizione",
+      "modeHead": "Seguono lo sguardo",
+      "modeWorld": "Fissi nella stanza",
+      "size": "Dimensione del testo",
+      "resetPlacement": "Dimentica la posizione salvata",
+      "placementReset": "Posizione salvata dimenticata.",
+      "placeholder": "Qui appaiono i sottotitoli",
+      "hintHead": "Punta ai sottotitoli per cambiarne posizione o dimensione.",
+      "hintWorld": "Punta e tieni premuto il grilletto o avvicina pollice e indice per spostare i sottotitoli. Tenendo premuto, muovi la levetta per avvicinarli o allontanarli."
     }
   },
   "fr": {
@@ -414,6 +534,7 @@
       "manifestError": "La liste des pistes n'a pas pu être chargée.",
       "subtitles": "Sous-titres",
       "subtitlesOff": "Désactivés",
+      "subtitlesXr": "Voir en XR",
       "fullscreen": "Plein écran",
       "exitFullscreen": "Quitter le plein écran",
       "retry": "Réessayer",
@@ -445,6 +566,25 @@
     "help": {
       "support": "Assistance",
       "exportDiagnostics": "Partager le diagnostic"
+    },
+    "xr": {
+      "title": "Sous-titres en XR",
+      "intro": "Lisez les sous-titres de la TV en réalité mixte. Choisissez où ils restent, puis entrez en XR.",
+      "enter": "Entrer en XR",
+      "unsupported": "Ce navigateur ne propose pas de WebXR immersif.",
+      "failed": "Impossible de démarrer la XR.",
+      "connecting": "Connexion à l'application...",
+      "disconnected": "Connexion avec l'application perdue. Rouvrez les sous-titres XR depuis l'application.",
+      "noSubtitles": "Sélectionnez une piste de sous-titres dans l'application.",
+      "modeTitle": "Position",
+      "modeHead": "Suivent le regard",
+      "modeWorld": "Fixes dans la pièce",
+      "size": "Taille du texte",
+      "resetPlacement": "Oublier la position enregistrée",
+      "placementReset": "Position enregistrée oubliée.",
+      "placeholder": "Les sous-titres apparaissent ici",
+      "hintHead": "Pointez les sous-titres pour changer leur position ou leur taille.",
+      "hintWorld": "Pointez et maintenez la gâchette ou pincez pour déplacer les sous-titres. En maintenant, poussez le joystick pour les rapprocher ou les éloigner."
     }
   }
 }

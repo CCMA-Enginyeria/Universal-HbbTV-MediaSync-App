@@ -19,11 +19,21 @@ import okio.ByteString.Companion.toByteString
 
 /**
  * WebSocket server on 127.0.0.1 for one companion page. It accepts only upgrades
- * to the secret path from [origin] and keeps just the newest connection, so a page
- * reload replaces the previous one. [Listener] callbacks run on server threads and
+ * to the secret path from the page origin and keeps just the newest connection, so a
+ * page reload replaces the previous one. [Listener] callbacks run on server threads and
  * carry the connection id; use [isCurrent] to drop events from replaced pages.
+ *
+ * With a [page] the server also serves that document at [pageUrl] and the page origin
+ * is the server's own (`http://127.0.0.1:port`, a secure context for WebXR). A fixed
+ * [preferredPort] keeps that origin, and so the page's local storage, across launches.
+ * Without a page, [origin] is the HTTPS origin of the external companion page.
  */
-internal class LoopbackServer(private val origin: String, private val listener: Listener) {
+internal class LoopbackServer(
+    origin: String?,
+    private val listener: Listener,
+    preferredPort: Int = 0,
+    private val page: ByteArray? = null,
+) {
     interface Listener {
         fun onConnected(connection: Long)
         fun onText(connection: Long, text: String)
@@ -36,10 +46,13 @@ internal class LoopbackServer(private val origin: String, private val listener: 
         }
     }
 
-    private val server = ServerSocket(0, BACKLOG, IPV4_LOOPBACK)
+    private val server = bind(preferredPort)
     val port: Int = server.localPort
     val token: String = ByteArray(TOKEN_BYTES).also(SecureRandom()::nextBytes).toByteString().base64Url().trimEnd('=')
     val socketUrl: String get() = "ws://127.0.0.1:$port/$token"
+    val pageUrl: String get() = "http://127.0.0.1:$port/$token/"
+    private val host = "127.0.0.1:$port"
+    private val origin: String = origin ?: "http://$host"
     private val peer = AtomicReference<Peer?>()
     private val ids = AtomicLong()
     private val writer: ExecutorService = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "MediaSyncLoopbackWriter") }
@@ -86,7 +99,15 @@ internal class LoopbackServer(private val origin: String, private val listener: 
             socket.soTimeout = HANDSHAKE_TIMEOUT_MS
             input = DataInputStream(BufferedInputStream(socket.getInputStream()))
             val output = socket.getOutputStream()
-            val accept = WebSocketFrames.readRequest(input)?.let { WebSocketFrames.accept(it, "/$token", origin) }
+            val request = WebSocketFrames.readRequest(input)
+            if (page != null && request != null && WebSocketFrames.isPageRequest(request, "/$token/", host)) {
+                output.write(WebSocketFrames.page(page, "ws://$host"))
+                output.flush()
+                socket.close()
+                listener.onEvent("loopback-page")
+                return
+            }
+            val accept = request?.let { WebSocketFrames.accept(it, "/$token", origin) }
             if (accept == null) {
                 listener.onEvent("loopback-rejected")
                 runCatching { output.write(WebSocketFrames.FORBIDDEN) }
@@ -145,9 +166,17 @@ internal class LoopbackServer(private val origin: String, private val listener: 
     private fun closeWith(current: Peer, code: Int) =
         write(current, WebSocketFrames.encode(WebSocketFrames.OP_CLOSE, byteArrayOf((code shr 8).toByte(), code.toByte())))
 
+    /**
+     * Binds to 127.0.0.1 explicitly: on Android `InetAddress.getLoopbackAddress()` is `::1`,
+     * which pages connecting to `ws://127.0.0.1` cannot reach.
+     */
+    private fun bind(preferredPort: Int): ServerSocket {
+        if (preferredPort > 0) runCatching { return ServerSocket(preferredPort, BACKLOG, IPV4_LOOPBACK) }
+        return ServerSocket(0, BACKLOG, IPV4_LOOPBACK)
+    }
+
     private companion object {
         const val BACKLOG = 4
-        /** Explicit IPv4: on Android `InetAddress.getLoopbackAddress()` is `::1`, unreachable from `ws://127.0.0.1`. */
         val IPV4_LOOPBACK: InetAddress = InetAddress.getByAddress(byteArrayOf(127, 0, 0, 1))
         const val TOKEN_BYTES = 24
         const val HANDSHAKE_TIMEOUT_MS = 5_000

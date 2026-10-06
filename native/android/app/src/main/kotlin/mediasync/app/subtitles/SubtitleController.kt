@@ -24,8 +24,15 @@ class SubtitleController(private val loader: ContentLoader, private val scope: C
         private set
     var failed = false
         private set
+    /** Changes whenever the loaded cue list does, so pages that mirror [cues] know when to refresh. */
+    var revision = 0L
+        private set
     private var job: Job? = null
     private var cues = CueTrack()
+        set(value) {
+            field = value
+            revision++
+        }
     @Volatile private var positionS: Double? = null
 
     fun select(manifest: MediaManifest?, track: MediaTrack?) {
@@ -37,7 +44,8 @@ class SubtitleController(private val loader: ContentLoader, private val scope: C
         if (manifest == null || track == null) return
         val template = track.segmentTemplate
         job = if (template != null && track.baseUrl != null) {
-            val schedule = TextSegmentSchedule(template, track.baseUrl!!, manifest.isLive, manifest.availabilityStartTimeMs, track.representationId)
+            val schedule = TextSegmentSchedule(template, track.baseUrl!!, manifest.isLive, manifest.availabilityStartTimeMs,
+                track.representationId, lookahead = LOOKAHEAD_SEGMENTS)
             scope.launch {
                 while (isActive) {
                     for (number in schedule.pending(System.currentTimeMillis(), positionS)) {
@@ -52,8 +60,10 @@ class SubtitleController(private val loader: ContentLoader, private val scope: C
                         }
                         schedule.complete(number, parsed)
                     }
-                    cues = CueTrack(schedule.cues())
-                    delay(if (manifest.isLive) (template.segmentSeconds * 1000).toLong().coerceIn(1_000, 10_000) else 1_000)
+                    val loaded = schedule.cues()
+                    if (loaded != cues.cues) cues = CueTrack(loaded)
+                    // A segment that is not published yet is retried soon, before the position reaches it.
+                    delay(if (manifest.isLive) (template.segmentSeconds * 1000 / 3).toLong().coerceIn(1_000, 2_000) else 1_000)
                 }
             }
         } else {
@@ -69,6 +79,9 @@ class SubtitleController(private val loader: ContentLoader, private val scope: C
         }
     }
 
+    /** Cues loaded for the selected track, sorted by start time. */
+    val cueList: List<Cue> get() = cues.cues
+
     fun text(position: Double?): String? {
         positionS = position
         return cues.activeText(position)
@@ -76,5 +89,6 @@ class SubtitleController(private val loader: ContentLoader, private val scope: C
 
     private companion object {
         const val SEGMENT_LIMIT = 1_048_576
+        const val LOOKAHEAD_SEGMENTS = 2
     }
 }

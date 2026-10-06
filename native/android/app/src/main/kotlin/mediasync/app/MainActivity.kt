@@ -13,6 +13,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -32,6 +33,7 @@ import mediasync.app.ui.TerminalScreen
 import mediasync.app.web.CompanionWebScreen
 import mediasync.app.web.CustomTabsCompanion
 import mediasync.app.web.LoopbackCompanion
+import mediasync.app.web.XrSubtitlesCompanion
 
 /**
  * Single activity. Navigation state is saved by the NavController; session
@@ -41,6 +43,7 @@ import mediasync.app.web.LoopbackCompanion
 class MainActivity : ComponentActivity() {
     private val customTabs: CustomTabsCompanion get() = graph.customTabs
     private val loopback: LoopbackCompanion get() = graph.loopback
+    private val xrSubtitles: XrSubtitlesCompanion get() = graph.xrSubtitles
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
@@ -50,12 +53,16 @@ class MainActivity : ComponentActivity() {
             MediaSyncTheme {
                 val navigation = rememberNavController()
                 var fullscreen by rememberSaveable { mutableStateOf(false) }
+                val xrAvailable = remember { xrSubtitles.canOpen() }
                 val session by graph.session.state.collectAsStateWithLifecycle()
                 val route = navigation.currentBackStackEntryFlow.collectAsStateWithLifecycle(null).value?.destination?.route
                 LaunchedEffect(fullscreen, route) { applyOrientation(fullscreen || route == WEB) }
                 LaunchedEffect(session.selected?.kind) { if (session.selected?.kind != mediasync.core.TrackKind.VIDEO) fullscreen = false }
                 LaunchedEffect(session.terminal) {
-                    if (session.terminal == null) loopback.close()
+                    if (session.terminal == null) {
+                        loopback.close()
+                        xrSubtitles.close()
+                    }
                     if (session.terminal == null && (route == TERMINAL || route == WEB)) navigation.popBackStack(DISCOVERY, false)
                 }
                 DisposableEffect(fullscreen) {
@@ -92,6 +99,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onFullscreen = { fullscreen = true },
                                 fullscreen = fullscreen,
+                                onOpenXr = if (xrAvailable) ({ xrSubtitles.open(this@MainActivity) }) else null,
                             )
                         }
                         composable(WEB) {
@@ -114,6 +122,7 @@ class MainActivity : ComponentActivity() {
         if (isFinishing) {
             customTabs.close()
             loopback.close()
+            xrSubtitles.close()
         }
         super.onDestroy()
     }

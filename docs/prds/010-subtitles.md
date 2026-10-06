@@ -24,6 +24,11 @@ respecto a la TV, tanto en live como VOD.
 - PRD-010-R07: parser con limites y rechazo de entidades externas/entradas
   malformadas; fallos de subtitulos no deben detener audio/video validos.
 
+- PRD-010-R08: los subtitulos se pueden leer sin reproducir audio/video.
+  En Meta Quest (Android) se ofrecen tambien en XR: pagina WebXR empaquetada,
+  servida por la app en loopback, que sigue la mirada o queda anclada en la
+  habitacion donde el usuario la coloca; la posicion se recuerda entre sesiones.
+
 ## Aceptacion
 
 - PRD-010-A01: fixtures con periodos, offsets, cues superpuestos y segmentos

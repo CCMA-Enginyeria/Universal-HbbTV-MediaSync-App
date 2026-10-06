@@ -18,6 +18,7 @@ import mediasync.app.net.AndroidTransport
 import mediasync.app.playback.PlayerOwner
 import mediasync.app.playback.SyncService
 import mediasync.app.subtitles.SubtitleController
+import mediasync.app.subtitles.SubtitleEnvelope
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -132,6 +133,9 @@ class SessionController(
     private var owner: PlayerOwner? = null
     private val subtitles = SubtitleController(loader, scope)
     private val companions = linkedSetOf<CompanionSink>()
+    /** Companions that also mirror the cues of the selected subtitle track (XR subtitles). */
+    private val subtitleSinks = linkedSetOf<CompanionSink>()
+    private var sentCueRevision: Long? = null
     private val feed = CompanionFeedThrottle()
     private var lastPositionEnvelope: String? = null
     /** Service type the session needs (null: none) and the one actually running. */
@@ -195,6 +199,8 @@ class SessionController(
         stopPlayback()
         subtitles.select(null, null)
         companions.clear()
+        subtitleSinks.clear()
+        sentCueRevision = null
         stopTicking()
         stopService()
         _state.value = UiState()
@@ -217,6 +223,8 @@ class SessionController(
         subtitles.select(content?.manifest, track.takeUnless { nativeText })
         owner?.selectSubtitle(track.takeIf { nativeText })
         update { copy(subtitle = track, subtitleText = null, subtitleFailed = false) }
+        // Subtitles are shown without audio/video too, so they need the position feed on their own.
+        if (track != null) startTicking()
     }
 
     fun setVolume(volume: Float) {
@@ -243,6 +251,28 @@ class SessionController(
     fun detachCompanion(sink: CompanionSink) {
         companions.remove(sink)
         if (companions.isEmpty() && owner?.isActive != true) stopService()
+    }
+
+    /** Attaches a page that renders the subtitles itself; it gets positions and the cue list. */
+    fun attachSubtitleSink(sink: CompanionSink) {
+        subtitleSinks.add(sink)
+        attachCompanion(sink)
+    }
+
+    fun detachSubtitleSink(sink: CompanionSink) {
+        subtitleSinks.remove(sink)
+        detachCompanion(sink)
+    }
+
+    /** Seeds a subtitle page with the last position and the current cue list. */
+    fun seedSubtitleSink(sink: CompanionSink) {
+        (lastPositionEnvelope ?: positionEnvelope())?.let(sink::deliver)
+        sink.deliver(cuesEnvelope())
+    }
+
+    private fun cuesEnvelope(): String {
+        val active = _state.value.subtitle != null && (_state.value.content as? Content.Media)?.kind != ContentKind.HLS
+        return SubtitleEnvelope.cues(active, if (active) subtitles.cueList else emptyList())
     }
 
     /** Pushes init, the last position and retained TV state once a page transport is ready. */
@@ -525,6 +555,11 @@ class SessionController(
                 companions.toList().forEach { it.deliver(envelope) }
             }
         }
+        if (subtitleSinks.isNotEmpty() && sentCueRevision != subtitles.revision) {
+            sentCueRevision = subtitles.revision
+            val envelope = cuesEnvelope()
+            subtitleSinks.toList().forEach { it.deliver(envelope) }
+        }
         val subtitleText = when {
             _state.value.subtitle == null || position == null -> null
             content?.kind == ContentKind.HLS -> owner?.subtitleText
@@ -534,7 +569,7 @@ class SessionController(
             copy(status = status, rate = owner?.rate ?: 1.0, positionS = position?.seconds, tvPlaying = position?.isPlaying == true,
                 subtitleText = subtitleText, subtitleFailed = subtitles.failed, suspendedBySystem = owner?.suspendedBySystem == true)
         }
-        if (owner?.isActive != true && companions.isEmpty()) stopTicking()
+        if (owner?.isActive != true && companions.isEmpty() && _state.value.subtitle == null) stopTicking()
         if (ticking) {
             main.removeCallbacks(this.tick)
             main.postDelayed(this.tick, tuning.progressIntervalMs)

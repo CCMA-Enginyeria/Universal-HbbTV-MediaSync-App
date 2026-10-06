@@ -220,6 +220,7 @@ Fecha: 2026-09-26. Fuente de verdad del estado de cada requisito de los PRD
 | R03 | Parcial | Impl. | HLS seleccionado en Media3/AVPlayer con salida al overlay unico; TTML/VTT externos; DASH iOS fullscreen sigue dependiendo del reproductor web. Sin validacion en dispositivo |
 | R04 | Parcial | Impl. | Selector iOS y Android, desactivar, contraste; estilos/regiones y validacion visual pendientes |
 | R05-R07 | Hecho | Impl. | Buffer de 20 segmentos, 404 tolerado, limites; fallo solo desactiva subtitulos |
+| R08 | Parcial | Parcial | Texto sin reproduccion en ambos; XR solo en Meta Quest (Safari iOS sin WebXR inmersivo). XR sin validar en dispositivo |
 | A01 | Hecho | Impl. | Fixtures compartidos |
 | A02-A03 | Pend. | Pend. | Sincronia medida en dispositivo |
 
