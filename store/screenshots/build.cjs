@@ -3,7 +3,7 @@
  * Renders the store screenshots: every panel of `stage.html` (one continuous
  * background across all panels) at the store size, per platform and language.
  *
- * Usage: node store/screenshots/build.cjs [--platform android|ios] [--lang en,ca] [--preview]
+ * Usage: node store/screenshots/build.cjs [--platform android|ios|ipad] [--lang en,ca] [--preview]
  * Output: store/screenshots/out/<platform>/<lang>/<n>.png
  *         (--preview also writes out/<platform>/<lang>/strip.png with all panels)
  *
@@ -17,7 +17,7 @@ const { pathToFileURL } = require('url');
 
 const ROOT = path.resolve(__dirname, '../..');
 const brand = require(path.join(ROOT, 'src/brand/brand.config.js'));
-const SIZES = { android: [1080, 1920], ios: [1290, 2796] };
+const SIZES = { android: [1080, 1920], ios: [1284, 2778], ipad: [2064, 2752] };
 const LANGS = ['en', 'ca', 'es', 'eu', 'de', 'it', 'fr'];
 const PANELS = 4;
 

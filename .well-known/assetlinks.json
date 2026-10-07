@@ -21,7 +21,8 @@
       "namespace": "android_app",
       "package_name": "cat.ccma.lab.universalmediasync.dev",
       "sha256_cert_fingerprints": [
-        "4D:48:0C:43:29:50:CB:14:7B:B9:56:B5:2E:89:A8:1D:83:32:F0:CA:CD:0A:6B:89:AA:37:A8:73:CF:BB:00:3F"
+        "4D:48:0C:43:29:50:CB:14:7B:B9:56:B5:2E:89:A8:1D:83:32:F0:CA:CD:0A:6B:89:AA:37:A8:73:CF:BB:00:3F",
+        "8B:EC:6D:DE:BC:F9:A3:4A:CE:22:4E:52:38:AF:E9:9E:EE:75:33:7B:09:FC:80:BA:32:E2:29:1F:12:9E:EE:84"
       ]
     }
   }

@@ -51,13 +51,15 @@
   const SIZES = {
     // Google Play phone: 9:16, 1080x1920.
     android: { w: 1080, h: 1920 },
-    // App Store 6.9" display (also accepted for 6.7"): 1290x2796.
-    ios: { w: 1290, h: 2796 },
+    // App Store 6.5" display slot (the one App Store Connect asks for): 1284x2778.
+    ios: { w: 1284, h: 2778 },
+    // App Store 13" iPad display (required because the app runs on iPad): 2064x2752.
+    ipad: { w: 2064, h: 2752 },
   };
   const SHOTS = ['discovery.png', 'select.png', 'play_audio.png', 'play_video.png'];
   // Fraction of the screenshot scrolled out at the top, per platform, so the
   // key content stays above the bottom crop (Play's 9:16 frame is shorter).
-  const SCROLL = { android: [0, 0, 0, 0.10], ios: [0, 0, 0, 0] };
+  const SCROLL = { android: [0, 0, 0, 0.10], ios: [0, 0, 0, 0], ipad: [0, 0, 0, 0] };
   const SHOT_DIR = '../../www/landing/app-screenshots/';
 
   const q = new URLSearchParams(location.search);
@@ -180,7 +182,10 @@
       <svg viewBox="0 0 22 18"><path fill="#fff" d="M2 16h3v2H2zM7 12h3v6H7zM12 8h3v10h-3zM17 3h3v15h-3z"/></svg>
       <svg viewBox="0 0 30 16"><rect x="1" y="1" width="25" height="14" rx="3.5" fill="none" stroke="#fff" stroke-width="1.6"/><rect x="3.5" y="3.5" width="18" height="9" rx="1.6" fill="#fff"/><rect x="27.3" y="5" width="2" height="6" rx="1" fill="#fff"/></svg>
     </span>`;
-  const titleSize = Math.max(...captions.map((c) => c.title.length)) > 26 ? 76 : 86;
+  // The 3:4 iPad canvas is too short for a phone below the caption, so the
+  // caption goes beside the phone instead.
+  const side = platform === 'ipad';
+  const titleSize = side ? 72 : Math.max(...captions.map((c) => c.title.length)) > 26 ? 76 : 86;
   root.setProperty('--title-size', titleSize);
 
   const placed = [];
@@ -192,23 +197,27 @@
     panel.style.height = H + 'px';
 
     const cap = document.createElement('div');
-    cap.className = 'caption';
+    cap.className = side ? 'caption left' : 'caption';
     cap.style.top = 90 * u + 'px';
+    if (side) {
+      cap.style.left = 70 * u + 'px';
+      cap.style.right = W - 450 * u + 'px';
+    }
     const c = captions[i];
     cap.innerHTML = (i === 0
-      ? `<div class="brand" style="justify-content:center"><img src="../../assets/icon.png"><span></span></div>` : '')
+      ? `<div class="brand" style="justify-content:${side ? 'flex-start' : 'center'}"><img src="../../assets/icon.png"><span></span></div>` : '')
       + '<h1></h1><p></p>';
     if (i === 0) cap.querySelector('.brand span').textContent = appName;
     cap.querySelector('h1').textContent = c.title;
     cap.querySelector('p').textContent = c.subtitle;
     panel.appendChild(cap);
 
-    const phoneW = 720 * u;
+    const phoneW = (side ? 430 : 720) * u;
     const pad = 16 * u;
     const phone = document.createElement('div');
     phone.className = 'phone';
     phone.style.width = phoneW - 2 * pad + 'px';
-    phone.style.left = (W - phoneW) / 2 + 'px';
+    phone.style.left = (side ? W - 70 * u - phoneW : (W - phoneW) / 2) + 'px';
     phone.innerHTML = `<div class="screen"><img src="${SHOT_DIR}${shot}"><div class="statusbar">${statusBar}</div></div>`;
     phone.querySelector('.screen img').style.top = -SCROLL[platform][i] * 100 + '%';
     panel.appendChild(phone);
@@ -219,9 +228,15 @@
 
   // Phones share one baseline (below the tallest caption) so they line up
   // across the strip; a slight alternating offset gives it rhythm.
+  // Side by side, both are centred vertically instead.
   const top = Math.max(...placed.map(({ cap }) => cap.offsetTop + cap.offsetHeight)) + 70 * u;
-  placed.forEach(({ phone, i }) => {
-    phone.style.top = top + (i % 2 ? 28 : 0) * u + 'px';
+  placed.forEach(({ cap, phone, i }) => {
+    if (side) {
+      cap.style.top = (H - cap.offsetHeight) / 2 + 'px';
+      phone.style.top = (H - phone.offsetHeight) / 2 + (i % 2 ? 14 : -14) * u + 'px';
+    } else {
+      phone.style.top = top + (i % 2 ? 28 : 0) * u + 'px';
+    }
   });
   document.body.dataset.ready = '1';
 })();
