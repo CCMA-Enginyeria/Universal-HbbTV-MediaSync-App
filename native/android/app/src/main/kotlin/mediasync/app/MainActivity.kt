@@ -137,9 +137,18 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
+    /**
+     * Phones stay in portrait outside web pages and full-screen video. In a
+     * resizable window (Horizon OS panel, freeform or split screen) the window
+     * size says nothing about the device, and an orientation request there locks
+     * the window's shape, so the user could not resize the panel freely.
+     */
     private fun applyOrientation(free: Boolean) {
+        // Horizon OS panels report isInMultiWindowMode = false, so detect the headset.
+        val windowed = isInMultiWindowMode || HEADSET_FEATURES.any(packageManager::hasSystemFeature)
         val tablet = resources.configuration.smallestScreenWidthDp >= 600
         requestedOrientation = when {
+            windowed -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             tablet -> ActivityInfo.SCREEN_ORIENTATION_FULL_USER
             free -> ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR
             else -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
@@ -161,5 +170,7 @@ class MainActivity : ComponentActivity() {
         const val TERMINAL = "terminal"
         const val WEB = "web"
         const val HELP = "help"
+        /** Declared by headsets whose apps run in resizable panels (Meta Horizon OS, VR headsets). */
+        val HEADSET_FEATURES = listOf("oculus.hardware.standalone_vr", "android.hardware.vr.headtracking")
     }
 }
