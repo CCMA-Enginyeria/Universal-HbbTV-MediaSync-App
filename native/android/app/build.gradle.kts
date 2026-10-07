@@ -81,6 +81,17 @@ android {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
+        // Meta Horizon Store build: the release build plus the Horizon OS
+        // manifest (src/quest) and SDK levels (see androidComponents below).
+        // Same package and key as the Play build, so a sideloaded Play APK
+        // and the store build update each other.
+        create("quest") {
+            initWith(getByName("release"))
+            matchingFallbacks += "release"
+            // Quest headsets are arm64 only (VRC.Quest.Packaging.6); drops the
+            // other ABIs of androidx.graphics.path.
+            ndk { abiFilters += "arm64-v8a" }
+        }
     }
 
     buildFeatures {
@@ -105,6 +116,15 @@ android {
     }
 
     testOptions.unitTests.isReturnDefaultValues = true
+}
+
+androidComponents {
+    // VRC.Quest.Packaging.1: Horizon OS panel apps need minSdk 29..34 and, for
+    // apps created since March 2026, targetSdk 34; the Play build keeps 24/36.
+    beforeVariants(selector().withBuildType("quest")) { variant ->
+        variant.minSdk = 29
+        variant.targetSdk = 34
+    }
 }
 
 kotlin {

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Meta Horizon Store additions, merged over src/main only in the `quest` build
+  type (VRC.Quest.Packaging.1, "Application manifests for release builds").
+  The app runs as a 2D panel: no OpenXR, no com.oculus.intent.category.VR.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:installLocation="auto">
+
+    <!-- Panel apps run in 3DoF and 6DoF modes, so head tracking is optional. -->
+    <uses-feature
+        android:name="android.hardware.vr.headtracking"
+        android:required="false"
+        android:version="1" />
+
+    <application>
+        <meta-data
+            android:name="com.oculus.supportedDevices"
+            android:value="quest2|questpro|quest3|quest3s|vrglasses" />
+
+        <activity
+            android:name=".MainActivity"
+            android:excludeFromRecents="true"
+            tools:node="merge">
+            <!-- Landscape panel big enough for the docked player and the track list. -->
+            <layout
+                android:defaultWidth="1024dp"
+                android:defaultHeight="640dp"
+                android:minWidth="360dp"
+                android:minHeight="480dp" />
+        </activity>
+    </application>
+</manifest>

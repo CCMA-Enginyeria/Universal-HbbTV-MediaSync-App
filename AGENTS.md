@@ -22,6 +22,7 @@ This is a **white-label / forkable** app: every brand-specific value (name, iden
 | Android tests, build, lint | `cd native/android && ./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug` |
 | Android end to end vs. emulator | start `tools/tv-emulator`, then `./gradlew :core:test -Pmediasync.emulator=<IP>` |
 | Android signed release | set `MEDIASYNC_*`, then `./gradlew :app:bundleRelease` |
+| Meta Quest (Horizon Store) APK | set `MEDIASYNC_*`, then `./gradlew :app:assembleQuest`; store art `node store/meta-quest/build.cjs` (see `store/meta-horizon-listings.md`) |
 | iOS core tests | `swift test --package-path native/ios` |
 | iOS app | `sh native/ios/App/generate.sh`, then `xcodebuild -project native/ios/App/MediaSync.xcodeproj -scheme MediaSync -destination 'platform=iOS Simulator,name=<installed iPhone>' CODE_SIGNING_ALLOWED=NO test` |
 | TV emulator | `cd tools/tv-emulator && npm ci && EMU_IP=<LAN IP> node index.js` |
@@ -43,7 +44,7 @@ See `native/README.md` for details, contracts and known gaps.
 ## CI / Deployment
 
 - **`native-core.yml`** — on push to `main`/`native-apps`, pull requests and manual dispatch: reference vectors, brand check, Android tests/build/lint (incl. emulator end to end), Swift tests, iOS simulator tests and unsigned archive.
-- **`build-android.yml`** — on `v*` tags (tag must equal `v` + brand `version`) or manual dispatch: signed release APK + AAB of the native app, signatures verified, attached to the GitHub release. Secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` (the Play upload key).
+- **`build-android.yml`** — on `v*` tags (tag must equal `v` + brand `version`) or manual dispatch: signed release APK + AAB of the native app plus the Meta Horizon Store APK (`quest` build type: Horizon OS manifest in `app/src/quest`, `minSdk` 29, `targetSdk` 34, arm64 only), signatures verified, attached to the GitHub release; uploading to the Meta Horizon Store stays manual. Secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` (the Play upload key).
 - **`build-ios.yml`** — on `v*` tags (uploads to App Store Connect/TestFlight) or manual dispatch (upload optional, build number override): signed App Store IPA of the native app with manual signing via the untracked `native/ios/App/Config/Signing.xcconfig`; checks the profile carries the multicast entitlement. Secrets: `IOS_DIST_CERT_P12_BASE64`, `IOS_DIST_CERT_PASSWORD`, `IOS_PROVISIONING_PROFILE_BASE64`, `APPSTORE_API_KEY_ID`, `APPSTORE_API_ISSUER_ID`, `APPSTORE_API_PRIVATE_KEY`. Submitting for review stays manual.
 - **`publish-landing-page.yml`** — deploys `www/landing` and the IBC demonstrations to GitHub Pages.
 

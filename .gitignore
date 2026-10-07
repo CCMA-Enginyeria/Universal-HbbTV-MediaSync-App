@@ -43,5 +43,7 @@ yarn-error.*
 /ios
 /android
 
-# Rendered store screenshots (node store/screenshots/build.cjs)
+# Rendered store screenshots and Meta Quest art/captures (store/*/build.cjs)
 store/screenshots/out/
+store/meta-quest/out/
+store/meta-quest/captures/

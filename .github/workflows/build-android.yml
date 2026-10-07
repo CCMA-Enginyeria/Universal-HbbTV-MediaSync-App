@@ -1,6 +1,7 @@
 name: Build Android release
 
-# Signed release of the native Android app (native/android) for Google Play.
+# Signed release of the native Android app (native/android) for Google Play,
+# plus the Meta Horizon Store APK (`quest` build type, same key).
 # Uses the same upload keystore secrets as the former React Native builds, so
 # the native app updates the published app in place (same package and key).
 # Debug builds and tests run in native-core.yml ("Native apps").
@@ -80,14 +81,14 @@ jobs:
           # Compare with the upload key certificate in Play Console > App integrity.
           keytool -list -v -keystore "$KS" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" | grep -E 'SHA256:'
 
-      - name: Build signed release APK + AAB
+      - name: Build signed release APK + AAB + Quest APK
         working-directory: native/android
         env:
           MEDIASYNC_KEYSTORE: ${{ runner.temp }}/release.keystore
           MEDIASYNC_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           MEDIASYNC_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           MEDIASYNC_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: bash gradlew :app:assembleRelease :app:bundleRelease --no-daemon
+        run: bash gradlew :app:assembleRelease :app:bundleRelease :app:assembleQuest --no-daemon
 
       - name: Verify release signatures
         run: |
@@ -97,27 +98,31 @@ jobs:
           APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
           "$APKSIGNER" verify --print-certs "$OUT/apk/release/app-release.apk" | grep -E 'SHA-256'
           jarsigner -verify "$OUT/bundle/release/app-release.aab" | grep -q 'jar verified' || { echo "::error::Release AAB is not signed."; exit 1; }
+          test -f "$OUT/apk/quest/app-quest.apk" || { echo "::error::Quest APK is not signed."; exit 1; }
+          "$APKSIGNER" verify --print-certs "$OUT/apk/quest/app-quest.apk" | grep -E 'SHA-256'
           mkdir -p dist
           cp "$OUT/apk/release/app-release.apk" "dist/$ARTIFACT_NAME.apk"
           cp "$OUT/bundle/release/app-release.aab" "dist/$ARTIFACT_NAME.aab"
+          cp "$OUT/apk/quest/app-quest.apk" "dist/$ARTIFACT_NAME-quest.apk"
 
       - name: Remove keystore
         if: always()
         run: rm -f "$RUNNER_TEMP/release.keystore"
 
-      - name: Upload release APK + AAB
+      - name: Upload release APKs + AAB
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARTIFACT_NAME }}-release
           path: dist/
           retention-days: 30
 
-      - name: Attach APK + AAB to the GitHub release
+      - name: Attach APKs + AAB to the GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/${{ env.ARTIFACT_NAME }}.apk
             dist/${{ env.ARTIFACT_NAME }}.aab
+            dist/${{ env.ARTIFACT_NAME }}-quest.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,182 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Meta Horizon Store art</title>
+<!--
+  One Meta Horizon Store asset per load; `build.cjs` renders it with headless
+  Edge/Chrome at the exact store size.
+
+  Query: ?asset=hero|landscape|square|portrait|mini|icon|logo|screenshot&w=..&h=..
+         (&shot=<file URL> for asset=screenshot)
+  Hash:  #<url-encoded JSON> with { appName, background, glyph, icon }.
+
+  Store rules this layout follows (Meta Horizon Store asset guidelines, VRC.Quest.Asset.*):
+  covers carry only the exact app title and the emblem, centred, with no text in
+  the top or bottom 20%; screenshots carry no text, logos or badges at all.
+-->
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: transparent; }
+  body { font-family: "Segoe UI Variable Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  #art { position: relative; overflow: hidden; }
+  #bg, #shot-bg, #shot { position: absolute; left: 0; top: 0; }
+  #shot-bg { width: 100%; height: 100%; object-fit: cover; filter: blur(60px) brightness(.45); transform: scale(1.1); }
+  #shot { width: 100%; height: 100%; object-fit: contain; }
+  .lockup { position: absolute; display: flex; align-items: center; justify-content: center; }
+  .lockup img { display: block; }
+  .lockup span { color: #ffffff; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; line-height: 1; }
+  .lockup.stack { flex-direction: column; text-align: center; }
+</style>
+</head>
+<body>
+<div id="art"></div>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  const asset = q.get('asset') || 'landscape';
+  const W = parseInt(q.get('w'), 10);
+  const H = parseInt(q.get('h'), 10);
+  let brand = {};
+  try { brand = JSON.parse(decodeURIComponent(location.hash.slice(1)) || '{}'); } catch (e) {}
+  const appName = brand.appName || 'Universal MediaSync';
+  const appBg = brand.background || '#0b1326';
+
+  const art = document.getElementById('art');
+  art.style.width = W + 'px';
+  art.style.height = H + 'px';
+
+  const img = (src, attrs = {}) => {
+    const node = document.createElement('img');
+    node.src = src;
+    Object.assign(node, attrs);
+    return node;
+  };
+
+  // ---- Icon: the launcher icon itself, solid background --------------------
+  if (asset === 'icon') {
+    const icon = img(brand.icon);
+    icon.style.cssText = `width:${W}px;height:${H}px;display:block`;
+    art.appendChild(icon);
+    return done();
+  }
+
+  // ---- Screenshot: a real capture, letterboxed over a blurred copy of itself
+  if (asset === 'screenshot') {
+    art.style.background = '#000';
+    art.appendChild(img(q.get('shot'), { id: 'shot-bg' }));
+    art.appendChild(img(q.get('shot'), { id: 'shot' }));
+    return done();
+  }
+
+  // ---- Background shared by every cover (same motif as the phone screenshots)
+  if (asset !== 'logo') {
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.id = 'bg';
+    svg.setAttribute('width', W);
+    svg.setAttribute('height', H);
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    art.appendChild(svg);
+    const el = (name, attrs, parent = svg) => {
+      const node = document.createElementNS(NS, name);
+      for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+      parent.appendChild(node);
+      return node;
+    };
+    const defs = el('defs', {});
+    const lin = (id, stops, x1, y1, x2, y2) => {
+      const g = el('linearGradient', { id, gradientUnits: 'userSpaceOnUse', x1, y1, x2, y2 }, defs);
+      stops.forEach(([o, c]) => el('stop', { offset: o, 'stop-color': c }, g));
+    };
+    const rad = (id, color, alpha) => {
+      const g = el('radialGradient', { id }, defs);
+      el('stop', { offset: 0, 'stop-color': color, 'stop-opacity': alpha }, g);
+      el('stop', { offset: 1, 'stop-color': color, 'stop-opacity': 0 }, g);
+    };
+    lin('wave', [[0, '#1e8fff'], [0.5, '#5b5cff'], [1, '#8a3dff']], 0, 0, W, 0);
+    lin('base', [[0, appBg], [1, '#10173a']], 0, 0, 0, H);
+    rad('glowBlue', '#1e8fff', 0.34);
+    rad('glowViolet', '#7a3dff', 0.34);
+    rad('glowPink', '#c03dff', 0.20);
+    el('rect', { x: 0, y: 0, width: W, height: H, fill: 'url(#base)' });
+    const m = Math.max(W, H);
+    [[0.08, 0.15, 0.55, 'glowBlue'], [0.55, 0.55, 0.6, 'glowViolet'], [0.95, 0.9, 0.5, 'glowPink']]
+      .forEach(([px, py, r, fill]) => el('ellipse', { cx: px * W, cy: py * H, rx: r * m, ry: r * m, fill: `url(#${fill})` }));
+
+    // Waveform bars (the icon motif) across the full width, dimmed so the
+    // title stays the most prominent element.
+    const u = Math.min(W, H) / 1000;
+    const step = 46 * u;
+    const barW = 18 * u;
+    const amp = (x) => {
+      const t = x / W * 3;
+      const env = 0.55 + 0.45 * Math.sin(t * 1.7 + 0.6);
+      const v = Math.abs(Math.sin(t * 9.3) * 0.6 + Math.sin(t * 23.1 + 1.3) * 0.3 + Math.sin(t * 51.7) * 0.15);
+      return Math.max(0.06, env * v);
+    };
+    // Faded out behind the lockup: the emblem is an outline, so bars would
+    // otherwise show through it.
+    const fade = el('radialGradient', { id: 'fade', gradientUnits: 'userSpaceOnUse', cx: W / 2, cy: H / 2, r: Math.max(W, H) * 0.5 }, defs);
+    el('stop', { offset: 0.25, 'stop-color': '#000' }, fade);
+    el('stop', { offset: 0.75, 'stop-color': '#fff' }, fade);
+    const mask = el('mask', { id: 'barsMask', maskUnits: 'userSpaceOnUse', x: 0, y: 0, width: W, height: H }, defs);
+    el('rect', { x: 0, y: 0, width: W, height: H, fill: 'url(#fade)' }, mask);
+    const bars = el('g', { opacity: 0.26, mask: 'url(#barsMask)' });
+    for (let x = step / 2; x < W; x += step) {
+      const h = amp(x) * H * 0.55 + barW;
+      el('rect', { x: x - barW / 2, y: H / 2 - h / 2, width: barW, height: h, rx: barW / 2, fill: 'url(#wave)' }, bars);
+    }
+    const ribbon = (yBase, a, thick, ph) => {
+      const top = [], bottom = [];
+      for (let x = 0; x <= W; x += 8) {
+        const t = (x / W) * 4.2 + ph;
+        top.push([x, yBase + a * Math.sin(t)]);
+        bottom.push([x, yBase + a * Math.sin(t + 0.9) + thick * (0.6 + 0.4 * Math.sin(t * 0.5))]);
+      }
+      return top.concat(bottom.reverse()).map(([x, y], k) => (k ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1)).join('') + 'Z';
+    };
+    el('path', { d: ribbon(H * 0.80, H * 0.05, H * 0.07, 0.2), fill: 'url(#wave)', opacity: 0.30 });
+    el('path', { d: ribbon(H * 0.13, H * 0.04, H * 0.04, 1.9), fill: 'url(#wave)', opacity: 0.22 });
+  }
+
+  // ---- Lockup: emblem + exact app title, centred inside the safe area -------
+  // Landscape formats put the emblem beside the title; square and portrait
+  // stack them. Sizes are fractions of the canvas so every format keeps the
+  // title within the middle 60% (VRC.Quest.Asset.3) and well above 24 pt.
+  const LAYOUT = {
+    hero: { stack: false, glyph: 0.40, font: 0.15, gap: 0.04 },
+    landscape: { stack: false, glyph: 0.30, font: 0.105, gap: 0.03 },
+    mini: { stack: false, glyph: 0.46, font: 0.15, gap: 0.04 },
+    square: { stack: true, glyph: 0.36, font: 0.082, gap: 0.03 },
+    portrait: { stack: true, glyph: 0.50, font: 0.112, gap: 0.04 },
+    logo: { stack: false, glyph: 0.92, font: 0.36, gap: 0.08 },
+  }[asset];
+  const lockup = document.createElement('div');
+  lockup.className = 'lockup' + (LAYOUT.stack ? ' stack' : '');
+  const base = LAYOUT.stack ? W : H;
+  const glyph = img(brand.glyph);
+  glyph.style.width = glyph.style.height = LAYOUT.glyph * base + 'px';
+  const title = document.createElement('span');
+  title.textContent = appName;
+  title.style.fontSize = LAYOUT.font * base + 'px';
+  lockup.style.gap = LAYOUT.gap * base + 'px';
+  lockup.append(glyph, title);
+  art.appendChild(lockup);
+
+  const fit = () => {
+    // Shrink the whole lockup if a long (forked) app name would leave the safe area.
+    const maxW = W * (asset === 'logo' ? 1 : 0.8);
+    const maxH = H * (asset === 'logo' ? 1 : 0.6);
+    const s = Math.min(1, maxW / lockup.offsetWidth, maxH / lockup.offsetHeight);
+    lockup.style.transform = `scale(${s})`;
+    lockup.style.left = (W - lockup.offsetWidth) / 2 + 'px';
+    lockup.style.top = (H - lockup.offsetHeight) / 2 + 'px';
+    done();
+  };
+  glyph.complete ? fit() : glyph.addEventListener('load', fit);
+
+  function done() { document.body.dataset.ready = '1'; }
+})();
+</script>
+</body>
+</html>
