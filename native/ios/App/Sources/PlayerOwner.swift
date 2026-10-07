@@ -5,8 +5,10 @@ import MediaSyncCore
 /**
  * The single AVPlayer of the app, used on the main thread. Tracks are selected
  * by media-selection identity (language, accessibility characteristic, name),
- * never by index. The audio session policy: interruptions and removed
- * headphones pause playback, and only the user resumes it (PRD-009-R04).
+ * never by index. The user picks the audio and the video independently; video
+ * without a checked audio track plays muted. The audio session policy:
+ * interruptions and removed headphones pause playback, and only the user
+ * resumes it (PRD-009-R04).
  */
 final class PlayerOwner: NSObject, AVPlayerItemLegibleOutputPushDelegate {
     let player = AVPlayer()
@@ -14,7 +16,8 @@ final class PlayerOwner: NSObject, AVPlayerItemLegibleOutputPushDelegate {
     var onPlaybackError: ((Bool) -> Void)?
     var onSystemPause: (() -> Void)?
 
-    private(set) var track: MediaTrack?
+    private(set) var audioTrack: MediaTrack?
+    private(set) var videoTrack: MediaTrack?
     private(set) var suspendedBySystem = false
     private var seeking = false
     private var desiredRate: Float = 1
@@ -35,7 +38,7 @@ final class PlayerOwner: NSObject, AVPlayerItemLegibleOutputPushDelegate {
         center.addObserver(self, selector: #selector(routeChange(_:)), name: AVAudioSession.routeChangeNotification, object: nil)
     }
 
-    var isActive: Bool { track != nil }
+    var isActive: Bool { audioTrack != nil || videoTrack != nil }
     /// Playback intent (the equivalent of ExoPlayer's playWhenReady).
     var wantsToPlay: Bool { player.rate != 0 || player.timeControlStatus == .waitingToPlayAtSpecifiedRate }
     var isBuffering: Bool { seeking || player.timeControlStatus == .waitingToPlayAtSpecifiedRate }
@@ -43,14 +46,23 @@ final class PlayerOwner: NSObject, AVPlayerItemLegibleOutputPushDelegate {
     var positionS: Double { player.currentTime().seconds.isFinite ? player.currentTime().seconds : 0 }
     var liveEpochS: Double? { player.currentItem?.currentDate()?.timeIntervalSince1970 }
 
-    func play(url: String, track: MediaTrack, startPositionS: Double?, isLive: Bool, volume: Float) {
+    /// Plays `audio` and/or `video`; a new combination of the loaded content only changes the
+    /// media selection, so playback (and its sync) continues.
+    func play(url: String, audio: MediaTrack?, video: MediaTrack?, startPositionS: Double?, isLive: Bool, volume: Float) {
         guard let target = URL(string: url) else { return }
-        self.track = track
+        let reload = !isActive || manifestUrl != url
+        audioTrack = audio
+        videoTrack = video
+        player.isMuted = audio == nil
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: video != nil ? .moviePlayback : .spokenAudio)
+        guard reload else {
+            if let item = player.currentItem, item.status == .readyToPlay { selectMedia(item) }
+            return
+        }
         manifestUrl = url
         retries = 0
         suspendedBySystem = false
         desiredRate = 1
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: track.kind == .video ? .moviePlayback : .spokenAudio)
         try? AVAudioSession.sharedInstance().setActive(true)
         load(target, startPositionS: isLive ? nil : startPositionS)
         player.volume = volume
@@ -89,7 +101,7 @@ final class PlayerOwner: NSObject, AVPlayerItemLegibleOutputPushDelegate {
             retries += 1
             onPlaybackError?(true)
             let work = DispatchWorkItem { [weak self] in
-                guard let self = self, self.track != nil, self.manifestUrl == url.absoluteString else { return }
+                guard let self = self, self.isActive, self.manifestUrl == url.absoluteString else { return }
                 self.load(url, startPositionS: nil)
             }
             retryItem = work
@@ -100,8 +112,11 @@ final class PlayerOwner: NSObject, AVPlayerItemLegibleOutputPushDelegate {
     }
 
     private func selectMedia(_ item: AVPlayerItem) {
-        guard let target = track else { return }
-        let characteristic: AVMediaCharacteristic = target.kind == .video ? .visual : .audible
+        if let audio = audioTrack { selectMedia(item, target: audio, characteristic: .audible) }
+        if let video = videoTrack { selectMedia(item, target: video, characteristic: .visual) }
+    }
+
+    private func selectMedia(_ item: AVPlayerItem, target: MediaTrack, characteristic: AVMediaCharacteristic) {
         Task { @MainActor [weak self] in
             guard let group = try? await item.asset.loadMediaSelectionGroup(for: characteristic), item === self?.player.currentItem else { return }
             let options = group.options.filter { option in
@@ -192,7 +207,9 @@ final class PlayerOwner: NSObject, AVPlayerItemLegibleOutputPushDelegate {
         selectSubtitle(nil)
         legibleOutput?.setDelegate(nil, queue: nil)
         legibleOutput = nil
-        track = nil
+        audioTrack = nil
+        videoTrack = nil
+        player.isMuted = false
         manifestUrl = nil
         seeking = false
         suspendedBySystem = false
@@ -221,7 +238,7 @@ final class PlayerOwner: NSObject, AVPlayerItemLegibleOutputPushDelegate {
     }
 
     private func systemPause() {
-        guard track != nil else { return }
+        guard isActive else { return }
         suspendedBySystem = true
         onSystemPause?()
     }

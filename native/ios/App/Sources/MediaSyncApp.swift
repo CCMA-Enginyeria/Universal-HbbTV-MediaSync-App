@@ -36,18 +36,11 @@ struct MediaSyncApp: App {
 }
 
 /// Full-screen surfaces; only one is presented at a time.
-enum Overlay: Identifiable, Equatable {
+enum Overlay: String, Identifiable, Equatable {
     case web
-    case webPlayer(String)
     case video
 
-    var id: String {
-        switch self {
-        case .web: return "web"
-        case .webPlayer(let url): return "player:" + url
-        case .video: return "video"
-        }
-    }
+    var id: String { rawValue }
 }
 
 struct RootView: View {
@@ -56,42 +49,24 @@ struct RootView: View {
     @State private var showHelp = false
     @State private var overlay: Overlay?
 
+    /// The player docks below the TV list and the TV screen; help and full-screen surfaces cover it.
     var body: some View {
-        NavigationView {
-            ZStack {
-                Theme.background.ignoresSafeArea()
-                DiscoveryView(onOpen: { terminal in
-                    session.select(terminal)
-                    showTerminal = true
-                }, onHelp: { showHelp = true })
-                NavigationLink(destination: TerminalView(onHelp: { showHelp = true }, onOpenWeb: { url in
-                    session.openWeb(url)
-                    overlay = .web
-                },
-                                                         onFullscreen: { overlay = .video }, onBack: {
-                    session.leaveDetail()
-                    showTerminal = false
-                }), isActive: $showTerminal) { EmptyView() }
-            }
-            .navigationBarHidden(true)
+        VStack(spacing: 0) {
+            navigation
+            if session.hasDock { PlayerDock(onFullscreen: { overlay = .video }) }
         }
-        .navigationViewStyle(.stack)
+        .background(Theme.background.ignoresSafeArea())
         .sheet(isPresented: $showHelp) { HelpView() }
         .fullScreenCover(item: $overlay) { item in
             switch item {
             case .web:
                 CompanionScreen(url: session.openWebPage?.url) { overlay = nil }
-            case .webPlayer(let url):
-                CompanionScreen(url: url) {
-                    overlay = nil
-                    session.closeWebPlayer()
-                }
             case .video:
                 FullscreenVideo { overlay = nil }
             }
         }
-        .onChange(of: session.webPlayerUrl) { url in
-            if let url = url { overlay = .webPlayer(url) } else if case .webPlayer? = overlay { overlay = nil }
+        .onChange(of: session.video) { video in
+            if video == nil && overlay == .video { overlay = nil }
         }
         .onChange(of: session.terminal) { terminal in
             if terminal == nil {
@@ -103,6 +78,27 @@ struct RootView: View {
             AppDelegate.allowsLandscape = value != nil
             if value == nil { requestPortrait() }
         }
+    }
+
+    private var navigation: some View {
+        NavigationView {
+            ZStack {
+                Theme.background.ignoresSafeArea()
+                DiscoveryView(onOpen: { terminal in
+                    session.select(terminal)
+                    showTerminal = true
+                }, onHelp: { showHelp = true })
+                NavigationLink(destination: TerminalView(onHelp: { showHelp = true }, onOpenWeb: { url in
+                    session.openWeb(url)
+                    overlay = .web
+                }, onBack: {
+                    session.leaveDetail()
+                    showTerminal = false
+                }), isActive: $showTerminal) { EmptyView() }
+            }
+            .navigationBarHidden(true)
+        }
+        .navigationViewStyle(.stack)
     }
 
     private func requestPortrait() {

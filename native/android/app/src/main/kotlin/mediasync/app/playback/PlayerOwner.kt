@@ -19,12 +19,13 @@ import mediasync.core.ContentKind
 import mediasync.core.MediaManifest
 import mediasync.core.MediaTrack
 import mediasync.core.PlaybackCorrector
-import mediasync.core.TrackKind
 
 /**
  * The single ExoPlayer of the app, used on the main looper. Tracks are
  * selected by catalog identity (representation id, then language/role/label),
- * never by list index. Audio-only playback disables video renderers.
+ * never by list index. The user picks the audio and the video independently:
+ * audio-only playback disables video renderers and video-only playback mutes
+ * the programme by disabling audio renderers.
  */
 @OptIn(UnstableApi::class)
 class PlayerOwner(context: Context, private val handler: Handler, private val listener: Listener) {
@@ -42,7 +43,9 @@ class PlayerOwner(context: Context, private val handler: Handler, private val li
         .setLooper(handler.looper)
         .build()
 
-    var track: MediaTrack? = null
+    var audioTrack: MediaTrack? = null
+        private set
+    var videoTrack: MediaTrack? = null
         private set
     private var manifestUrl: String? = null
     private var subtitleTrack: MediaTrack? = null
@@ -92,9 +95,8 @@ class PlayerOwner(context: Context, private val handler: Handler, private val li
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                val selected = track
                 val url = manifestUrl
-                if (selected == null || url == null || retries >= retryDelaysMs.size) {
+                if (!isActive || url == null || retries >= retryDelaysMs.size) {
                     listener.onPlaybackError(retrying = false)
                     return
                 }
@@ -102,7 +104,7 @@ class PlayerOwner(context: Context, private val handler: Handler, private val li
                 listener.onPlaybackError(retrying = true)
                 val runnable = Runnable {
                     retry = null
-                    if (track === selected && manifestUrl == url) {
+                    if (isActive && manifestUrl == url) {
                         player.prepare()
                         player.playWhenReady = true
                     }
@@ -113,7 +115,7 @@ class PlayerOwner(context: Context, private val handler: Handler, private val li
         })
     }
 
-    val isActive: Boolean get() = track != null
+    val isActive: Boolean get() = audioTrack != null || videoTrack != null
     val isPlaying: Boolean get() = player.isPlaying
     /** Transient focus loss (calls, navigation prompts) keeps playWhenReady but freezes playback. */
     val isSuppressed: Boolean get() = player.playbackSuppressionReason != Player.PLAYBACK_SUPPRESSION_REASON_NONE
@@ -131,19 +133,31 @@ class PlayerOwner(context: Context, private val handler: Handler, private val li
             return (window.windowStartTimeMs + player.currentPosition) / 1000.0
         }
 
-    fun play(manifest: MediaManifest, kind: ContentKind, track: MediaTrack, startPositionS: Double?, volume: Float) {
-        this.track = track
+    /**
+     * Plays [audio] and/or [video] of the manifest. A new combination of the content already
+     * loaded only changes the track selection, so playback (and its sync) continues.
+     */
+    fun play(manifest: MediaManifest, kind: ContentKind, audio: MediaTrack?, video: MediaTrack?, startPositionS: Double?, volume: Float) {
+        val reload = !isActive || manifestUrl != manifest.url
+        audioTrack = audio
+        videoTrack = video
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+            .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, video == null)
+            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, audio == null)
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, subtitleTrack == null)
+            .build()
+        if (!reload) {
+            applySelection(player.currentTracks)
+            return
+        }
         manifestUrl = manifest.url
         retries = 0
         suspendedBySystem = false
         val item = MediaItem.Builder()
             .setUri(manifest.url)
             .setMimeType(if (kind == ContentKind.HLS) MimeTypes.APPLICATION_M3U8 else MimeTypes.APPLICATION_MPD)
-            .build()
-        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
-            .clearOverrides()
-            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, track.kind == TrackKind.AUDIO)
-            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
             .build()
         player.volume = volume
         player.setPlaybackSpeed(1f)
@@ -209,7 +223,8 @@ class PlayerOwner(context: Context, private val handler: Handler, private val li
 
     fun stop() {
         selectSubtitle(null)
-        track = null
+        audioTrack = null
+        videoTrack = null
         manifestUrl = null
         seekPending = false
         suspendedBySystem = false
@@ -227,8 +242,11 @@ class PlayerOwner(context: Context, private val handler: Handler, private val li
 
     private fun applySelection(tracks: Tracks) {
         applySubtitleSelection(tracks)
-        val target = track ?: return
-        val type = if (target.kind == TrackKind.VIDEO) C.TRACK_TYPE_VIDEO else C.TRACK_TYPE_AUDIO
+        audioTrack?.let { selectGroup(tracks, it, C.TRACK_TYPE_AUDIO) }
+        videoTrack?.let { selectGroup(tracks, it, C.TRACK_TYPE_VIDEO) }
+    }
+
+    private fun selectGroup(tracks: Tracks, target: MediaTrack, type: Int) {
         val groups = tracks.groups.filter { it.type == type }
         fun formats(group: Tracks.Group) = (0 until group.length).map { group.getTrackFormat(it) }
         val match = groups.firstOrNull { group -> target.representationId != null && formats(group).any { it.id == target.representationId } }

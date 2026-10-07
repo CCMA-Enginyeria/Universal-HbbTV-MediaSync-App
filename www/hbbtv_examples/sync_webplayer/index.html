@@ -46,6 +46,13 @@
     padding:10px 14px;border-radius:10px;background:rgba(180,40,60,.18);
     border:1px solid rgba(220,80,100,.4);color:#ffd9df;font-size:13px;text-align:center;}
   #err.show{display:block;}
+  /* Compact layout when the host docks the player in a short strip. */
+  @media (max-height:260px){
+    #nowplaying{gap:4px;padding:8px;}
+    #cover,#hint{display:none;}
+    #timecode{font-size:clamp(24px,8vw,40px);}
+    .badge{top:8px;left:8px;}
+  }
   @keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
   .pulsing{animation:pulse 1.4s ease-in-out infinite;}
 </style>
@@ -94,6 +101,7 @@
  *   iso    — preferred audio/video language code (e.g. 'eng')
  *   track  — track index fallback when the language does not match
  *   role   — track role hint ('main' | 'description' | ...)
+ *   aiso, arole, atrack — video mode: language, role and index fallback of the audio track
  *   volume — initial volume 0..1
  *   live   — '1' for dynamic (live) manifests
  *   tel    — '1' enables SYNCTEL output and the on-video diagnostics overlay
@@ -111,6 +119,11 @@
   var TRACK_ISO = qp('iso', '');
   var TRACK_INDEX = parseInt(qp('track', '-1'), 10);
   var TRACK_ROLE = qp('role', '');
+  // Video mode only: the soundtrack that plays with the picture.
+  var HAS_AUDIO_TRACK = qp('atrack', null) != null;
+  var AUDIO_ISO = qp('aiso', '');
+  var AUDIO_INDEX = parseInt(qp('atrack', '-1'), 10);
+  var AUDIO_ROLE = qp('arole', '');
   var INIT_VOLUME = parseFloat(qp('volume', '1'));
   var IS_LIVE = qp('live', '0') === '1';
   function numberParam(name, fallback) {
@@ -297,29 +310,33 @@
     });
   }
 
-  function selectTrack() {
-    if (!player) return;
-    var kind = MODE === 'video' ? 'video' : 'audio';
+  function pickTrack(kind, iso, role, index) {
     var tracks = [];
     try { tracks = player.getTracksFor(kind) || []; } catch (e) { return; }
     if (!tracks.length) return;
     var chosen = null;
-    if (TRACK_ISO) {
+    if (iso) {
       for (var i = 0; i < tracks.length; i++) {
-        if (tracks[i].lang && tracks[i].lang.toLowerCase() === TRACK_ISO.toLowerCase()) {
+        if (tracks[i].lang && tracks[i].lang.toLowerCase() === iso.toLowerCase()) {
           // Prefer a role match when several tracks share the language.
           if (!chosen) chosen = tracks[i];
           var roles = tracks[i].roles || [];
-          if (TRACK_ROLE && roles.indexOf(TRACK_ROLE) !== -1) { chosen = tracks[i]; break; }
+          if (role && roles.indexOf(role) !== -1) { chosen = tracks[i]; break; }
         }
       }
     }
-    if (!chosen && TRACK_INDEX >= 0 && TRACK_INDEX < tracks.length) {
-      chosen = tracks[TRACK_INDEX];
+    if (!chosen && index >= 0 && index < tracks.length) {
+      chosen = tracks[index];
     }
     if (chosen) {
       try { player.setCurrentTrack(chosen); } catch (e) {}
     }
+  }
+
+  function selectTrack() {
+    if (!player) return;
+    pickTrack(MODE === 'video' ? 'video' : 'audio', TRACK_ISO, TRACK_ROLE, TRACK_INDEX);
+    if (MODE === 'video' && HAS_AUDIO_TRACK) pickTrack('audio', AUDIO_ISO, AUDIO_ROLE, AUDIO_INDEX);
   }
 
   function initPlayer() {

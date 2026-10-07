@@ -7,7 +7,11 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -29,7 +33,9 @@ import mediasync.app.ui.DiscoveryScreen
 import mediasync.app.ui.FullscreenVideo
 import mediasync.app.ui.HelpScreen
 import mediasync.app.ui.MediaSyncTheme
+import mediasync.app.ui.PlayerDock
 import mediasync.app.ui.TerminalScreen
+import mediasync.app.ui.hasDock
 import mediasync.app.web.CompanionWebScreen
 import mediasync.app.web.CustomTabsCompanion
 import mediasync.app.web.LoopbackCompanion
@@ -57,7 +63,7 @@ class MainActivity : ComponentActivity() {
                 val session by graph.session.state.collectAsStateWithLifecycle()
                 val route = navigation.currentBackStackEntryFlow.collectAsStateWithLifecycle(null).value?.destination?.route
                 LaunchedEffect(fullscreen, route) { applyOrientation(fullscreen || route == WEB) }
-                LaunchedEffect(session.selected?.kind) { if (session.selected?.kind != mediasync.core.TrackKind.VIDEO) fullscreen = false }
+                LaunchedEffect(session.video == null) { if (session.video == null) fullscreen = false }
                 LaunchedEffect(session.terminal) {
                     if (session.terminal == null) {
                         loopback.close()
@@ -69,45 +75,49 @@ class MainActivity : ComponentActivity() {
                     immersive(fullscreen)
                     onDispose { }
                 }
+                // The player docks below the TV list and the TV screen; web pages and help cover it.
+                val docked = session.hasDock && (route == DISCOVERY || route == TERMINAL)
                 Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-                    NavHost(navigation, startDestination = DISCOVERY) {
-                        composable(DISCOVERY) {
-                            DiscoveryScreen(onOpenTerminal = { terminal ->
-                                graph.session.select(terminal)
-                                navigation.navigate(TERMINAL) { launchSingleTop = true }
-                            }, onHelp = { navigation.navigate(HELP) })
+                    Column(Modifier.fillMaxSize()) {
+                        NavHost(navigation, startDestination = DISCOVERY, modifier = Modifier.weight(1f)
+                            .then(if (docked) Modifier.consumeWindowInsets(WindowInsets.navigationBars) else Modifier)) {
+                            composable(DISCOVERY) {
+                                DiscoveryScreen(onOpenTerminal = { terminal ->
+                                    graph.session.select(terminal)
+                                    navigation.navigate(TERMINAL) { launchSingleTop = true }
+                                }, onHelp = { navigation.navigate(HELP) })
+                            }
+                            composable(TERMINAL) {
+                                TerminalScreen(
+                                    onBack = {
+                                        graph.session.leaveDetail()
+                                        navigation.popBackStack()
+                                    },
+                                    onHelp = { navigation.navigate(HELP) },
+                                    onOpenWeb = { url ->
+                                        graph.session.openWeb(url)
+                                        val inApp = {
+                                            if (customTabs.canTry(url)) customTabs.open(this@MainActivity, url) { navigation.navigate(WEB) }
+                                            else navigation.navigate(WEB)
+                                        }
+                                        // Horizon OS: only a regular Quest Browser tab offers WebXR.
+                                        if (loopback.canTry(url)) loopback.open(this@MainActivity, url, inApp)
+                                        else {
+                                            loopback.close()
+                                            inApp()
+                                        }
+                                    },
+                                    onOpenXr = if (xrAvailable) ({ xrSubtitles.open(this@MainActivity) }) else null,
+                                )
+                            }
+                            composable(WEB) {
+                                CompanionWebScreen(session.openWebPage?.url, graph.session) { navigation.popBackStack() }
+                            }
+                            composable(HELP) { HelpScreen(onBack = { navigation.popBackStack() }) }
                         }
-                        composable(TERMINAL) {
-                            TerminalScreen(
-                                onBack = {
-                                    graph.session.leaveDetail()
-                                    navigation.popBackStack()
-                                },
-                                onHelp = { navigation.navigate(HELP) },
-                                onOpenWeb = { url ->
-                                    graph.session.openWeb(url)
-                                    val inApp = {
-                                        if (customTabs.canTry(url)) customTabs.open(this@MainActivity, url) { navigation.navigate(WEB) }
-                                        else navigation.navigate(WEB)
-                                    }
-                                    // Horizon OS: only a regular Quest Browser tab offers WebXR.
-                                    if (loopback.canTry(url)) loopback.open(this@MainActivity, url, inApp)
-                                    else {
-                                        loopback.close()
-                                        inApp()
-                                    }
-                                },
-                                onFullscreen = { fullscreen = true },
-                                fullscreen = fullscreen,
-                                onOpenXr = if (xrAvailable) ({ xrSubtitles.open(this@MainActivity) }) else null,
-                            )
-                        }
-                        composable(WEB) {
-                            CompanionWebScreen(session.openWebPage?.url, graph.session) { navigation.popBackStack() }
-                        }
-                        composable(HELP) { HelpScreen(onBack = { navigation.popBackStack() }) }
+                        if (docked) PlayerDock(onFullscreen = { fullscreen = true }, fullscreen = fullscreen)
                     }
-                    if (fullscreen && session.selected?.kind == mediasync.core.TrackKind.VIDEO) FullscreenVideo(onExit = { fullscreen = false })
+                    if (fullscreen && session.video != null) FullscreenVideo(onExit = { fullscreen = false })
                 }
             }
         }

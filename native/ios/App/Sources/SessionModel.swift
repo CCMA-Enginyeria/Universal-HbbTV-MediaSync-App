@@ -11,7 +11,8 @@ protocol CompanionSink: AnyObject {
  * Single owner of the active TV (PRD-004-R02/R03): probes, DVB-CSS session,
  * catalog, player, subtitles and companion pages. Main thread only; every
  * asynchronous result is checked against the generation that requested it.
- * iOS cannot play MPEG-DASH natively, so DASH tracks use the brand web player.
+ * iOS cannot play MPEG-DASH natively, so DASH tracks use the brand web player,
+ * docked at the bottom of the app like the native player.
  */
 final class SessionModel: ObservableObject {
     struct WebPage: Equatable {
@@ -35,7 +36,9 @@ final class SessionModel: ObservableObject {
     @Published private(set) var effectiveMode: SyncMode?
     @Published private(set) var snapshot: MediaSyncSession.Snapshot?
     @Published private(set) var content = Content.none
-    @Published private(set) var selected: MediaTrack?
+    /// Audio and video the user checked; either can play without the other.
+    @Published private(set) var audio: MediaTrack?
+    @Published private(set) var video: MediaTrack?
     @Published private(set) var subtitle: MediaTrack?
     @Published private(set) var subtitleText: String?
     @Published private(set) var status = PlaybackCorrector.Status.waiting
@@ -53,7 +56,12 @@ final class SessionModel: ObservableObject {
     var availableModes: [SyncMode] { ModeSelection.available(availability) }
     var probing: Bool { availability.values.contains(.checking) }
     var noModes: Bool { ModeSelection.allUnavailable(availability) }
-    var isActive: Bool { selected != nil }
+    var isActive: Bool { audio != nil || video != nil }
+    /// True when `PlayerDock` has something to show: checked audio/video or subtitles of the current content.
+    var hasDock: Bool {
+        if case .media = content { return isActive || subtitle != nil }
+        return false
+    }
 
     /// Pages the current content offers: a web content ID or the applications announced by the manifest.
     var webPages: [WebPage] {
@@ -106,7 +114,10 @@ final class SessionModel: ObservableObject {
     private var contentTask: Task<Void, Never>?
     private var subtitleTask: Task<Void, Never>?
     private var cues = CueTrack()
-    private var intent: PlaybackIntent?
+    /// What the user checked, kept across content gaps so the same role/language resumes.
+    private var audioIntent: PlaybackIntent?
+    private var videoIntent: PlaybackIntent?
+    private var wantsPlayback: Bool { audioIntent != nil || videoIntent != nil }
     private var companions: [ObjectIdentifier: CompanionSink] = [:]
     private var lastPositionEnvelope: String?
     private var ticker: Timer?
@@ -276,7 +287,8 @@ final class SessionModel: ObservableObject {
         session = nil
         sessionMode = nil
         contentTask?.cancel()
-        intent = nil
+        audioIntent = nil
+        videoIntent = nil
         stopPlayback()
         lastPositionEnvelope = nil
         selectSubtitle(nil)
@@ -292,15 +304,32 @@ final class SessionModel: ObservableObject {
         playerFailed = false
     }
 
-    func play(_ track: MediaTrack) {
+    /// Checks or unchecks a component: one audio, one video and one subtitle track at most.
+    /// Checking another track of the same kind replaces the previous one.
+    func toggle(_ track: MediaTrack) {
         guard case .media(let manifest, let kind) = content else { return }
-        if selected == track {
-            intent = nil
-            stopPlayback()
-            return
+        switch track.kind {
+        case .text:
+            selectSubtitle(subtitle == track ? nil : track)
+        case .audio, .video:
+            let nextAudio = track.kind == .audio ? (audio == track ? nil : track) : audio
+            let nextVideo = track.kind == .video ? (video == track ? nil : track) : video
+            audioIntent = nextAudio.map { PlaybackIntent($0) }
+            videoIntent = nextVideo.map { PlaybackIntent($0) }
+            if nextAudio == nil && nextVideo == nil {
+                stopPlayback()
+            } else {
+                startPlayback(manifest, kind, audio: nextAudio, video: nextVideo)
+            }
         }
-        intent = PlaybackIntent(track)
-        startTrack(manifest, kind, track)
+    }
+
+    /// Unchecks every component of the current content.
+    func stopAll() {
+        audioIntent = nil
+        videoIntent = nil
+        stopPlayback()
+        selectSubtitle(nil)
     }
 
     func selectSubtitle(_ track: MediaTrack?) {
@@ -357,15 +386,6 @@ final class SessionModel: ObservableObject {
         corrector.reset()
         playerOwner.resumeAfterSystemPause()
         suspendedBySystem = false
-    }
-
-    func closeWebPlayer() {
-        webPlayerUrl = nil
-        intent = nil
-        selected = nil
-        endGapHold(deactivate: true)
-        if !playerOwner.isActive { playerOwner.deactivateSession() }
-        if companions.isEmpty { stopTicker() }
     }
 
     func attachCompanion(_ sink: CompanionSink) {
@@ -453,7 +473,8 @@ final class SessionModel: ObservableObject {
             stopPlayback()
             content = .failed(.format)
         case .web:
-            intent = nil
+            audioIntent = nil
+            videoIntent = nil
             stopPlayback()
             let url = resolved!
             content = .web(WebPage(url: url, title: nil))
@@ -482,8 +503,11 @@ final class SessionModel: ObservableObject {
                     return
                 }
                 self.content = .media(manifest, kind)
-                if let resume = self.intent?.match(manifest.tracks.filter { $0.kind != .text && !$0.isProtected }) {
-                    self.startTrack(manifest, kind, resume)
+                let playable = manifest.tracks.filter { $0.kind != .text && !$0.isProtected }
+                let audio = self.audioIntent?.match(playable)
+                let video = self.videoIntent?.match(playable)
+                if audio != nil || video != nil {
+                    self.startPlayback(manifest, kind, audio: audio, video: video)
                 } else {
                     self.stopPlayback()
                 }
@@ -492,30 +516,39 @@ final class SessionModel: ObservableObject {
         }
     }
 
-    private func startTrack(_ manifest: MediaManifest, _ kind: ContentKind, _ track: MediaTrack) {
-        corrector.reset()
+    private func startPlayback(_ manifest: MediaManifest, _ kind: ContentKind, audio: MediaTrack?, video: MediaTrack?) {
+        let restart = !playerOwner.isActive
+        if restart { corrector.reset() }
         playerFailed = false
         playerRetrying = false
         suspendedBySystem = false
-        selected = track
+        self.audio = audio
+        self.video = video
         endGapHold(deactivate: false)
         if kind == .dash {
             // AVPlayer cannot play MPEG-DASH: the brand web player follows the TV through the companion protocol.
+            guard let primary = video ?? audio else { return }
             playerOwner.stop(keepSession: true)
-            playerOwner.activateForWebPlayback(video: track.kind == .video)
+            playerOwner.activateForWebPlayback(video: video != nil)
             guard let base = BrandConfig.syncWebPlayerUrl else {
                 content = .failed(.format)
                 return
             }
-            let sameKind = manifest.tracks.filter { $0.kind == track.kind }
-            webPlayerUrl = CompanionProtocol.webPlayerUrl(base: base, mpdUrl: manifest.url, audio: track.kind == .audio, track: track,
-                trackIndex: sameKind.firstIndex(of: track) ?? -1, volume: Double(volume), isLive: manifest.isLive, tuning: tuning, telemetry: false)
-            diagnostics.log("player", "web", ["kind": track.kind.rawValue])
+            func index(_ track: MediaTrack?) -> Int {
+                guard let track = track else { return -1 }
+                return manifest.tracks.filter { $0.kind == track.kind }.firstIndex(of: track) ?? -1
+            }
+            // Video without a checked audio track plays muted, as in the native player.
+            webPlayerUrl = CompanionProtocol.webPlayerUrl(base: base, mpdUrl: manifest.url, audio: video == nil, track: primary,
+                trackIndex: index(primary), volume: audio == nil ? 0 : Double(volume), isLive: manifest.isLive, tuning: tuning, telemetry: false,
+                audioTrack: video == nil ? nil : audio, audioTrackIndex: index(audio))
+            diagnostics.log("player", "web", ["audio": audio != nil, "video": video != nil])
         } else {
             webPlayerUrl = nil
-            playerOwner.play(url: manifest.url, track: track, startPositionS: session?.position()?.seconds, isLive: manifest.isLive, volume: volume)
-            playerOwner.selectSubtitle(subtitle)
-            diagnostics.log("player", "start", ["kind": track.kind.rawValue, "live": manifest.isLive])
+            playerOwner.play(url: manifest.url, audio: audio, video: video, startPositionS: session?.position()?.seconds,
+                             isLive: manifest.isLive, volume: volume)
+            if restart { playerOwner.selectSubtitle(subtitle) }
+            diagnostics.log("player", "start", ["audio": audio != nil, "video": video != nil, "live": manifest.isLive])
         }
         startTicker()
     }
@@ -533,18 +566,26 @@ final class SessionModel: ObservableObject {
                 content = .failed(refreshed?.isProtected == true ? .protected : .manifest)
                 return
             }
-            let nextTrack = refreshed.refreshedTrack(selected)
+            let previousAudio = audio, previousVideo = video
+            let nextAudio = refreshed.refreshedTrack(previousAudio)
+            let nextVideo = refreshed.refreshedTrack(previousVideo)
             let nextText = refreshed.refreshedTrack(subtitle)
             current = refreshed
             content = .media(refreshed, kind)
-            selected = nextTrack
-            if nextTrack == nil && (playerOwner.isActive || webPlayerUrl != nil) { stopPlayback() }
+            audio = nextAudio
+            video = nextVideo
+            if nextAudio == nil && nextVideo == nil {
+                if playerOwner.isActive || webPlayerUrl != nil { stopPlayback() }
+            } else if (nextAudio == nil) != (previousAudio == nil) || (nextVideo == nil) != (previousVideo == nil) {
+                // A component that disappeared must stop playing; a replaced one keeps playing as is.
+                startPlayback(refreshed, kind, audio: nextAudio, video: nextVideo)
+            }
             if nextText != subtitle { selectSubtitle(nextText) }
         }
     }
 
     private func stopPlayback() {
-        if intent != nil {
+        if wantsPlayback {
             // Waiting for the programme to resume: keep the audio session and ask for background time,
             // since a deactivated session lets iOS suspend the app and its sockets.
             playerOwner.stop(keepSession: true)
@@ -554,7 +595,8 @@ final class SessionModel: ObservableObject {
             endGapHold(deactivate: false)
         }
         corrector.reset()
-        selected = nil
+        audio = nil
+        video = nil
         webPlayerUrl = nil
         status = .waiting
         rate = 1

@@ -5,26 +5,29 @@ struct TerminalView: View {
     @EnvironmentObject private var session: SessionModel
     let onHelp: () -> Void
     let onOpenWeb: (String) -> Void
-    let onFullscreen: () -> Void
     let onBack: () -> Void
 
+    /// The catalog scrolls; the player is docked below it by the root view (see `PlayerDock`).
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.spacing("sm")) {
-                HStack {
-                    Button(action: onBack) { Image(systemName: "chevron.backward").font(.title3) }
-                        .frame(minWidth: 44, minHeight: 44).accessibilityLabel(L10n.t("native.terminal.back"))
-                    Text(session.terminal?.device.friendlyName ?? L10n.t("native.discovery.unnamedTv"))
-                        .font(.title3.bold()).foregroundColor(Theme.onSurface).accessibilityAddTraits(.isHeader)
-                    Spacer()
-                    Button(action: onHelp) { Image(systemName: "questionmark.circle").font(.title3) }
-                        .frame(minWidth: 44, minHeight: 44).accessibilityLabel(L10n.t("nav.help"))
-                }
-                statusSection
-                if !session.availableModes.isEmpty { modeSelector }
-                contentSection
+        VStack(spacing: 0) {
+            HStack {
+                Button(action: onBack) { Image(systemName: "chevron.backward").font(.title3) }
+                    .frame(minWidth: 44, minHeight: 44).accessibilityLabel(L10n.t("native.terminal.back"))
+                Text(session.terminal?.device.friendlyName ?? L10n.t("native.discovery.unnamedTv"))
+                    .font(.title3.bold()).foregroundColor(Theme.onSurface).accessibilityAddTraits(.isHeader)
+                Spacer()
+                Button(action: onHelp) { Image(systemName: "questionmark.circle").font(.title3) }
+                    .frame(minWidth: 44, minHeight: 44).accessibilityLabel(L10n.t("nav.help"))
             }
-            .padding(Theme.spacing("containerPadding"))
+            .padding(.horizontal, Theme.spacing("containerPadding"))
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.spacing("sm")) {
+                    statusSection
+                    if !session.availableModes.isEmpty { modeSelector }
+                    contentSection
+                }
+                .padding(Theme.spacing("containerPadding"))
+            }
         }
         .background(Theme.background.ignoresSafeArea())
         .navigationBarHidden(true)
@@ -69,32 +72,18 @@ struct TerminalView: View {
                            : reason == .protected ? "native.terminal.protectedContent" : "native.terminal.manifestError"))
         case .web:
             webSection
-        case .media(let manifest, let kind):
+        case .media(let manifest, _):
             webSection
             let tracks = manifest.tracks.filter { !$0.isProtected }
             let audio = tracks.filter { $0.kind == .audio }
             let video = tracks.filter { $0.kind == .video }
+            if !audio.isEmpty || !video.isEmpty || !manifest.text.isEmpty { message(L10n.t("native.terminal.selectHint")) }
             if !audio.isEmpty { section(L10n.t("discovery.audioSection")) }
-            ForEach(audio, id: \.id) { TrackRow(track: $0, live: manifest.isLive, onFullscreen: onFullscreen) }
+            ForEach(audio, id: \.id) { ComponentRow(track: $0, checked: session.audio == $0) }
             if !video.isEmpty { section(L10n.t("discovery.videoSection")) }
-            ForEach(video, id: \.id) { TrackRow(track: $0, live: manifest.isLive, onFullscreen: onFullscreen) }
-            if !manifest.text.isEmpty {
-                section(L10n.t("native.terminal.subtitles"))
-                Picker(L10n.t("native.terminal.subtitles"), selection: Binding(
-                    get: { session.subtitle?.id ?? "" },
-                    set: { identity in session.selectSubtitle(manifest.text.first { $0.id == identity }) }
-                )) {
-                    Text(L10n.t("native.terminal.subtitlesOff")).tag("")
-                    ForEach(manifest.text, id: \.id) { track in
-                        Text(Labels.title(track)).tag(track.id)
-                    }
-                }
-                .pickerStyle(.menu)
-                if kind == .dash || session.selected == nil {
-                    SubtitleOverlay(text: session.subtitleText)
-                        .frame(maxWidth: .infinity)
-                }
-            }
+            ForEach(video, id: \.id) { ComponentRow(track: $0, checked: session.video == $0) }
+            if !manifest.text.isEmpty { section(L10n.t("native.terminal.subtitles")) }
+            ForEach(manifest.text, id: \.id) { ComponentRow(track: $0, checked: session.subtitle == $0) }
         }
     }
 
@@ -127,58 +116,91 @@ struct TerminalView: View {
     }
 }
 
-private struct TrackRow: View {
+/// One component of the content; at most one audio, one video and one subtitle track are checked.
+private struct ComponentRow: View {
     @EnvironmentObject private var session: SessionModel
     let track: MediaTrack
-    let live: Bool
-    let onFullscreen: () -> Void
+    let checked: Bool
 
     var body: some View {
-        let selected = session.selected == track
-        VStack(alignment: .leading, spacing: Theme.spacing("sm")) {
-            HStack {
+        Button { session.toggle(track) } label: {
+            HStack(spacing: Theme.spacing("md")) {
+                Image(systemName: checked ? "checkmark.square.fill" : "square")
+                    .font(.title2).foregroundColor(checked ? Theme.primary : Theme.onSurfaceVariant)
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading) {
-                    Text(track.kind == .audio ? Labels.audioRole(track) : L10n.t("discovery.videoLabel")).font(.caption.bold()).foregroundColor(Theme.primary)
+                    if track.kind != .text {
+                        Text(track.kind == .audio ? Labels.audioRole(track) : L10n.t("discovery.videoLabel"))
+                            .font(.caption.bold()).foregroundColor(Theme.primary)
+                    }
                     Text(Labels.title(track)).font(.headline).foregroundColor(Theme.onSurface)
                 }
                 Spacer()
-                Button(selected ? L10n.t("discovery.stopSync") : L10n.t(track.kind == .audio ? "discovery.listen" : "discovery.watch")) {
-                    session.play(track)
-                }
-                .buttonStyle(.borderedProminent)
-                .frame(minHeight: 44)
             }
-            if selected { panel }
+            .frame(minHeight: 44)
+            .padding(Theme.spacing("md"))
+            .background(checked ? Theme.surfaceHigh : Theme.surface)
+            .cornerRadius(Theme.radius("lg"))
         }
-        .padding(Theme.spacing("md"))
-        .background(selected ? Theme.surfaceHigh : Theme.surface)
-        .cornerRadius(Theme.radius("lg"))
-        .accessibilityElement(children: .contain)
-        .accessibilityAddTraits(selected ? .isSelected : [])
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(checked ? .isSelected : [])
     }
+}
 
-    @ViewBuilder private var panel: some View {
-        if session.webPlayerUrl != nil {
-            Text(L10n.t("native.player.webPlayer")).font(.caption).foregroundColor(Theme.onSurfaceVariant)
-        } else {
-            if track.kind == .video {
+/**
+ * Player docked at the bottom of the app while components are checked: picture (AVPlayer or
+ * the DASH web player), subtitles, sync status and volume. It stays below the TV list too, so
+ * the web player, which lives in this view, keeps playing when the user leaves the TV screen.
+ */
+struct PlayerDock: View {
+    @EnvironmentObject private var session: SessionModel
+    let onFullscreen: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.spacing("sm")) {
+            if let url = session.webPlayerUrl {
+                if session.video != nil {
+                    CompanionScreen(url: url) { session.stopAll() }
+                        .aspectRatio(16 / 9, contentMode: .fit).frame(maxWidth: .infinity, maxHeight: 280)
+                } else {
+                    CompanionScreen(url: url) { session.stopAll() }.frame(height: 120)
+                }
+            }
+            if session.video != nil && session.webPlayerUrl == nil {
                 ZStack(alignment: .topTrailing) {
-                    VideoSurface(player: session.playerOwner.player).aspectRatio(16 / 9, contentMode: .fit)
+                    VideoSurface(player: session.playerOwner.player)
                     VStack { Spacer(); SubtitleOverlay(text: session.subtitleText) }
                     Button(action: onFullscreen) { Image(systemName: "arrow.up.left.and.arrow.down.right").foregroundColor(.white).padding(10) }
                         .accessibilityLabel(L10n.t("native.terminal.fullscreen"))
                 }
-            } else if let text = session.subtitleText {
-                Text(text).multilineTextAlignment(.center).frame(maxWidth: .infinity).foregroundColor(Theme.onSurface)
+                .aspectRatio(16 / 9, contentMode: .fit).frame(maxWidth: .infinity, maxHeight: 280)
+            } else if session.subtitle != nil {
+                // Audio only, subtitles only or the web player (which does not render them): the text sits below.
+                Text(session.subtitleText ?? " ").multilineTextAlignment(.center).frame(maxWidth: .infinity, minHeight: 44)
+                    .foregroundColor(Theme.onSurface)
             }
-            let status = Labels.syncStatus(session.status, rate: session.rate)
-            HStack {
+            if session.isActive { controls }
+        }
+        .padding(.horizontal, Theme.spacing("containerPadding"))
+        .padding(.vertical, Theme.spacing("sm"))
+        .background(Theme.surfaceHigh.ignoresSafeArea(edges: .bottom).shadow(radius: 8))
+    }
+
+    @ViewBuilder private var controls: some View {
+        HStack {
+            if session.webPlayerUrl != nil {
+                Text(L10n.t("native.player.webPlayer")).font(.caption).foregroundColor(Theme.onSurfaceVariant)
+            } else {
+                let status = Labels.syncStatus(session.status, rate: session.rate)
                 Text(status).font(.caption.bold()).foregroundColor(session.status == .locked ? Theme.success : Theme.tertiary)
                     .accessibilityLabel(L10n.t("native.a11y.syncStatus", status))
-                Spacer()
-                Text(live ? L10n.t("discovery.live") : TimelineMath.formatClock(session.positionS)).font(.caption.monospacedDigit())
-                    .foregroundColor(Theme.onSurfaceVariant).accessibilityHidden(true)
             }
+            Spacer()
+            Text(isLive ? L10n.t("discovery.live") : TimelineMath.formatClock(session.positionS)).font(.caption.monospacedDigit())
+                .foregroundColor(Theme.onSurfaceVariant).accessibilityHidden(true)
+            Button(L10n.t("discovery.stopSync")) { session.stopAll() }.frame(minHeight: 44)
+        }
+        if session.webPlayerUrl == nil {
             if session.suspendedBySystem {
                 HStack {
                     Text(L10n.t("native.player.pausedBySystem")).foregroundColor(Theme.onSurfaceVariant)
@@ -189,11 +211,19 @@ private struct TrackRow: View {
                 Text(L10n.t("native.player.retrying")).foregroundColor(Theme.onSurfaceVariant)
             } else if session.playerFailed {
                 Text(L10n.t("native.player.failed")).foregroundColor(Theme.onSurfaceVariant)
-            } else if track.kind == .audio {
+            } else if session.video == nil {
                 Text(L10n.t("discovery.backgroundHint")).font(.caption).foregroundColor(Theme.onSurfaceVariant)
             }
-            Slider(value: Binding(get: { Double(session.volume) }, set: { session.setVolume(Float($0)) }), in: 0...1)
-                .accessibilityLabel(L10n.t("native.player.volume"))
+            // Without a checked audio track nothing is audible, so there is no volume to set.
+            if session.audio != nil {
+                Slider(value: Binding(get: { Double(session.volume) }, set: { session.setVolume(Float($0)) }), in: 0...1)
+                    .accessibilityLabel(L10n.t("native.player.volume"))
+            }
         }
+    }
+
+    private var isLive: Bool {
+        if case .media(let manifest, _) = session.content { return manifest.isLive }
+        return false
     }
 }

@@ -94,14 +94,17 @@ public enum CompanionProtocol {
         return "\(scheme)://\(host)" + (port.map { ":\($0)" } ?? "")
     }
 
-    /// iOS DASH fallback player URL, with the same parameters as the RN app.
+    /// iOS DASH fallback player URL, with the same parameters as the RN app. In video mode
+    /// `audioTrack` picks the soundtrack that plays with the picture (`aiso`/`arole`/`atrack`);
+    /// pages that predate these parameters keep the default audio.
     public static func webPlayerUrl(base: String, mpdUrl: String, audio: Bool, track: MediaTrack, trackIndex: Int,
-                                    volume: Double, isLive: Bool, tuning: SyncTuning, telemetry: Bool) -> String {
+                                    volume: Double, isLive: Bool, tuning: SyncTuning, telemetry: Bool,
+                                    audioTrack: MediaTrack? = nil, audioTrackIndex: Int = -1) -> String {
         var allowed = CharacterSet.alphanumerics.intersection(CharacterSet(charactersIn: Unicode.Scalar(0)..<Unicode.Scalar(128)))
         allowed.insert(charactersIn: "-_.*")
         func encode(_ value: String) -> String { value.addingPercentEncoding(withAllowedCharacters: allowed) ?? "" }
         let options = tuning.native
-        let query: [(String, String)] = [
+        var query: [(String, String)] = [
             ("mpd", mpdUrl), ("mode", audio ? "audio" : "video"), ("iso", track.language ?? ""), ("track", String(trackIndex)),
             ("role", track.role ?? ""), ("volume", String(volume)), ("live", isLive ? "1" : "0"),
             ("emaAlpha", String(options.emaAlpha)), ("enterBandS", String(options.enterBandS)), ("exitBandS", String(options.exitBandS)),
@@ -109,6 +112,9 @@ public enum CompanionProtocol {
             ("rateEps", String(options.rateEps)), ("seekCooldownMs", String(tuning.seekCooldownMs)), ("seekLeadS", String(tuning.seekLeadS)),
             ("correctionIntervalMs", String(tuning.progressIntervalMs)), ("tel", telemetry ? "1" : "0"),
         ]
+        if let audioTrack = audioTrack, !audio {
+            query += [("aiso", audioTrack.language ?? ""), ("arole", audioTrack.role ?? ""), ("atrack", String(audioTrackIndex))]
+        }
         return base + (base.contains("?") ? "&" : "?") + query.map { "\($0.0)=\(encode($0.1))" }.joined(separator: "&")
     }
 }

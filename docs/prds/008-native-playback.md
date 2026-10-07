@@ -19,6 +19,9 @@ y AVPlayer en iOS, con ruta alternativa documentada cuando el formato lo requier
   ventana live y discontinuidades; clamp de seeks y recuperacion ante posicion caducada.
 - PRD-008-R05: seleccion de audio/video sin perder sesion, controles de detener,
   estado y recuperacion; distinguir pausa TV de pausa solicitada por el espectador.
+  El espectador marca un audio, un video y unos subtitulos como componentes
+  independientes (video sin audio marcado se reproduce silenciado); el player
+  queda anclado en la parte inferior de la app mientras haya algo marcado.
 - PRD-008-R06: video inline/fullscreen, orientacion, retorno y areas seguras;
   audio privado no debe activar una superficie de video innecesaria.
 - PRD-008-R07: errores de red, codec y formato localizados; reintentos acotados

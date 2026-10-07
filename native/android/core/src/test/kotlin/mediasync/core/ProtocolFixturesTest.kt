@@ -219,6 +219,17 @@ class ProtocolFixturesTest {
         assertEquals(emptyRole, manifest.copy(tracks = listOf(replacement.copy(role = null), emptyRole)).refreshedTrack(noRole))
     }
 
+    @Test fun webPlayerUrlCarriesTheCheckedAudioOnlyInVideoMode() {
+        val video = MediaTrack("p/v", TrackKind.VIDEO, null, "main", null, null, null, 0, null, null)
+        val audio = MediaTrack("p/ca", TrackKind.AUDIO, "ca", "main", null, null, null, 0, null, null)
+        fun url(audioMode: Boolean, track: MediaTrack) = CompanionProtocol.webPlayerUrl("https://player.test/", "https://example.test/vod.mpd",
+            audioMode, track, 0, 1.0, false, SyncTuning(), false, audioTrack = audio, audioTrackIndex = 1)
+        assertTrue(url(false, video).endsWith("&aiso=ca&arole=main&atrack=1"))
+        assertTrue("aiso=" !in url(true, audio))
+        assertTrue("aiso=" !in CompanionProtocol.webPlayerUrl("https://player.test/", "https://example.test/vod.mpd",
+            false, video, 0, 0.0, false, SyncTuning(), false))
+    }
+
     @Test fun subtitleScheduleResetsAfterSeekAndReplacesSegments() {
         val template = SegmentTemplate(null, "text-${'$'}Number${'$'}.m4s", 1, 2, 1, 0)
         val schedule = TextSegmentSchedule(template, "https://example.test/", false, null)

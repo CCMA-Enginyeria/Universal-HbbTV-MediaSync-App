@@ -314,6 +314,21 @@ final class ProtocolFixturesTests: XCTestCase {
         XCTAssertEqual(try JSONSerialization.jsonObject(with: Data(literal.utf8), options: [.fragmentsAllowed]) as? String, payload)
     }
 
+    func testWebPlayerUrlCarriesTheCheckedAudioOnlyInVideoMode() {
+        let video = MediaTrack(id: "p/v", kind: .video, language: nil, role: "main", label: nil, codecs: nil, mimeType: nil,
+                               bandwidth: 0, width: nil, height: nil)
+        let audio = MediaTrack(id: "p/ca", kind: .audio, language: "ca", role: "main", label: nil, codecs: nil, mimeType: nil,
+                               bandwidth: 0, width: nil, height: nil)
+        func url(audioMode: Bool, track: MediaTrack, with checked: MediaTrack?) -> String {
+            CompanionProtocol.webPlayerUrl(base: "https://player.test/", mpdUrl: "https://example.test/vod.mpd", audio: audioMode, track: track,
+                                           trackIndex: 0, volume: 1, isLive: false, tuning: SyncTuning(), telemetry: false,
+                                           audioTrack: checked, audioTrackIndex: 1)
+        }
+        XCTAssertTrue(url(audioMode: false, track: video, with: audio).hasSuffix("&aiso=ca&arole=main&atrack=1"))
+        XCTAssertFalse(url(audioMode: true, track: audio, with: audio).contains("aiso="))
+        XCTAssertFalse(url(audioMode: false, track: video, with: nil).contains("aiso="))
+    }
+
     func testModeSelectionMatrix() {
         for item in list("modeSelection") {
             let availability: [SyncMode: Availability] = [

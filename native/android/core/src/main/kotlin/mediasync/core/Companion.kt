@@ -108,12 +108,17 @@ object CompanionProtocol {
         return "$scheme://$host" + (port?.let { ":$it" } ?: "")
     }
 
-    /** iOS DASH fallback player URL, with the same parameters as the RN app. */
+    /**
+     * iOS DASH fallback player URL, with the same parameters as the RN app. In video mode
+     * [audioTrack] picks the soundtrack that plays with the picture (`aiso`/`arole`/`atrack`);
+     * pages that predate these parameters keep the default audio.
+     */
     fun webPlayerUrl(base: String, mpdUrl: String, audio: Boolean, track: MediaTrack, trackIndex: Int,
-                     volume: Double, isLive: Boolean, tuning: SyncTuning, telemetry: Boolean): String {
+                     volume: Double, isLive: Boolean, tuning: SyncTuning, telemetry: Boolean,
+                     audioTrack: MediaTrack? = null, audioTrackIndex: Int = -1): String {
         fun encode(value: String) = java.net.URLEncoder.encode(value, "UTF-8").replace("+", "%20")
         val options = tuning.native
-        val query = listOf(
+        val parameters = listOf(
             "mpd" to mpdUrl, "mode" to if (audio) "audio" else "video", "iso" to track.language.orEmpty(),
             "track" to trackIndex.toString(), "role" to track.role.orEmpty(), "volume" to volume.toString(),
             "live" to if (isLive) "1" else "0", "emaAlpha" to options.emaAlpha.toString(),
@@ -122,7 +127,10 @@ object CompanionProtocol {
             "maxRateDelta" to options.maxRateDelta.toString(), "rateEps" to options.rateEps.toString(),
             "seekCooldownMs" to tuning.seekCooldownMs.toString(), "seekLeadS" to tuning.seekLeadS.toString(),
             "correctionIntervalMs" to tuning.progressIntervalMs.toString(), "tel" to if (telemetry) "1" else "0",
-        ).joinToString("&") { (key, value) -> "$key=${encode(value)}" }
+        ) + (audioTrack?.takeIf { !audio }?.let {
+            listOf("aiso" to it.language.orEmpty(), "arole" to it.role.orEmpty(), "atrack" to audioTrackIndex.toString())
+        } ?: emptyList())
+        val query = parameters.joinToString("&") { (key, value) -> "$key=${encode(value)}" }
         return base + (if (base.contains('?')) "&" else "?") + query
     }
 }

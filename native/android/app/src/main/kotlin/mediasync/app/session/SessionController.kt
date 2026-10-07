@@ -83,7 +83,9 @@ class SessionController(
         val effectiveMode: SyncMode? = null,
         val snapshot: MediaSyncSession.Snapshot? = null,
         val content: Content = Content.None,
-        val selected: MediaTrack? = null,
+        /** Audio and video the user checked; either can play without the other. */
+        val audio: MediaTrack? = null,
+        val video: MediaTrack? = null,
         val subtitle: MediaTrack? = null,
         val subtitleText: String? = null,
         val subtitleFailed: Boolean = false,
@@ -102,7 +104,7 @@ class SessionController(
         val availableModes: List<SyncMode> get() = ModeSelection.available(availability)
         val probing: Boolean get() = availability.values.any { it == Availability.CHECKING }
         val noModes: Boolean get() = ModeSelection.allUnavailable(availability)
-        val isActive: Boolean get() = selected != null
+        val isActive: Boolean get() = audio != null || video != null
 
         /** Pages the current content offers: a web content ID or the applications announced by the manifest. */
         val webPages: List<WebPage> get() = when (val current = content) {
@@ -138,7 +140,10 @@ class SessionController(
     private var sessionMode: SyncMode? = null
     private var contentJob: Job? = null
     private var metadataJob: Job? = null
-    private var intent: PlaybackIntent? = null
+    /** What the user checked, kept across content gaps so the same role/language resumes. */
+    private var audioIntent: PlaybackIntent? = null
+    private var videoIntent: PlaybackIntent? = null
+    private val wantsPlayback: Boolean get() = audioIntent != null || videoIntent != null
     private val corrector = PlaybackCorrector(tuning)
     private var owner: PlayerOwner? = null
     private val subtitles = SubtitleController(loader, scope)
@@ -213,7 +218,8 @@ class SessionController(
         sessionMode = null
         contentJob?.cancel()
         metadataJob?.cancel()
-        intent = null
+        audioIntent = null
+        videoIntent = null
         stopPlayback()
         subtitles.select(null, null)
         companions.clear()
@@ -224,15 +230,31 @@ class SessionController(
         _state.value = UiState()
     }
 
-    fun play(track: MediaTrack) {
-        val content = _state.value.content as? Content.Media ?: return
-        if (_state.value.selected == track) {
-            intent = null
-            stopPlayback()
-            return
+    /**
+     * Checks or unchecks a component: one audio, one video and one subtitle track at most.
+     * Checking another track of the same kind replaces the previous one.
+     */
+    fun toggle(track: MediaTrack) {
+        val state = _state.value
+        val content = state.content as? Content.Media ?: return
+        when (track.kind) {
+            TrackKind.TEXT -> selectSubtitle(track.takeUnless { state.subtitle == track })
+            TrackKind.AUDIO, TrackKind.VIDEO -> {
+                val audio = if (track.kind == TrackKind.AUDIO) track.takeUnless { state.audio == track } else state.audio
+                val video = if (track.kind == TrackKind.VIDEO) track.takeUnless { state.video == track } else state.video
+                audioIntent = audio?.let(PlaybackIntent::of)
+                videoIntent = video?.let(PlaybackIntent::of)
+                if (audio == null && video == null) stopPlayback() else startPlayback(content, audio, video)
+            }
         }
-        intent = PlaybackIntent.of(track)
-        startTrack(content, track)
+    }
+
+    /** Unchecks every component of the current content. */
+    fun stopAll() {
+        audioIntent = null
+        videoIntent = null
+        stopPlayback()
+        selectSubtitle(null)
     }
 
     fun selectSubtitle(track: MediaTrack?) {
@@ -464,7 +486,8 @@ class SessionController(
                 update { copy(content = Content.Failed(Unsupported.FORMAT)) }
             }
             ContentKind.WEB -> {
-                intent = null
+                audioIntent = null
+                videoIntent = null
                 stopPlayback()
                 val url = resolved!!
                 update { copy(content = Content.Web(WebPage(url, null, null))) }
@@ -496,8 +519,10 @@ class SessionController(
                         else -> {
                             val media = Content.Media(manifest, kind)
                             update { copy(content = media) }
-                            val resume = intent?.match(manifest.tracks.filter { it.kind != TrackKind.TEXT && !it.protected })
-                            if (resume != null) startTrack(media, resume) else stopPlayback()
+                            val playable = manifest.tracks.filter { it.kind != TrackKind.TEXT && !it.protected }
+                            val audio = audioIntent?.match(playable)
+                            val video = videoIntent?.match(playable)
+                            if (audio != null || video != null) startPlayback(media, audio, video) else stopPlayback()
                             refreshCatalog(media, requested)
                         }
                     }
@@ -506,14 +531,15 @@ class SessionController(
         }
     }
 
-    private fun startTrack(content: Content.Media, track: MediaTrack) {
+    private fun startPlayback(content: Content.Media, audio: MediaTrack?, video: MediaTrack?) {
         val owner = owner ?: PlayerOwner(context, main, playerListener).also { owner = it }
         val position = session?.position()
-        corrector.reset()
-        owner.play(content.manifest, content.kind, track, position?.seconds, _state.value.volume)
-        owner.selectSubtitle(_state.value.subtitle.takeIf { content.kind == ContentKind.HLS })
-        diagnostics.log("player", "start", "kind" to track.kind.name, "live" to content.manifest.isLive)
-        update { copy(selected = track, playerFailed = false, playerRetrying = false, suspendedBySystem = false) }
+        val restart = !owner.isActive
+        if (restart) corrector.reset()
+        owner.play(content.manifest, content.kind, audio, video, position?.seconds, _state.value.volume)
+        if (restart) owner.selectSubtitle(_state.value.subtitle.takeIf { content.kind == ContentKind.HLS })
+        diagnostics.log("player", "start", "audio" to (audio != null), "video" to (video != null), "live" to content.manifest.isLive)
+        update { copy(audio = audio, video = video, playerFailed = false, playerRetrying = false, suspendedBySystem = false) }
         startService(media = true)
         startTicking()
     }
@@ -532,11 +558,18 @@ class SessionController(
                 update { copy(content = Content.Failed(if (refreshed?.isProtected == true) Unsupported.PROTECTED else Unsupported.MANIFEST)) }
                 return
             }
-            val selected = refreshed.refreshedTrack(_state.value.selected)
-            val text = refreshed.refreshedTrack(_state.value.subtitle)
+            val previous = _state.value
+            val audio = refreshed.refreshedTrack(previous.audio)
+            val video = refreshed.refreshedTrack(previous.video)
+            val text = refreshed.refreshedTrack(previous.subtitle)
             current = Content.Media(refreshed, current.kind)
-            update { copy(content = current, selected = selected) }
-            if (selected == null && owner?.isActive == true) stopPlayback()
+            update { copy(content = current, audio = audio, video = video) }
+            when {
+                audio == null && video == null -> if (owner?.isActive == true) stopPlayback()
+                // A component that disappeared must stop decoding; a replaced one keeps playing as is.
+                (audio == null) != (previous.audio == null) || (video == null) != (previous.video == null) ->
+                    startPlayback(current, audio, video)
+            }
             if (text != _state.value.subtitle) selectSubtitle(text)
         }
     }
@@ -544,11 +577,11 @@ class SessionController(
     private fun stopPlayback() {
         owner?.stop()
         corrector.reset()
-        update { copy(selected = null, status = PlaybackCorrector.Status.WAITING, rate = 1.0, playerRetrying = false) }
+        update { copy(audio = null, video = null, status = PlaybackCorrector.Status.WAITING, rate = 1.0, playerRetrying = false) }
         when {
             companions.isNotEmpty() -> startService(media = false)
             // Waiting to resume (content gap, unmatched track): restarting later from the background is not allowed.
-            intent != null -> Unit
+            wantsPlayback -> Unit
             else -> stopService()
         }
     }

@@ -6,7 +6,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,9 +13,11 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -28,7 +29,7 @@ import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -37,7 +38,9 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -46,10 +49,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -68,20 +71,22 @@ import mediasync.core.TimelineMath
 import mediasync.core.TrackKind
 
 @Composable
-fun TerminalScreen(onBack: () -> Unit, onHelp: () -> Unit, onOpenWeb: (String) -> Unit, onFullscreen: () -> Unit, fullscreen: Boolean = false,
-                   onOpenXr: (() -> Unit)? = null) {
+fun TerminalScreen(onBack: () -> Unit, onHelp: () -> Unit, onOpenWeb: (String) -> Unit, onOpenXr: (() -> Unit)? = null) {
     val context = LocalContext.current
     val controller = context.graph.session
     val state by controller.state.collectAsStateWithLifecycle()
     val terminal = state.terminal ?: return
     val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
-    fun play(track: MediaTrack) {
-        if (Build.VERSION.SDK_INT >= 33) notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
-        controller.play(track)
+    fun toggle(track: MediaTrack) {
+        val starting = track.kind != TrackKind.TEXT && !state.isActive
+        if (starting && Build.VERSION.SDK_INT >= 33) notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        controller.toggle(track)
     }
 
-    Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(horizontal = Tokens.spacing("containerPadding"))) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+    // The catalog scrolls; the player is docked below it by the activity (see PlayerDock).
+    Column(Modifier.fillMaxSize().safeDrawingPadding()) {
+        Row(verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = Tokens.spacing("containerPadding"))) {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.native_terminal_back),
                     tint = MaterialTheme.colorScheme.onBackground)
@@ -93,59 +98,51 @@ fun TerminalScreen(onBack: () -> Unit, onHelp: () -> Unit, onOpenWeb: (String) -
                     tint = MaterialTheme.colorScheme.onBackground)
             }
         }
-
-        val sessionText = Labels.session(state.snapshot)
-        when {
-            !terminal.supportsMediaSync -> Message(stringResource(R.string.native_discovery_noSyncSupport))
-            state.noModes -> {
-                Message(stringResource(R.string.native_terminal_noModes))
-                OutlinedButton(onClick = controller::retry) { Text(stringResource(R.string.native_terminal_retry)) }
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = Tokens.spacing("containerPadding"))
+            .padding(bottom = Tokens.spacing("md"))) {
+            val sessionText = Labels.session(state.snapshot)
+            when {
+                !terminal.supportsMediaSync -> Message(stringResource(R.string.native_discovery_noSyncSupport))
+                state.noModes -> {
+                    Message(stringResource(R.string.native_terminal_noModes))
+                    OutlinedButton(onClick = controller::retry) { Text(stringResource(R.string.native_terminal_retry)) }
+                }
+                state.probing && state.availableModes.isEmpty() -> Message(stringResource(R.string.native_terminal_probing))
+                sessionText != null -> Message(sessionText, live = true)
             }
-            state.probing && state.availableModes.isEmpty() -> Message(stringResource(R.string.native_terminal_probing))
-            sessionText != null -> Message(sessionText, live = true)
-        }
 
-        if (state.availableModes.isNotEmpty()) ModeSelector(state, controller)
+            if (state.availableModes.isNotEmpty()) ModeSelector(state, controller)
 
-        when (val content = state.content) {
-            SessionController.Content.None, SessionController.Content.Loading ->
-                if (state.effectiveMode != null) Message(stringResource(R.string.discovery_waitingForContent))
-            is SessionController.Content.Failed -> Message(stringResource(when (content.reason) {
-                SessionController.Unsupported.FORMAT -> R.string.native_terminal_unsupportedContent
-                SessionController.Unsupported.PROTECTED -> R.string.native_terminal_protectedContent
-                SessionController.Unsupported.MANIFEST -> R.string.native_terminal_manifestError
-            }))
-            is SessionController.Content.Web -> WebSection(state.webPages, onOpenWeb)
-            is SessionController.Content.Media -> {
-                WebSection(state.webPages, onOpenWeb)
-                val tracks = content.manifest.tracks.filterNot { it.protected }
-                val audio = tracks.filter { it.kind == TrackKind.AUDIO }
-                val video = tracks.filter { it.kind == TrackKind.VIDEO }
-                val text = tracks.filter { it.kind == TrackKind.TEXT && content.kind != mediasync.core.ContentKind.HLS }
-                if (audio.isNotEmpty()) Section(stringResource(R.string.discovery_audioSection))
-                audio.forEach { TrackRow(it, state, content.manifest.isLive, ::play, onFullscreen, fullscreen) }
-                if (video.isNotEmpty()) Section(stringResource(R.string.discovery_videoSection))
-                video.forEach { TrackRow(it, state, content.manifest.isLive, ::play, onFullscreen, fullscreen) }
-                if (text.isNotEmpty()) {
-                    Section(stringResource(R.string.native_terminal_subtitles))
-                    Row(horizontalArrangement = Arrangement.spacedBy(Tokens.spacing("sm"))) {
-                        FilterChip(selected = state.subtitle == null, onClick = { controller.selectSubtitle(null) },
-                            label = { Text(stringResource(R.string.native_terminal_subtitlesOff)) })
-                        text.forEach { track ->
-                            FilterChip(selected = state.subtitle == track, onClick = { controller.selectSubtitle(track) },
-                                label = { Text(Labels.trackTitle(track)) })
-                        }
+            when (val content = state.content) {
+                SessionController.Content.None, SessionController.Content.Loading ->
+                    if (state.effectiveMode != null) Message(stringResource(R.string.discovery_waitingForContent))
+                is SessionController.Content.Failed -> Message(stringResource(when (content.reason) {
+                    SessionController.Unsupported.FORMAT -> R.string.native_terminal_unsupportedContent
+                    SessionController.Unsupported.PROTECTED -> R.string.native_terminal_protectedContent
+                    SessionController.Unsupported.MANIFEST -> R.string.native_terminal_manifestError
+                }))
+                is SessionController.Content.Web -> WebSection(state.webPages, onOpenWeb)
+                is SessionController.Content.Media -> {
+                    WebSection(state.webPages, onOpenWeb)
+                    val tracks = content.manifest.tracks.filterNot { it.protected }
+                    val audio = tracks.filter { it.kind == TrackKind.AUDIO }
+                    val video = tracks.filter { it.kind == TrackKind.VIDEO }
+                    val text = tracks.filter { it.kind == TrackKind.TEXT && content.kind != mediasync.core.ContentKind.HLS }
+                    if (audio.isNotEmpty() || video.isNotEmpty() || text.isNotEmpty()) {
+                        Message(stringResource(R.string.native_terminal_selectHint))
                     }
-                    // Without audio/video there is no player panel, so the text is shown here.
-                    if (state.selected == null && state.subtitleText != null) {
-                        Box(Modifier.fillMaxWidth().padding(top = Tokens.spacing("sm")), contentAlignment = Alignment.Center) {
-                            SubtitleOverlay(state.subtitleText)
-                        }
-                    }
-                    if (state.subtitle != null && onOpenXr != null) {
-                        OutlinedButton(onClick = onOpenXr, modifier = Modifier.padding(top = Tokens.spacing("sm"))) {
-                            Icon(Icons.Filled.ViewInAr, contentDescription = null)
-                            Text(stringResource(R.string.native_terminal_subtitlesXr), modifier = Modifier.padding(start = Tokens.spacing("sm")))
+                    if (audio.isNotEmpty()) Section(stringResource(R.string.discovery_audioSection))
+                    audio.forEach { ComponentRow(it, checked = state.audio == it, onToggle = ::toggle) }
+                    if (video.isNotEmpty()) Section(stringResource(R.string.discovery_videoSection))
+                    video.forEach { ComponentRow(it, checked = state.video == it, onToggle = ::toggle) }
+                    if (text.isNotEmpty()) {
+                        Section(stringResource(R.string.native_terminal_subtitles))
+                        text.forEach { ComponentRow(it, checked = state.subtitle == it, onToggle = ::toggle) }
+                        if (state.subtitle != null && onOpenXr != null) {
+                            OutlinedButton(onClick = onOpenXr, modifier = Modifier.padding(top = Tokens.spacing("sm"))) {
+                                Icon(Icons.Filled.ViewInAr, contentDescription = null)
+                                Text(stringResource(R.string.native_terminal_subtitlesXr), modifier = Modifier.padding(start = Tokens.spacing("sm")))
+                            }
                         }
                     }
                 }
@@ -215,59 +212,82 @@ private fun WebCard(page: SessionController.WebPage, onOpen: () -> Unit) {
     }
 }
 
+/** One component of the content; at most one audio, one video and one subtitle track are checked. */
 @Composable
-private fun TrackRow(track: MediaTrack, state: SessionController.UiState, live: Boolean, onPlay: (MediaTrack) -> Unit, onFullscreen: () -> Unit, fullscreen: Boolean) {
-    val controller = LocalContext.current.graph.session
-    val selected = state.selected == track
-    val title = Labels.trackTitle(track)
-    val role = if (track.kind == TrackKind.AUDIO) Labels.audioRole(track) else stringResource(R.string.discovery_videoLabel)
-    val selectedText = stringResource(R.string.native_a11y_selected)
+private fun ComponentRow(track: MediaTrack, checked: Boolean, onToggle: (MediaTrack) -> Unit) {
+    val role = when (track.kind) {
+        TrackKind.AUDIO -> Labels.audioRole(track)
+        TrackKind.VIDEO -> stringResource(R.string.discovery_videoLabel)
+        TrackKind.TEXT -> null
+    }
     Card(
-        colors = CardDefaults.cardColors(containerColor = if (selected) Tokens.surfaceContainerHigh else Tokens.surfaceContainer),
+        colors = CardDefaults.cardColors(containerColor = if (checked) Tokens.surfaceContainerHigh else Tokens.surfaceContainer),
         shape = RoundedCornerShape(Tokens.radius("lg")),
-        modifier = Modifier.fillMaxWidth().padding(bottom = Tokens.spacing("sm")).semantics { this.selected = selected },
+        modifier = Modifier.fillMaxWidth().padding(bottom = Tokens.spacing("sm")),
     ) {
-        Column(Modifier.padding(Tokens.spacing("md"))) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(role, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                    Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-                }
-                val action = when {
-                    selected -> stringResource(R.string.discovery_stopSync)
-                    track.kind == TrackKind.AUDIO -> stringResource(R.string.discovery_listen)
-                    else -> stringResource(R.string.discovery_watch)
-                }
-                Button(onClick = { onPlay(track) }, modifier = Modifier.heightIn(min = 48.dp)
-                    .semantics { contentDescription = "$action, $title" + if (selected) ", $selectedText" else "" }) { Text(action) }
+        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp)
+            .toggleable(value = checked, role = Role.Checkbox, onValueChange = { onToggle(track) })
+            .padding(horizontal = Tokens.spacing("sm"), vertical = Tokens.spacing("xs")),
+            verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = checked, onCheckedChange = null, modifier = Modifier.padding(Tokens.spacing("sm")))
+            Column(Modifier.weight(1f).padding(start = Tokens.spacing("sm"))) {
+                role?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary) }
+                Text(Labels.trackTitle(track), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
             }
-            if (selected) PlayerPanel(track, state, live, controller, onFullscreen, fullscreen)
+        }
+    }
+}
+
+/** True when [PlayerDock] has something to show: checked audio/video or subtitles of the current content. */
+val SessionController.UiState.hasDock: Boolean
+    get() = content is SessionController.Content.Media && (isActive || subtitle != null)
+
+/**
+ * Player docked at the bottom of the app while components are checked: picture, subtitles,
+ * sync status and volume. It stays below the TV list too, since playback outlives the TV screen.
+ */
+@Composable
+fun PlayerDock(onFullscreen: () -> Unit, fullscreen: Boolean, modifier: Modifier = Modifier) {
+    val controller = LocalContext.current.graph.session
+    val state by controller.state.collectAsStateWithLifecycle()
+    val live = (state.content as? SessionController.Content.Media)?.manifest?.isLive == true
+    Surface(color = Tokens.surfaceContainerHigh, shape = RoundedCornerShape(topStart = Tokens.radius("lg"), topEnd = Tokens.radius("lg")),
+        shadowElevation = 8.dp, modifier = modifier.fillMaxWidth()) {
+        Column(Modifier.navigationBarsPadding().padding(horizontal = Tokens.spacing("containerPadding"), vertical = Tokens.spacing("sm"))) {
+            if (state.video != null) {
+                Box(Modifier.align(Alignment.CenterHorizontally).heightIn(max = 280.dp).aspectRatio(16f / 9f).background(Color.Black)) {
+                    if (!fullscreen) PlayerSurface(Modifier.fillMaxSize())
+                    SubtitleOverlay(state.subtitleText, Modifier.align(Alignment.BottomCenter))
+                    IconButton(onClick = onFullscreen, modifier = Modifier.align(Alignment.TopEnd)) {
+                        Icon(Icons.Filled.Fullscreen, contentDescription = stringResource(R.string.native_terminal_fullscreen), tint = Color.White)
+                    }
+                }
+            } else {
+                // Audio only or subtitles only: the text takes the place of the picture.
+                Box(Modifier.fillMaxWidth().heightIn(min = 48.dp), contentAlignment = Alignment.Center) {
+                    state.subtitleText?.let { Text(it, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyLarge,
+                        textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()) }
+                }
+            }
+            if (state.subtitleFailed) Message(stringResource(R.string.native_terminal_manifestError))
+            if (state.isActive) PlaybackControls(state, live, controller)
         }
     }
 }
 
 @Composable
-private fun PlayerPanel(track: MediaTrack, state: SessionController.UiState, live: Boolean, controller: SessionController, onFullscreen: () -> Unit, fullscreen: Boolean) {
-    if (track.kind == TrackKind.VIDEO) {
-        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).padding(top = Tokens.spacing("sm")).background(Color.Black)) {
-            if (!fullscreen) PlayerSurface(Modifier.fillMaxSize())
-            SubtitleOverlay(state.subtitleText, Modifier.align(Alignment.BottomCenter))
-            IconButton(onClick = onFullscreen, modifier = Modifier.align(Alignment.TopEnd)) {
-                Icon(Icons.Filled.Fullscreen, contentDescription = stringResource(R.string.native_terminal_fullscreen), tint = Color.White)
-            }
-        }
-    } else {
-        state.subtitleText?.let { Text(it, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyLarge,
-            textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = Tokens.spacing("sm"))) }
-    }
+private fun PlaybackControls(state: SessionController.UiState, live: Boolean, controller: SessionController) {
     val status = Labels.syncStatus(state.status, state.rate)
     val statusDescription = stringResource(R.string.native_a11y_syncStatus, status)
-    Row(Modifier.fillMaxWidth().padding(top = Tokens.spacing("sm")), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().padding(top = Tokens.spacing("xs")), verticalAlignment = Alignment.CenterVertically) {
         Text(status, style = MaterialTheme.typography.labelLarge,
             color = if (state.status == PlaybackCorrector.Status.LOCKED) Tokens.success else MaterialTheme.colorScheme.tertiary,
             modifier = Modifier.weight(1f).semantics { contentDescription = statusDescription; liveRegion = LiveRegionMode.Polite })
         Text(if (live) stringResource(R.string.discovery_live) else TimelineMath.formatClock(state.positionS),
             style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        TextButton(onClick = controller::stopAll, modifier = Modifier.padding(start = Tokens.spacing("sm")).heightIn(min = 48.dp)) {
+            Text(stringResource(R.string.discovery_stopSync))
+        }
     }
     when {
         state.suspendedBySystem -> Row(verticalAlignment = Alignment.CenterVertically) {
@@ -276,13 +296,15 @@ private fun PlayerPanel(track: MediaTrack, state: SessionController.UiState, liv
         }
         state.playerRetrying -> Message(stringResource(R.string.native_player_retrying), live = true)
         state.playerFailed -> Message(stringResource(R.string.native_player_failed), live = true)
-        track.kind == TrackKind.AUDIO -> Text(stringResource(R.string.discovery_backgroundHint), style = MaterialTheme.typography.bodySmall,
+        state.video == null -> Text(stringResource(R.string.discovery_backgroundHint), style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
-    if (state.subtitleFailed) Message(stringResource(R.string.native_terminal_manifestError))
-    val volumeLabel = stringResource(R.string.native_player_volume)
-    Slider(value = state.volume, onValueChange = controller::setVolume,
-        modifier = Modifier.fillMaxWidth().semantics { contentDescription = volumeLabel })
+    // Without a checked audio track nothing is audible, so there is no volume to set.
+    if (state.audio != null) {
+        val volumeLabel = stringResource(R.string.native_player_volume)
+        Slider(value = state.volume, onValueChange = controller::setVolume,
+            modifier = Modifier.fillMaxWidth().semantics { contentDescription = volumeLabel })
+    }
 }
 
 @Composable
