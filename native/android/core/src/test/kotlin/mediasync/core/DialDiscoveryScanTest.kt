@@ -28,6 +28,7 @@ class DialDiscoveryScanTest {
         var status = 200
         var body = "<root><device><friendlyName>Test TV</friendlyName></device></root>"
         var appStatus = 200
+        var app2appUrl = "ws://localhost:8080/app2app/"
         var chunked = false
         var receivedAgent: String? = null
         var receivedSearch: String? = null
@@ -45,7 +46,7 @@ class DialDiscoveryScanTest {
             http.createContext("/apps/HbbTV") { exchange ->
                 applications.incrementAndGet()
                 receivedAgent = exchange.requestHeaders.getFirst("User-Agent")
-                val bytes = "<service><additionalData><X_HbbTV_App2AppURL>ws://localhost:8080/app2app/</X_HbbTV_App2AppURL></additionalData></service>".toByteArray()
+                val bytes = "<service><additionalData><X_HbbTV_App2AppURL>$app2appUrl</X_HbbTV_App2AppURL></additionalData></service>".toByteArray()
                 exchange.sendResponseHeaders(appStatus, bytes.size.toLong())
                 exchange.responseBody.use { it.write(bytes) }
             }
@@ -271,6 +272,21 @@ class DialDiscoveryScanTest {
                 assertTrue(completed.terminals.isEmpty())
                 responder.get(2, TimeUnit.SECONDS)
             } finally { release.countDown() }
+        }
+    }
+
+    @Test fun refetchesTheApplicationDocumentOfAKnownTelevision() {
+        Television().use { television ->
+            val device = DialDevice(television.location, "${television.base}/apps", "Test TV", null, null)
+            television.app2appUrl = "ws://localhost:9090/app2app/"
+            val application = DialDiscoveryScan(television.options()).use { it.fetchApplication(device) }
+            assertEquals("ws://127.0.0.1:9090/app2app/", application?.app2AppUrl, "Placeholder host replaced by the TV host")
+            assertEquals("DialApp/1.0", television.receivedAgent)
+            television.appStatus = 404
+            assertEquals(null, DialDiscoveryScan(television.options()).use { it.fetchApplication(device) })
+            val used = DialDiscoveryScan(television.options())
+            used.fetchApplication(device)
+            assertFailsWith<IllegalStateException> { used.fetchApplication(device) }
         }
     }
 }

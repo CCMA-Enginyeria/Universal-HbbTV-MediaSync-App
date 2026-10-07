@@ -10,11 +10,13 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import mediasync.app.brand.BrandConfig
 import mediasync.app.content.ContentLoader
 import mediasync.app.data.Preferences
 import mediasync.app.diagnostics.Diagnostics
 import mediasync.app.net.AndroidTransport
+import mediasync.app.net.NetworkMonitor
 import mediasync.app.playback.PlayerOwner
 import mediasync.app.playback.SyncService
 import mediasync.app.subtitles.SubtitleController
@@ -28,6 +30,7 @@ import mediasync.core.CompanionFeedThrottle
 import mediasync.core.CompanionProtocol
 import mediasync.core.ContentClassifier
 import mediasync.core.ContentKind
+import mediasync.core.DialDiscoveryScan
 import mediasync.core.DialTerminal
 import mediasync.core.Endpoints
 import mediasync.core.MediaManifest
@@ -55,6 +58,7 @@ interface CompanionSink {
 class SessionController(
     private val context: Context,
     private val transport: AndroidTransport,
+    private val network: NetworkMonitor,
     private val loader: ContentLoader,
     private val preferences: Preferences,
     private val diagnostics: Diagnostics,
@@ -120,6 +124,12 @@ class SessionController(
     val state: StateFlow<UiState> = _state
     private var generation = 0L
     private val probes = mutableListOf<TransportProbe>()
+    /** The terminal as picked from the discovery list; the state holds it with refreshed endpoints. */
+    private var selected: DialTerminal? = null
+    /** Re-read of the HbbTV application document that precedes every probe round. */
+    private var refreshJob: Job? = null
+    /** The running session was started with endpoints the TV no longer advertises. */
+    private var endpointsChanged = false
     /** True while availability is re-checked for a running session that lost the TV. */
     private var reprobing = false
     private var reprobeJob: Job? = null
@@ -149,9 +159,12 @@ class SessionController(
 
     private fun update(change: UiState.() -> UiState) { _state.value = _state.value.change() }
 
-    fun select(terminal: DialTerminal) {
-        if (_state.value.terminal == terminal) return
+    fun select(terminal: DialTerminal) = open(terminal, feedbackMs = 0)
+
+    private fun open(terminal: DialTerminal, feedbackMs: Long) {
+        if (_state.value.terminal != null && selected == terminal) return
         stop()
+        selected = terminal
         generation++
         val preferred = preferences.mode(terminal)
         _state.value = UiState(terminal = terminal, preferredMode = preferred,
@@ -161,7 +174,7 @@ class SessionController(
             update { copy(availability = SyncMode.entries.associateWith { Availability.UNAVAILABLE }) }
             return
         }
-        startProbes(terminal)
+        startProbes(terminal, feedbackMs)
     }
 
     fun setPreferredMode(mode: SyncMode) {
@@ -176,16 +189,21 @@ class SessionController(
         if (owner?.isActive != true && companions.isEmpty()) stop()
     }
 
+    /** Checks the TV again; the check stays visible for a moment so the tap has feedback. */
     fun retry() {
-        val terminal = _state.value.terminal ?: return
+        val terminal = selected ?: return
         _state.value = UiState()
-        select(terminal)
+        open(terminal, RETRY_FEEDBACK_MS)
     }
 
     fun stop() {
         generation++
         probes.forEach(TransportProbe::cancel)
         probes.clear()
+        selected = null
+        refreshJob?.cancel()
+        refreshJob = null
+        endpointsChanged = false
         reprobing = false
         reprobeJob?.cancel()
         reprobeJob = null
@@ -290,13 +308,41 @@ class SessionController(
     }
 
     /**
-     * Probes both transports. The TV can switch stacks at any time (the emulator does so
-     * on demand), so availability is re-checked while a session recovers instead of only
-     * once on selection; otherwise the session would retry a stack that no longer exists.
+     * Re-reads the TV's HbbTV application document, then probes both transports. A TV
+     * reopens App2App and CSS-CII on new ports whenever its HbbTV application restarts, so
+     * the URLs found by discovery go stale; a failed read keeps the known ones.
      */
-    private fun startProbes(terminal: DialTerminal) {
+    private fun startProbes(terminal: DialTerminal, feedbackMs: Long = 0) {
         probes.forEach(TransportProbe::cancel)
         probes.clear()
+        refreshJob?.cancel()
+        val current = generation
+        val lan = network.state.value.network
+        val options = DialDiscoveryScan.Options(durationMs = REFRESH_TIMEOUT_MS, requestTimeoutMs = REFRESH_TIMEOUT_MS,
+            openConnection = lan?.let { network -> { url -> network.openConnection(url) } })
+        refreshJob = scope.launch {
+            val startedAt = SystemClock.elapsedRealtime()
+            val fresh = withContext(Dispatchers.IO) { DialDiscoveryScan(options).use { it.fetchApplication(terminal.device) } }
+            delay(feedbackMs - (SystemClock.elapsedRealtime() - startedAt))
+            if (current != generation) return@launch
+            refreshJob = null
+            val latest = _state.value.terminal ?: return@launch
+            val changed = fresh != null && fresh != latest.application
+            diagnostics.log("session", "refresh", "read" to (fresh != null), "changed" to changed)
+            if (changed) {
+                endpointsChanged = session != null
+                update { copy(terminal = latest.copy(application = fresh)) }
+            }
+            runProbes(_state.value.terminal ?: return@launch)
+        }
+    }
+
+    /**
+     * Probes both transports. The TV can switch stacks at any time (the emulator does so
+     * on demand), so availability is re-checked while a session recovers or no stack is
+     * available instead of only once on selection.
+     */
+    private fun runProbes(terminal: DialTerminal) {
         val current = generation
         val application = terminal.application
         val realHost = Endpoints.realHost(terminal.device.location, terminal.device.applicationUrl)
@@ -309,7 +355,7 @@ class SessionController(
                 update { copy(availability = availability + (mode to if (available) Availability.AVAILABLE else Availability.UNAVAILABLE)) }
                 reconcileMode()
                 pending--
-                if (pending == 0 && reprobing) {
+                if (pending == 0) {
                     reprobing = false
                     watchConnection()
                 }
@@ -319,10 +365,14 @@ class SessionController(
         }
     }
 
-    /** Schedules a re-check while the active session is recovering; cancels it otherwise. */
+    /** Whether the TV is worth re-checking: the session lost it, or it offered no stack at all. */
+    private fun needsRecheck(state: UiState): Boolean = state.terminal != null &&
+        (state.snapshot?.state == MediaSyncSession.State.RECOVERING || (session == null && state.noModes))
+
+    /** Schedules a re-check while [needsRecheck] holds; cancels it otherwise. */
     private fun watchConnection() {
         val state = _state.value
-        if (state.snapshot?.state != MediaSyncSession.State.RECOVERING || state.terminal == null) {
+        if (!needsRecheck(state)) {
             reprobeJob?.cancel()
             reprobeJob = null
             reprobeCount = 0
@@ -338,7 +388,7 @@ class SessionController(
             reprobeJob = null
             val latest = _state.value
             val terminal = latest.terminal
-            if (current != generation || latest.snapshot?.state != MediaSyncSession.State.RECOVERING || terminal == null) return@launch
+            if (current != generation || !needsRecheck(latest) || terminal == null) return@launch
             diagnostics.log("session", "reprobe", "mode" to (sessionMode?.name ?: "none"))
             reprobing = true
             startProbes(terminal)
@@ -350,11 +400,13 @@ class SessionController(
         val effective = ModeSelection.effective(state.preferredMode, state.availability)
         // A failed re-check keeps the current session retrying rather than tearing it down.
         if (effective == null && reprobing && session != null) return
-        if (effective == sessionMode && (effective == null || session != null)) return
+        // New endpoints restart a session of the same mode, which would otherwise keep the stale URLs.
+        if (effective == sessionMode && (effective == null || session != null) && !(endpointsChanged && effective != null)) return
         startSession(effective)
     }
 
     private fun startSession(mode: SyncMode?) {
+        endpointsChanged = false
         session?.stop()
         session = null
         sessionMode = mode
@@ -619,5 +671,9 @@ class SessionController(
         const val TIMELINE_SELECTOR = "urn:dvb:css:timeline:mpd:period:rel:1000"
         /** Pause between availability re-checks while the active session keeps recovering. */
         const val REPROBE_INTERVAL_MS = 5_000L
+        /** Upper bound for re-reading the TV's HbbTV application document. */
+        const val REFRESH_TIMEOUT_MS = 3_000
+        /** Minimum time a manual retry shows the check in progress. */
+        const val RETRY_FEEDBACK_MS = 800L
     }
 }

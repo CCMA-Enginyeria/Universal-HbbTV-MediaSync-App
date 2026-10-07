@@ -140,6 +140,24 @@ class DialDiscoveryScan(
         }
     }
 
+    /**
+     * Re-reads the HbbTV application document of a TV found by an earlier scan. Terminals
+     * reopen App2App and CSS-CII on new ports when their HbbTV application restarts, so the
+     * scanned URLs go stale. Blocking and single use like [run], bounded by
+     * [Options.durationMs]; null when the document cannot be fetched or parsed.
+     */
+    fun fetchApplication(device: DialDevice): HbbtvApplication? {
+        check(started.compareAndSet(false, true)) { "Create a new scan for each search" }
+        deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(options.durationMs.toLong())
+        return try {
+            DialProtocol.parseApplication(get(device.hbbtvUrl).body, URI(device.location).host)
+        } catch (_: Exception) {
+            null
+        } finally {
+            releaseResources()
+        }
+    }
+
     override fun close() {
         cancelled.set(true)
         releaseResources()

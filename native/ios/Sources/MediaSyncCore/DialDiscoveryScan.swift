@@ -108,6 +108,25 @@ public struct DialDiscoveryScan {
         })
     }
 
+    /**
+     * Re-reads the HbbTV application document of a TV found by an earlier scan. Terminals
+     * reopen App2App and CSS-CII on new ports when their HbbTV application restarts, so the
+     * scanned URLs go stale. Nil when the document cannot be fetched or parsed.
+     */
+    public static func fetchApplication(_ device: DialDevice, timeout: TimeInterval = 3) async -> HbbtvApplication? {
+        var options = Options()
+        options.requestTimeout = timeout
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = timeout
+        configuration.timeoutIntervalForResource = timeout
+        configuration.httpCookieStorage = nil
+        configuration.urlCache = nil
+        let http = URLSession(configuration: configuration, delegate: NoRedirects(), delegateQueue: nil)
+        defer { http.invalidateAndCancel() }
+        guard let body = try? await DialDiscoveryScan(options: options).get(device.hbbtvUrl, session: http).0 else { return nil }
+        return DialProtocol.parseApplication(body, realHost: URLComponents(string: device.location)?.host)
+    }
+
     /// Application-URL must stay on the device-description host.
     static func sameHost(_ applicationUrl: String, _ location: String) -> Bool {
         guard let host = URLComponents(string: applicationUrl)?.host?.lowercased() else { return false }

@@ -34,6 +34,13 @@ final class DialDiscoveryScanTests: XCTestCase {
         XCTAssertTrue(result.terminals.isEmpty)
     }
 
+    func testApplicationRefetchFromAnUnreachableTelevisionKeepsNothing() async {
+        let device = DialDevice(location: "http://127.0.0.1:9/dd.xml", applicationUrl: "http://127.0.0.1:9/apps",
+                                friendlyName: nil, manufacturer: nil, modelName: nil)
+        let application = await DialDiscoveryScan.fetchApplication(device, timeout: 1)
+        XCTAssertNil(application, "A failed read must not replace the known endpoints")
+    }
+
     func testCancellationEndsScan() async throws {
         var options = DialDiscoveryScan.Options()
         options.destination = "127.0.0.1"

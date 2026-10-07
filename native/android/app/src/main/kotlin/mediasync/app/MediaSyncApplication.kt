@@ -54,7 +54,7 @@ class AppGraph(val application: Application) {
     val preferences = Preferences(application)
     val content = ContentLoader(http.newBuilder().followRedirects(true).followSslRedirects(true).build())
     val discovery = DiscoveryController(application, network, diagnostics, mainHandler)
-    val session = SessionController(application, transport, content, preferences, diagnostics, mainHandler)
+    val session = SessionController(application, transport, network, content, preferences, diagnostics, mainHandler)
     val customTabs = CustomTabsCompanion(application, session, mainHandler)
     val loopback = LoopbackCompanion(application, session, mainHandler, diagnostics)
     val xrSubtitles = XrSubtitlesCompanion(application, session, mainHandler, diagnostics)

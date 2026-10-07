@@ -85,6 +85,16 @@ final class SessionModel: ObservableObject {
     private let feed = CompanionFeedThrottle()
     private var generation = 0
     private var probes: [TransportProbe] = []
+    /// The terminal as picked from the discovery list; `terminal` holds it with refreshed endpoints.
+    private var selected: DialTerminal?
+    /// Re-read of the HbbTV application document that precedes every probe round.
+    private var refreshTask: Task<Void, Never>?
+    /// The running session was started with endpoints the TV no longer advertises.
+    private var endpointsChanged = false
+    /// Upper bound for re-reading the TV's HbbTV application document.
+    private static let refreshTimeoutS = 3.0
+    /// Minimum time a manual retry shows the check in progress.
+    private static let retryFeedbackS = 0.8
     /// True while availability is re-checked for a running session that lost the TV.
     private var reprobing = false
     private var reprobeTimer: Timer?
@@ -129,9 +139,12 @@ final class SessionModel: ObservableObject {
         Endpoints.preferenceKey(manufacturer: terminal.device.manufacturer, modelName: terminal.device.modelName, location: terminal.device.location)
     }
 
-    func select(_ terminal: DialTerminal) {
-        guard self.terminal != terminal else { return }
+    func select(_ terminal: DialTerminal) { open(terminal, feedback: 0) }
+
+    private func open(_ terminal: DialTerminal, feedback: TimeInterval) {
+        guard self.terminal == nil || selected != terminal else { return }
         stop()
+        selected = terminal
         generation += 1
         self.terminal = terminal
         preferredMode = Preferences.mode(key(terminal))
@@ -141,17 +154,44 @@ final class SessionModel: ObservableObject {
             availability = [.native: .unavailable, .compat: .unavailable]
             return
         }
-        startProbes(terminal)
+        startProbes(terminal, feedback: feedback)
+    }
+
+    /**
+     * Re-reads the TV's HbbTV application document, then probes both transports. A TV
+     * reopens App2App and CSS-CII on new ports whenever its HbbTV application restarts, so
+     * the URLs found by discovery go stale; a failed read keeps the known ones.
+     */
+    private func startProbes(_ terminal: DialTerminal, feedback: TimeInterval = 0) {
+        probes.forEach { $0.cancel() }
+        probes.removeAll()
+        refreshTask?.cancel()
+        let current = generation
+        refreshTask = Task { @MainActor [weak self] in
+            let started = Date()
+            let fresh = await DialDiscoveryScan.fetchApplication(terminal.device, timeout: Self.refreshTimeoutS)
+            let remaining = feedback - Date().timeIntervalSince(started)
+            if remaining > 0 { try? await Task.sleep(nanoseconds: UInt64(remaining * 1e9)) }
+            guard let self = self, !Task.isCancelled, current == self.generation else { return }
+            self.refreshTask = nil
+            guard let latest = self.terminal else { return }
+            let changed = fresh != nil && fresh != latest.application
+            self.diagnostics.log("session", "refresh", ["read": fresh != nil, "changed": changed])
+            if changed {
+                self.endpointsChanged = self.session != nil
+                self.terminal = DialTerminal(device: latest.device, application: fresh)
+            }
+            guard let target = self.terminal else { return }
+            self.runProbes(target)
+        }
     }
 
     /**
      * Probes both transports. The TV can switch stacks at any time (the emulator does so
-     * on demand), so availability is re-checked while a session recovers instead of only
-     * once on selection; otherwise the session would retry a stack that no longer exists.
+     * on demand), so availability is re-checked while a session recovers or no stack is
+     * available instead of only once on selection.
      */
-    private func startProbes(_ terminal: DialTerminal) {
-        probes.forEach { $0.cancel() }
-        probes.removeAll()
+    private func runProbes(_ terminal: DialTerminal) {
         let current = generation
         let realHost = Endpoints.realHost(terminal.device.location, terminal.device.applicationUrl)
         var pending = SyncMode.allCases.count
@@ -164,7 +204,7 @@ final class SessionModel: ObservableObject {
                 self.availability[mode] = available ? .available : .unavailable
                 self.reconcileMode()
                 pending -= 1
-                if pending == 0 && self.reprobing {
+                if pending == 0 {
                     self.reprobing = false
                     self.watchConnection()
                 }
@@ -174,9 +214,14 @@ final class SessionModel: ObservableObject {
         }
     }
 
-    /// Schedules a re-check while the active session is recovering; cancels it otherwise.
+    /// Whether the TV is worth re-checking: the session lost it, or it offered no stack at all.
+    private var needsRecheck: Bool {
+        terminal != nil && (snapshot?.state == .recovering || (session == nil && noModes))
+    }
+
+    /// Schedules a re-check while `needsRecheck` holds; cancels it otherwise.
     private func watchConnection() {
-        guard snapshot?.state == .recovering, terminal != nil else {
+        guard needsRecheck else {
             reprobeTimer?.invalidate()
             reprobeTimer = nil
             reprobeCount = 0
@@ -190,7 +235,7 @@ final class SessionModel: ObservableObject {
         reprobeTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
             guard let self = self, current == self.generation else { return }
             self.reprobeTimer = nil
-            guard self.snapshot?.state == .recovering, let terminal = self.terminal else { return }
+            guard self.needsRecheck, let terminal = self.terminal else { return }
             self.diagnostics.log("session", "reprobe", ["mode": self.sessionMode?.rawValue ?? "none"])
             self.reprobing = true
             self.startProbes(terminal)
@@ -208,16 +253,21 @@ final class SessionModel: ObservableObject {
         if !playerOwner.isActive && companions.isEmpty && webPlayerUrl == nil { stop() }
     }
 
+    /// Checks the TV again; the check stays visible for a moment so the tap has feedback.
     func retry() {
-        guard let terminal = terminal else { return }
+        guard let terminal = selected else { return }
         self.terminal = nil
-        select(terminal)
+        open(terminal, feedback: Self.retryFeedbackS)
     }
 
     func stop() {
         generation += 1
         probes.forEach { $0.cancel() }
         probes.removeAll()
+        selected = nil
+        refreshTask?.cancel()
+        refreshTask = nil
+        endpointsChanged = false
         reprobing = false
         reprobeTimer?.invalidate()
         reprobeTimer = nil
@@ -345,11 +395,13 @@ final class SessionModel: ObservableObject {
         let effective = ModeSelection.effective(preferred: preferredMode, availability: availability)
         // A failed re-check keeps the current session retrying rather than tearing it down.
         if effective == nil && reprobing && session != nil { return }
-        if effective == sessionMode && (effective == nil || session != nil) { return }
+        // New endpoints restart a session of the same mode, which would otherwise keep the stale URLs.
+        if effective == sessionMode && (effective == nil || session != nil) && !(endpointsChanged && effective != nil) { return }
         startSession(effective)
     }
 
     private func startSession(_ mode: SyncMode?) {
+        endpointsChanged = false
         session?.stop()
         session = nil
         sessionMode = mode
