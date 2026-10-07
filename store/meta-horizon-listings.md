@@ -1,6 +1,6 @@
 # Meta Horizon Store — Listing for Meta Quest
 
-Version **1.7.0**, the first Meta Horizon Store release. The app ships as a
+Version **1.7.1**, the first Meta Horizon Store release. The app ships as a
 **2D (panel) Android app**: the same native Android app as Google Play, built
 with the `quest` build type (Horizon OS manifest, `minSdk` 29, `targetSdk` 34).
 
@@ -48,7 +48,7 @@ Checked automatically when uploading (VRC.Quest.Packaging.*):
 | Size < 1 GB | ~ a few MB |
 | No unsupported Android features | no Google Play services; camera and Wi-Fi declared `required="false"` |
 
-`versionCode` comes from the brand version (`1.7.0` → `10700`) and must grow
+`versionCode` comes from the brand version (`1.7.1` → `10701`) and must grow
 with every upload, as on Google Play.
 
 ## 2. Upload
@@ -59,7 +59,7 @@ Developer Dashboard → *Distribution* → *Release channels* → **ALPHA** →
 ```sh
 ovr-platform-util upload-quest-build --app_id <APP_ID> --app_secret <APP_SECRET> \
   --apk native/android/app/build/outputs/apk/quest/app-quest.apk --channel ALPHA \
-  --notes "Universal MediaSync 1.7.0"
+  --notes "Universal MediaSync 1.7.1"
 ```
 
 Test from ALPHA on a headset, then promote the build to the **LIVE**
