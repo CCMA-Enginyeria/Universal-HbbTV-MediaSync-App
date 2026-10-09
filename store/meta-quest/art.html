@@ -144,18 +144,21 @@
   // stack them. Sizes are fractions of the canvas so every format keeps the
   // title within the middle 60% (VRC.Quest.Asset.3) and well above 24 pt.
   const LAYOUT = {
-    hero: { stack: false, glyph: 0.40, font: 0.15, gap: 0.04 },
-    landscape: { stack: false, glyph: 0.30, font: 0.105, gap: 0.03 },
-    mini: { stack: false, glyph: 0.46, font: 0.15, gap: 0.04 },
-    square: { stack: true, glyph: 0.36, font: 0.082, gap: 0.03 },
-    portrait: { stack: true, glyph: 0.50, font: 0.112, gap: 0.04 },
-    logo: { stack: false, glyph: 0.92, font: 0.36, gap: 0.08 },
+    hero: { stack: false, glyph: 0.36, font: 0.15, gap: 0.05 },
+    landscape: { stack: false, glyph: 0.26, font: 0.105, gap: 0.04 },
+    mini: { stack: false, glyph: 0.42, font: 0.15, gap: 0.05 },
+    square: { stack: true, glyph: 0.30, font: 0.082, gap: 0.04 },
+    portrait: { stack: true, glyph: 0.40, font: 0.112, gap: 0.05 },
+    logo: { stack: false, glyph: 0.92, font: 0.36, gap: 0.10 },
   }[asset];
   const lockup = document.createElement('div');
   lockup.className = 'lockup' + (LAYOUT.stack ? ' stack' : '');
   const base = LAYOUT.stack ? W : H;
   const glyph = img(brand.glyph);
-  glyph.style.width = glyph.style.height = LAYOUT.glyph * base + 'px';
+  // Height only: the emblem is cropped to its content (wider than tall), so
+  // its width follows its own aspect ratio.
+  glyph.style.height = LAYOUT.glyph * base + 'px';
+  glyph.style.width = 'auto';
   const title = document.createElement('span');
   title.textContent = appName;
   title.style.fontSize = LAYOUT.font * base + 'px';
