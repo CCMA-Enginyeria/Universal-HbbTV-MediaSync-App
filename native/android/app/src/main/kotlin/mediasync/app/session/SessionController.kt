@@ -81,6 +81,8 @@ class SessionController(
         val preferredMode: SyncMode = SyncMode.DEFAULT,
         val availability: Map<SyncMode, Availability> = SyncMode.entries.associateWith { Availability.UNKNOWN },
         val effectiveMode: SyncMode? = null,
+        /** Unavailable mode the user picked and that is being checked again; see [setPreferredMode]. */
+        val recheckingMode: SyncMode? = null,
         val snapshot: MediaSyncSession.Snapshot? = null,
         val content: Content = Content.None,
         /** Audio and video the user checked; either can play without the other. */
@@ -187,6 +189,14 @@ class SessionController(
         preferences.setMode(terminal, mode)
         update { copy(preferredMode = mode) }
         reconcileMode()
+        // Availability is otherwise only re-checked when the session fails, so a stack the TV
+        // starts offering later (other service or application) would stay unavailable.
+        if (_state.value.availability[mode] == Availability.UNAVAILABLE && _state.value.recheckingMode == null && !reprobing) {
+            diagnostics.log("session", "recheck", "mode" to mode.name)
+            reprobing = true
+            update { copy(recheckingMode = mode) }
+            startProbes(terminal, RETRY_FEEDBACK_MS, listOf(mode))
+        }
     }
 
     /** Leaving the detail screen keeps an active playback or companion; otherwise releases the TV. */
@@ -334,7 +344,7 @@ class SessionController(
      * reopens App2App and CSS-CII on new ports whenever its HbbTV application restarts, so
      * the URLs found by discovery go stale; a failed read keeps the known ones.
      */
-    private fun startProbes(terminal: DialTerminal, feedbackMs: Long = 0) {
+    private fun startProbes(terminal: DialTerminal, feedbackMs: Long = 0, modes: List<SyncMode> = SyncMode.entries) {
         probes.forEach(TransportProbe::cancel)
         probes.clear()
         refreshJob?.cancel()
@@ -355,21 +365,21 @@ class SessionController(
                 endpointsChanged = session != null
                 update { copy(terminal = latest.copy(application = fresh)) }
             }
-            runProbes(_state.value.terminal ?: return@launch)
+            runProbes(_state.value.terminal ?: return@launch, modes)
         }
     }
 
     /**
-     * Probes both transports. The TV can switch stacks at any time (the emulator does so
-     * on demand), so availability is re-checked while a session recovers or no stack is
-     * available instead of only once on selection.
+     * Probes [modes] (both transports unless the user re-checks one). The TV can switch stacks
+     * at any time (the emulator does so on demand), so availability is re-checked while a session
+     * recovers, no stack is available or the user picks an unavailable one, not only on selection.
      */
-    private fun runProbes(terminal: DialTerminal) {
+    private fun runProbes(terminal: DialTerminal, modes: List<SyncMode>) {
         val current = generation
         val application = terminal.application
         val realHost = Endpoints.realHost(terminal.device.location, terminal.device.applicationUrl)
-        var pending = SyncMode.entries.size
-        for (mode in SyncMode.entries) {
+        var pending = modes.size
+        for (mode in modes) {
             val probe = TransportProbe(transport, mode, application?.interDeviceSyncUrl, application?.app2AppUrl, realHost,
                 Endpoints.DEFAULT_COMPAT_PREFIX, tuning.probeTimeoutMs) { available ->
                 if (current != generation) return@TransportProbe
@@ -379,6 +389,7 @@ class SessionController(
                 pending--
                 if (pending == 0) {
                     reprobing = false
+                    update { copy(recheckingMode = null) }
                     watchConnection()
                 }
             }
