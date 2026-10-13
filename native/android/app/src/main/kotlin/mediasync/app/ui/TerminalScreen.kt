@@ -64,6 +64,7 @@ import androidx.media3.ui.PlayerView
 import mediasync.app.R
 import mediasync.app.graph
 import mediasync.app.session.SessionController
+import mediasync.core.Availability
 import mediasync.core.MediaTrack
 import mediasync.core.PlaybackCorrector
 import mediasync.core.SyncMode
@@ -169,22 +170,40 @@ private fun ModeSelector(state: SessionController.UiState, controller: SessionCo
     // Shows the mode actually in use (PRD-006-R08); the stored preference can differ when
     // the TV only offers the other stack.
     val shown = state.effectiveMode ?: state.preferredMode
+    // A mode the TV does not offer looks disabled and the text says why; it stays tappable
+    // because picking it checks the TV again (the TV may offer it by now).
+    val dimmed = MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_ALPHA)
     Section(stringResource(R.string.discovery_modeTitle))
     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
         SyncMode.entries.forEachIndexed { index, mode ->
-            val label = stringResource(if (mode == SyncMode.NATIVE) R.string.discovery_modeNative else R.string.discovery_modeCompat)
+            val available = mode in state.availableModes
+            val unavailable = state.availability[mode] == Availability.UNAVAILABLE
             SegmentedButton(
                 selected = shown == mode,
-                enabled = mode in state.availableModes,
+                enabled = available || (unavailable && state.recheckingMode == null),
                 onClick = { controller.setPreferredMode(mode) },
                 shape = SegmentedButtonDefaults.itemShape(index, SyncMode.entries.size),
-            ) { Text(label) }
+                colors = SegmentedButtonDefaults.colors(disabledInactiveContentColor = dimmed),
+            ) { Text(modeLabel(mode), color = if (available || shown == mode) Color.Unspecified else dimmed) }
         }
     }
     Text(stringResource(if (shown == SyncMode.NATIVE) R.string.discovery_modeNativeDescription else R.string.discovery_modeCompatDescription),
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(top = Tokens.spacing("xs")))
+    SyncMode.entries.filter { state.availability[it] == Availability.UNAVAILABLE && it != shown }.forEach { mode ->
+        Text(if (state.recheckingMode == mode) stringResource(R.string.native_terminal_probing)
+            else stringResource(R.string.native_terminal_modeUnavailable, modeLabel(mode)),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = Tokens.spacing("xs")))
+    }
 }
+
+@Composable
+private fun modeLabel(mode: SyncMode): String =
+    stringResource(if (mode == SyncMode.NATIVE) R.string.discovery_modeNative else R.string.discovery_modeCompat)
+
+/** Material's alpha for disabled content. */
+private const val DISABLED_ALPHA = 0.38f
 
 @Composable
 private fun WebSection(pages: List<SessionController.WebPage>, onOpen: (String) -> Unit) {
