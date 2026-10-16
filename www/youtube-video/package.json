@@ -1,0 +1,27 @@
+{
+  "name": "mediasync-youtube-video",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Remotion project for the Universal MediaSync YouTube video (localized).",
+  "scripts": {
+    "prepare-media": "node scripts/prepare-media.mjs",
+    "studio": "remotion studio",
+    "render:en": "remotion render MediaSync-en out/universal-mediasync-en.mp4",
+    "render:ca": "remotion render MediaSync-ca out/universal-mediasync-ca.mp4",
+    "compare": "node scripts/compare.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.535",
+    "@remotion/layout-utils": "4.0.535",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "remotion": "4.0.535"
+  },
+  "devDependencies": {
+    "@remotion/bundler": "4.0.535",
+    "@remotion/renderer": "4.0.535",
+    "@types/react": "19.1.8",
+    "typescript": "5.8.3"
+  }
+}
