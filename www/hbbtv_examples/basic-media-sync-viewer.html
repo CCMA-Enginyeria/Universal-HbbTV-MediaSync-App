@@ -174,19 +174,94 @@
     }
     function log(m) { console.log(m); }
 
+    // HbbTV terminals play DASH natively through <source>. Desktop browsers do not,
+    // so there the same <video> is driven by dash.js (MSE); the sync code only sees
+    // the media element, so both paths share the timeline and companion handling.
+    var DASHJS_URL = 'https://cdn.dashjs.org/v4.7.4/dash.all.min.js';
+    var dashPlayer = null;
+    var dashLoading = null;
+    function needsDashJs() {
+      var nativeDash = !!(v.canPlayType && v.canPlayType('application/dash+xml'));
+      var mse = !!(window.MediaSource && window.MediaSource.isTypeSupported);
+      return !nativeDash && mse;
+    }
+    function withDashJs(callback) {
+      if (window.dashjs) { callback(); return; }
+      if (!dashLoading) {
+        dashLoading = [];
+        var script = document.createElement('script');
+        script.src = DASHJS_URL;
+        script.onload = function () { var queued = dashLoading; dashLoading = null; queued.forEach(function (fn) { fn(); }); };
+        script.onerror = function () { console.error('dash.js failed to load'); };
+        document.head.appendChild(script);
+      }
+      dashLoading.push(callback);
+    }
+    function loadContent(url) {
+      if (!needsDashJs()) {
+        var source = v.querySelector('source');
+        if (source) { source.src = url; }
+        v.load();
+        playWithFallback();
+        return;
+      }
+      // Drop the DASH <source> before dash.js loads: its auto-create would otherwise
+      // attach a second player to this <video> and the two reset each other's buffers.
+      var source = v.querySelector('source');
+      if (source) { source.parentNode.removeChild(source); }
+      withDashJs(function () {
+        if (!dashPlayer) {
+          dashPlayer = dashjs.MediaPlayer().create();
+          // Internal dash.js logs would open the on-screen error panel; real failures
+          // still reach it through the ERROR event.
+          dashPlayer.updateSettings({ debug: { logLevel: dashjs.Debug.LOG_LEVEL_NONE } });
+          dashPlayer.on(dashjs.MediaPlayer.events.ERROR, function (e) {
+            console.error('dash.js error: ' + (e && e.error && (e.error.message || e.error.code)));
+          });
+          dashPlayer.on(dashjs.MediaPlayer.events.PLAYBACK_NOT_ALLOWED, startMuted);
+          dashPlayer.initialize(v, url, true);
+          log('dash.js playback');
+        } else {
+          dashPlayer.attachSource(url);
+        }
+        // No v.play() here: on an element without a source it starts the native
+        // resource selection, which races the MediaSource dash.js attaches.
+      });
+    }
+    // Browsers usually block autoplay with sound after a cross-site navigation:
+    // start muted so the timeline runs, and unmute on the first key or click.
+    function playWithFallback() {
+      var playback = v.play();
+      if (!playback || !playback.catch) { return; }
+      playback.catch(function (e) {
+        if (e && e.name === 'NotAllowedError') { startMuted(); }
+        else { console.error('Autoplay blocked: ' + e.message); }
+      });
+    }
+    function startMuted() {
+      if (v.muted) { return; }
+      log('Autoplay with sound blocked; playing muted until the first interaction');
+      v.muted = true;
+      v.play().catch(function (err) { console.error('Autoplay blocked: ' + err.message); });
+      var unmute = function () {
+        v.muted = false;
+        document.removeEventListener('keydown', unmute, true);
+        document.removeEventListener('pointerdown', unmute, true);
+      };
+      document.addEventListener('keydown', unmute, true);
+      document.addEventListener('pointerdown', unmute, true);
+    }
+
     window.onload = function () {
       if (typeof hbbtvlib_initialize !== 'undefined') { hbbtvlib_initialize(); hbbtvlib_show(); }
       isVideoSelectionLocked = hasVideoQueryParameter();
       registerSeekKeys();
       contentIndex = getInitialContentIndex();
       var initialContent = CONTENTS[contentIndex];
-      var source = v.querySelector('source');
-      if (source) { source.src = initialContent.url; }
       log('Loading: ' + initialContent.name);
       v.addEventListener('canplay', onReady, { once: true });
       v.addEventListener('error', function () { console.error('Video error'); });
-      v.load();
-      v.play().catch(function (e) { console.error('Autoplay blocked: ' + e.message); });
+      loadContent(initialContent.url);
     };
 
     function registerSeekKeys() {
@@ -218,14 +293,11 @@
       var c = CONTENTS[contentIndex];
       log('Loading: ' + c.name);
       destroySync();
-      var source = v.querySelector('source');
-      if (source) { source.src = c.url; }
       v.addEventListener('canplay', function () {
         log('Playing: ' + c.name);
         initSync(resolveContentId(c));
       }, { once: true });
-      v.load();
-      v.play().catch(function (e) { console.error('Autoplay blocked: ' + e.message); });
+      loadContent(c.url);
     }
 
     function seekBy(deltaSeconds) {

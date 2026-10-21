@@ -5,11 +5,17 @@ const { WebSocket, WebSocketServer } = require('ws');
 /**
  * Pairs a browser-side HbbTV App2App server socket with a remote companion
  * socket and relays frames unchanged between them.
+ *
+ * Each side accepts one or more path prefixes, so the emulator's own paths and
+ * the FOKUS `#port=…&hostname=…` convention (`/local/`, `/remote/`) used by
+ * standalone HbbTV applications reach the same channels.
  */
 function createApp2AppBroker({ localPrefix, remotePrefix, log = console.log }) {
   const localWss = new WebSocketServer({ noServer: true });
   const remoteWss = new WebSocketServer({ noServer: true });
   const waiting = { local: new Map(), remote: new Map() };
+  const routes = [].concat(localPrefix).map((prefix) => ({ prefix, server: localWss }))
+    .concat([].concat(remotePrefix).map((prefix) => ({ prefix, server: remoteWss })));
 
   function queue(side, channel, ws) {
     const entries = waiting[side].get(channel) || [];
@@ -75,11 +81,7 @@ function createApp2AppBroker({ localPrefix, remotePrefix, log = console.log }) {
   remoteWss.on('connection', (ws, req, channel) => register('remote', ws, channel));
 
   function route(pathname, req, socket, head) {
-    const route = pathname.startsWith(`${localPrefix}/`)
-      ? { side: 'local', prefix: localPrefix, server: localWss }
-      : pathname.startsWith(`${remotePrefix}/`)
-        ? { side: 'remote', prefix: remotePrefix, server: remoteWss }
-        : null;
+    const route = routes.find((entry) => pathname.startsWith(`${entry.prefix}/`));
     if (!route) return false;
 
     const channel = pathname.slice(route.prefix.length + 1);

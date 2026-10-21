@@ -38,6 +38,7 @@ const { createTsConnectionHandler } = require('./ts');
 const { createApp2AppBroker } = require('./app2appBroker');
 const { TvState } = require('./tvState');
 const { createTvUiHandler } = require('./tvUi');
+const { createLaunchHandler } = require('./launch');
 
 const IP = getLocalIPv4(process.env.EMU_IP);
 const HTTP_PORT = parseInt(process.env.EMU_HTTP_PORT || '7681', 10);
@@ -124,8 +125,8 @@ ciiWss.on('connection', onCiiConnection);
 tsWss.on('connection', onTsConnection);
 
 const app2appBroker = createApp2AppBroker({
-  localPrefix: '/app2app-local',
-  remotePrefix: '/app2app',
+  localPrefix: ['/app2app-local', '/local'],
+  remotePrefix: ['/app2app', '/remote'],
   log,
 });
 
@@ -150,7 +151,9 @@ const getConnections = () => {
 };
 
 let nativeWcLastSeen = 0;
-const onUnhandled = createTvUiHandler({ tvState, catalog: CONTENT_CATALOG, getConnections, log });
+const onTvUi = createTvUiHandler({ tvState, catalog: CONTENT_CATALOG, getConnections, log });
+const onLaunch = createLaunchHandler({ tvState, ip: IP, port: HTTP_PORT, log });
+const onUnhandled = (req, res) => onLaunch(req, res) || onTvUi(req, res);
 const httpServer = createDialHttpServer({
   ip: IP,
   port: HTTP_PORT,
@@ -169,10 +172,12 @@ httpServer.on('upgrade', (req, socket, head) => {
     ciiWss.handleUpgrade(req, socket, head, (ws) => ciiWss.emit('connection', ws, req));
   } else if (mode === 'native' && path === '/ts') {
     tsWss.handleUpgrade(req, socket, head, (ws) => tsWss.emit('connection', ws, req));
-  } else if ((mode === 'compat' || path.startsWith('/app2app-local/')) &&
+  } else if ((mode === 'compat' || path.startsWith('/app2app-local/') || path.startsWith('/local/')) &&
              app2appBroker.route(path, req, socket, head)) {
     return;
-  } else if (path === '/app2app') {
+  } else if (path === '/app2app' || path === '/hbbtvmanager') {
+    // The FOKUS polyfill in launched HbbTV apps dials /hbbtvmanager; an idle
+    // socket keeps it from reporting a connection error on screen.
     app2appWss.handleUpgrade(req, socket, head, (ws) => app2appWss.emit('connection', ws, req));
   } else {
     socket.destroy();
@@ -211,6 +216,7 @@ console.log('=================================================================='
 console.log(`  Friendly name : ${FRIENDLY_NAME}`);
 console.log(`  LAN address   : ${IP}`);
 console.log(`  TV screen     : http://${IP}:${HTTP_PORT}/tv`);
+console.log(`  HbbTV app    : http://${IP}:${HTTP_PORT}/launch?url=<app URL>`);
 console.log(`  Initial mode  : ${INITIAL_MODE}`);
 console.log(`  Device desc.  : ${LOCATION}`);
 console.log(`  CSS-CII       : ${CII_URL}`);
