@@ -198,7 +198,13 @@ function segmentInfo(file) {
   const tfdt = find(buf, ['moof', 'traf', 'tfdt']);
   const trun = find(buf, ['moof', 'traf', 'trun']);
   const decodeTime = buf[tfdt.body] === 1 ? Number(buf.readBigUInt64BE(tfdt.body + 4)) : buf.readUInt32BE(tfdt.body + 4);
-  return { decodeTime, samples: buf.readUInt32BE(trun.body + 4) };
+  // Composition offset of the first sample (the segment's keyframe), from the trun entry.
+  const version = buf[trun.body];
+  const flags = buf.readUIntBE(trun.body + 1, 3);
+  let o = trun.body + 8 + (flags & 0x1 ? 4 : 0) + (flags & 0x4 ? 4 : 0);
+  o += (flags & 0x100 ? 4 : 0) + (flags & 0x200 ? 4 : 0) + (flags & 0x400 ? 4 : 0);
+  const firstCts = flags & 0x800 ? (version === 1 ? buf.readInt32BE(o) : buf.readUInt32BE(o)) : 0;
+  return { decodeTime, firstCts, samples: buf.readUInt32BE(trun.body + 4) };
 }
 
 // ---- Encoding ----
@@ -222,7 +228,9 @@ function encodeLadder({ source, rep, set, rungs, profile, frameRate, tmpDir }) {
       '-f', 'dash', '-seg_duration', String(set.segDuration / set.timescale),
       '-use_template', '1', '-use_timeline', '0',
       '-init_seg_name', fill(set.init, rung.id), '-media_seg_name', set.media.replace(/\$RepresentationID\$/g, rung.id),
-      path.join(dir, 'ffmpeg.mpd'),
+      // ffmpeg's DASH muxer only finds the manifest directory with forward slashes; with
+      // Windows separators it writes the segments to the current directory instead.
+      path.join(dir, 'ffmpeg.mpd').replace(/\\/g, '/'),
     );
   });
   log(`encode ${rep.id} -> ${rungs.map((r) => r.id).join(', ')}`);
@@ -300,7 +308,9 @@ async function buildDemo(demo) {
         const init = initInfo(path.join(outDir, fill(set.init, rung.id)));
         const problems = [];
         if (init.timescale !== set.timescale) problems.push(`timescale ${init.timescale}`);
-        if (init.editList !== original.editList) problems.push(`edit list ${init.editList} != ${original.editList}`);
+        // The B-frame delay (and so the edit list) may differ from the original encoder's;
+        // what must match is the presentation time of every segment's keyframe.
+        const presented = (seg, editList) => seg.decodeTime + seg.firstCts - (editList || 0);
         let bytes = 0;
         for (let i = 0; i < count; i++) {
           const n = set.startNumber + i;
@@ -309,8 +319,10 @@ async function buildDemo(demo) {
           bytes += fs.statSync(file).size;
           const ours = segmentInfo(file);
           const theirs = segmentInfo(path.join(repSrc, fill(set.media, rep.id, n)));
-          if (ours.decodeTime !== theirs.decodeTime || ours.samples !== theirs.samples) {
-            problems.push(`segment ${n}: tfdt ${ours.decodeTime}/${theirs.decodeTime} samples ${ours.samples}/${theirs.samples}`);
+          const start = presented(ours, init.editList);
+          const expected = presented(theirs, original.editList);
+          if (start !== expected || ours.samples !== theirs.samples) {
+            problems.push(`segment ${n}: presented at ${start}/${expected} samples ${ours.samples}/${theirs.samples}`);
             break;
           }
         }
