@@ -109,6 +109,11 @@ const IBC_DEMOS = [
     contentId: 'https://ccma-labs-generic.s3.eu-west-1.amazonaws.com/ibc-2026/_dash_Signes_IBC/manifest_signes.mpd',
   },
   {
+    title: 'TV3 live',
+    description: 'Live DASH channel with TTML subtitles',
+    contentId: 'https://directes3-tv-es.3catdirectes.cat/live-content/tvc-dash/manifest-ttml.mpd',
+  },
+  {
     title: 'Eclipse XR',
     description: 'Shared immersive WebXR experience',
     url: 'https://ccma-erst-projects.s3.eu-west-1.amazonaws.com/eclipsi-solar-2026/eclipsi-ra/webxr/hbbtv/index.html?player=dashjs',
