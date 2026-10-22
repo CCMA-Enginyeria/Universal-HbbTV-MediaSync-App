@@ -103,6 +103,44 @@
     });
   }
 
+  // DASH demos play on this screen; companionContentId replaces (or clears) the
+  // companion override so the phone receives the demo's own second-screen stream.
+  function playDemo(item) {
+    var contentIdOverride = item.companionContentId || null;
+    postState({ contentIdOverride: contentIdOverride })
+      .then(function (state) {
+        document.getElementById('companion-url').value = contentIdOverride || '';
+        updateCompanionContent(state);
+        loadContent(item.contentId, true, '');
+      })
+      .catch(function () {});
+  }
+
+  // App demos open in this tab: leaving the page also releases the App2App
+  // channels it registers, which the launched app needs to serve.
+  function renderDemos(items) {
+    var demosElement = document.getElementById('demos');
+    demosElement.innerHTML = '';
+    (items || []).forEach(function (item) {
+      var element;
+      if (item.contentId) {
+        element = document.createElement('button');
+        element.type = 'button';
+        element.className = 'programme';
+        element.setAttribute('data-content-id', item.contentId);
+        element.addEventListener('click', function () { playDemo(item); });
+      } else {
+        element = document.createElement('a');
+        element.className = 'programme demo';
+        element.href = '/launch?url=' + encodeURIComponent(item.url);
+      }
+      element.innerHTML = '<strong></strong><span></span>';
+      element.querySelector('strong').textContent = item.title;
+      element.querySelector('span').textContent = item.description;
+      demosElement.appendChild(element);
+    });
+  }
+
   function updateStatus(state) {
     document.getElementById('cii-count').textContent = state.connections.cii;
     document.getElementById('wc-count').textContent = state.connections.wc;
@@ -178,6 +216,7 @@
 
   request('/api/state').then(function (state) {
     renderCatalog(state.catalog);
+    renderDemos(state.demos);
     applyMode(state.mode, state.announcedContentId);
     updateStatus(state);
     updateCompanionContent(state);

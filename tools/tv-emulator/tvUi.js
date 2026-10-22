@@ -40,7 +40,7 @@ function readJson(req) {
   });
 }
 
-function createTvUiHandler({ tvState, catalog, getConnections, log = console.log }) {
+function createTvUiHandler({ tvState, catalog, demos = [], getConnections, log = console.log }) {
   return function handleTvUi(req, res) {
     const pathname = new URL(req.url || '/', 'http://localhost').pathname;
 
@@ -54,6 +54,7 @@ function createTvUiHandler({ tvState, catalog, getConnections, log = console.log
       sendJson(res, 200, {
         ...tvState.getSnapshot(),
         catalog,
+        demos,
         connections: getConnections(),
       });
       return true;

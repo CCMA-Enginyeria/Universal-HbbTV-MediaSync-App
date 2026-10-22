@@ -152,6 +152,11 @@ h2 { margin-bottom: 0; font-size: 18px; }
 }
 
 .programme span { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; }
+.demos-heading { margin-top: 24px; }
+.demos-heading span { color: var(--muted); font-size: 12px; }
+.demos { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.programme.demo { display: block; text-decoration: none; }
+.programme.demo:hover, .programme.demo:focus-visible { border-color: var(--accent); }
 .programme.active { border-color: var(--accent); box-shadow: inset 3px 0 var(--accent); }
 
 .custom-source { margin-top: 20px; }
@@ -178,6 +183,6 @@ h2 { margin-bottom: 0; font-size: 18px; }
   h1 { font-size: 36px; }
   .mode-switch { max-width: none; }
   .control-band { grid-template-columns: 1fr; }
-  .catalog { grid-template-columns: 1fr; }
+  .catalog, .demos { grid-template-columns: 1fr; }
   .programme-panel, .status-panel { padding: 18px; }
 }

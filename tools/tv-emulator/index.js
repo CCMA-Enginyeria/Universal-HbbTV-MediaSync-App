@@ -92,6 +92,34 @@ const CONTENT_CATALOG = [
   },
 ];
 
+// IBC showcase demos (www/ibc_demostrations). Entries with `contentId` are plain
+// DASH programmes, so the TV screen plays them itself (same manifests as
+// basic-media-sync-viewer.html) and announces `companionContentId`, if any, to
+// the phone. Entries with `url` are standalone HbbTV apps opened through /launch.
+const IBC_DEMOS = [
+  {
+    title: 'Sagrada Família',
+    description: "Companion audio with director's commentary",
+    contentId: 'https://ccma-labs-generic.s3.eu-west-1.amazonaws.com/ibc-2026/_dash_Sagrada_Familia_IBC/main/manifest_main.mpd',
+    companionContentId: 'https://ccma-labs-generic.s3.eu-west-1.amazonaws.com/ibc-2026/_dash_Sagrada_Familia_IBC/realitzacio/manifest_realitzacio.mpd',
+  },
+  {
+    title: 'Sign language',
+    description: 'Synchronised interpretation on a second screen',
+    contentId: 'https://ccma-labs-generic.s3.eu-west-1.amazonaws.com/ibc-2026/_dash_Signes_IBC/manifest_signes.mpd',
+  },
+  {
+    title: 'Eclipse XR',
+    description: 'Shared immersive WebXR experience',
+    url: 'https://ccma-erst-projects.s3.eu-west-1.amazonaws.com/eclipsi-solar-2026/eclipsi-ra/webxr/hbbtv/index.html?player=dashjs',
+  },
+  {
+    title: 'Personal AI agent',
+    description: 'Conversational TV over DVB-I',
+    url: 'https://eng-labs.ccma.cat/agent/public/container.html?dataSource=cache&device_id=111111&app=hbbtv&ui=false',
+  },
+];
+
 if (!CONTENT_CATALOG.some((item) => item.contentId === CONTENT_ID)) {
   CONTENT_CATALOG.unshift({
     title: 'Configured content',
@@ -151,7 +179,7 @@ const getConnections = () => {
 };
 
 let nativeWcLastSeen = 0;
-const onTvUi = createTvUiHandler({ tvState, catalog: CONTENT_CATALOG, getConnections, log });
+const onTvUi = createTvUiHandler({ tvState, catalog: CONTENT_CATALOG, demos: IBC_DEMOS, getConnections, log });
 const onLaunch = createLaunchHandler({ tvState, ip: IP, port: HTTP_PORT, log });
 const onUnhandled = (req, res) => onLaunch(req, res) || onTvUi(req, res);
 const httpServer = createDialHttpServer({
