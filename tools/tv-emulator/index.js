@@ -116,7 +116,7 @@ const IBC_DEMOS = [
   {
     title: 'Eclipse XR',
     description: 'Shared immersive WebXR experience',
-    url: 'https://ccma-erst-projects.s3.eu-west-1.amazonaws.com/eclipsi-solar-2026/eclipsi-ra/webxr/hbbtv/index.html?player=dashjs',
+    url: 'https://ccma-erst-projects.s3.eu-west-1.amazonaws.com/eclipsi-solar-2026/eclipsi-ra/webxr/hbbtv/index.html?player=dashjs&diagnostics=off',
   },
   {
     title: 'Personal AI agent',

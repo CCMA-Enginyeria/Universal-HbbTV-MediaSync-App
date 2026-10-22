@@ -67,12 +67,12 @@ http://<ip>:7681/launch?url=<URL-encoded app URL>
 The emulator switches to **App2App compatibility** mode and redirects to the app
 with `#port=7681&hostname=<ip>`, the launch hash the FOKUS polyfill reads. The app
 then serves CII/WC/TS through the App2App relay (`/local/` ↔ `/remote/` or
-`/app2app/`) and the phone discovers the emulator as usual. Close the emulator's
-own `/tv` tab first, because it registers the same App2App channels.
+`/app2app/`) and the phone discovers the emulator as usual. The emulator's own
+`/tv` page registers the same App2App channels, so it must not stay open in
+another tab; launching from it is fine because the app replaces it.
 
-`www/ibc_demostrations/` already sends its **Launch demo** buttons through
-`http://127.0.0.1:7681/launch`. Add `?emulator=http://<host>:<port>` to use
-another emulator, or `?emulator=off` to open the apps directly.
+The TV screen's **IBC demos** list uses this route for the standalone apps
+(Eclipse XR, personal AI agent); DASH demos play directly on the TV screen.
 
 ## Transport modes
 
