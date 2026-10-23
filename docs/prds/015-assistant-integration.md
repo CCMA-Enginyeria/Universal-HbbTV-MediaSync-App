@@ -66,10 +66,14 @@ votaciones, estadisticas...) lo aporta la web sincronizada, no la app.
 
 ## Limitaciones conocidas
 
-- Android bloquea abrir una actividad desde el servicio de App Functions (BAL): la
+- Android bloquea abrir una actividad desde el servicio de App Functions (BAL). La
   reproduccion arranca igualmente (el servicio en primer plano se permite mientras el
-  sistema mantiene el servicio enlazado), pero una pagina no abierta solo se abre con
-  la app en primer plano. Pendiente: devolver un `PendingIntent` que lance el agente.
+  sistema mantiene el servicio enlazado). Para mostrar la app, `connectToTv` y
+  `listenToTv` devuelven `openApp` (`PendingIntent`); con la pagina cerrada y la app en
+  segundo plano, `listCompanionTools`/`runCompanionTool` responden al momento pidiendo
+  abrir la app y devuelven un `openApp` que abre la app y la pagina. El agente lo
+  encuentra en los extras de la respuesta en
+  `property/androidAppfunctionsReturnValue.property/openApp`.
 - Las paginas deben servirse con `Cache-Control: no-cache` o versionar sus scripts:
   el WebView reutiliza copias antiguas.
 

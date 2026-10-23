@@ -1,5 +1,6 @@
 package mediasync.app
 
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -55,6 +56,8 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // An assistant may launch the app to show the TV screen or a companion page (AssistantCommands.openIntent).
+        if (savedInstanceState == null) graph.assistant.onLaunch(intent)
         setContent {
             MediaSyncTheme {
                 val navigation = rememberNavController()
@@ -139,6 +142,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        graph.assistant.onLaunch(intent)
     }
 
     override fun onResume() {

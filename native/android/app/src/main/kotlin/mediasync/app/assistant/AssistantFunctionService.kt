@@ -1,5 +1,6 @@
 package mediasync.app.assistant
 
+import android.app.PendingIntent
 import androidx.annotation.RequiresApi
 import androidx.appfunctions.AppFunctionAppUnknownException
 import androidx.appfunctions.AppFunctionDeclaration
@@ -49,6 +50,33 @@ data class AssistantCompanionTool(
     val inputSchema: String,
 )
 
+/** Reply to a command, with a way to show its result in the app. */
+@AppFunctionSerializable(isDescribedByKDoc = true)
+data class AssistantReply(
+    /** Localized sentence for the user. */
+    val message: String,
+    /**
+     * Opens the app on the TV screen, and on the companion page when the message asks to open the
+     * app. The app cannot bring itself to the front from the background, so launch it when the user
+     * wants to see the TV screen or when the message asks to open the app.
+     */
+    val openApp: PendingIntent?,
+)
+
+/** The companion page tools, or why they are not available yet. */
+@AppFunctionSerializable(isDescribedByKDoc = true)
+data class AssistantCompanionTools(
+    /** The tools; empty when the page offers none or is not open. */
+    val tools: List<AssistantCompanionTool>,
+    /** Localized sentence that summarizes the result for the user. */
+    val message: String,
+    /**
+     * Set when the page is not open and the app is in the background: launch it to open the app
+     * and the page, then call listCompanionTools again.
+     */
+    val openApp: PendingIntent?,
+)
+
 /**
  * App Functions (PRD-015) over [AssistantCommands]: Gemini and other agents with the platform
  * permission can find TVs, read the session status, connect, listen and stop. Replies are
@@ -85,33 +113,34 @@ abstract class AssistantFunctionService : AppFunctionService() {
     suspend fun getStatus(): String = call { commands.status() }
 
     /**
-     * Connects to a TV and starts synchronizing with it; opens the app on the TV screen.
+     * Connects to a TV and starts synchronizing with it.
      *
      * @param tvId identifier of the TV, as returned by findTvs.
      * @param compatibilityMode true to use the compatibility mode (App2App), false for native DVB-CSS;
      *   omit it to use the mode last used with that TV model.
-     * @return a localized sentence with the result.
+     * @return a localized sentence with the result and an intent that shows the TV screen.
      */
     @AppFunctionDeclaration(isDescribedByKDoc = true)
-    suspend fun connectToTv(tvId: String, compatibilityMode: Boolean? = null): String = call {
-        commands.connect(tvId, compatibilityMode?.let { if (it) SyncMode.COMPAT else SyncMode.NATIVE })
+    suspend fun connectToTv(tvId: String, compatibilityMode: Boolean? = null): AssistantReply = call {
+        val message = commands.connect(tvId, compatibilityMode?.let { if (it) SyncMode.COMPAT else SyncMode.NATIVE })
+        AssistantReply(message, commands.openIntent())
     }
 
     /**
      * Plays the TV audio on this device, synchronized with the TV, in the user's language when
-     * the programme offers it. Connects first when needed and opens the app.
+     * the programme offers it; it keeps playing in the background. Connects first when needed.
      *
      * @param tvId identifier of the TV, as returned by findTvs; omit it to use the connected TV or
      *   the only TV that offers synchronization.
-     * @return a localized sentence with the result.
+     * @return a localized sentence with the result and an intent that shows the TV screen.
      */
     @AppFunctionDeclaration(isDescribedByKDoc = true)
-    suspend fun listenToTv(tvId: String? = null): String = call {
+    suspend fun listenToTv(tvId: String? = null): AssistantReply = call {
         val id = tvId ?: commands.currentTvId ?: commands.compatibleTvs().let { capable ->
             capable.singleOrNull()?.id ?: throw AppFunctionInvalidArgumentException(
                 applicationContext.getString(R.string.native_assistant_tvs_choose) + " " + capable.joinToString { "${it.name} (${it.id})" })
         }
-        commands.listen(id)
+        AssistantReply(commands.listen(id), commands.openIntent())
     }
 
     /**
@@ -125,13 +154,21 @@ abstract class AssistantFunctionService : AppFunctionService() {
     /**
      * Lists the tools of the companion web page of the programme on the TV: broadcasters use them
      * to answer questions about the programme or the schedule, show extra content or act on the
-     * TV. Opens the page when the TV offers one and it is not open yet.
+     * TV. Opens the page when the TV offers one and the app is visible; otherwise returns an
+     * intent that opens it.
      *
-     * @return the tools; empty when the page offers none.
+     * @return the tools and a summary, or an intent to open the page first.
      */
     @AppFunctionDeclaration(isDescribedByKDoc = true)
-    suspend fun listCompanionTools(): List<AssistantCompanionTool> = call {
-        commands.companionTools().map { AssistantCompanionTool(it.name, it.description, it.inputSchema.toString()) }
+    suspend fun listCompanionTools(): AssistantCompanionTools = call {
+        try {
+            val tools = commands.companionTools()
+            AssistantCompanionTools(tools.map { AssistantCompanionTool(it.name, it.description, it.inputSchema.toString()) },
+                commands.toolsSummary(tools), null)
+        } catch (closed: AssistantCommands.Failure) {
+            if (closed.reason != AssistantCommands.Reason.PAGE_CLOSED) throw closed
+            AssistantCompanionTools(emptyList(), closed.message.orEmpty(), commands.openIntent(closed.pageUrl))
+        }
     }
 
     /**
@@ -141,11 +178,17 @@ abstract class AssistantFunctionService : AppFunctionService() {
      * @param name name of the tool, as returned by listCompanionTools.
      * @param argumentsJson arguments as a JSON object that follows the tool's inputSchema; omit it
      *   when the tool takes no arguments.
-     * @return the tool's answer as text.
+     * @return the tool's answer as text; when the page is not open, a request to open the app
+     *   with the intent that opens it.
      */
     @AppFunctionDeclaration(isDescribedByKDoc = true)
-    suspend fun runCompanionTool(name: String, argumentsJson: String? = null): String = call {
-        commands.runCompanionTool(name, argumentsJson)
+    suspend fun runCompanionTool(name: String, argumentsJson: String? = null): AssistantReply = call {
+        try {
+            AssistantReply(commands.runCompanionTool(name, argumentsJson), null)
+        } catch (closed: AssistantCommands.Failure) {
+            if (closed.reason != AssistantCommands.Reason.PAGE_CLOSED) throw closed
+            AssistantReply(closed.message.orEmpty(), commands.openIntent(closed.pageUrl))
+        }
     }
 
     /** Runs on the main thread, like the controllers, and maps failures to App Function errors. */

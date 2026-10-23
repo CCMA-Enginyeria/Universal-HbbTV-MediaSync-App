@@ -1,10 +1,13 @@
 package mediasync.app.assistant
 
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.icu.text.ListFormatter
 import android.os.Build
 import android.os.LocaleList
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -43,11 +46,14 @@ class AssistantCommands(
 
     enum class Reason {
         NO_NETWORK, PERMISSION, NO_TVS, NO_COMPATIBLE_TVS, TV_NOT_FOUND, NO_SYNC, NO_MODES,
-        NO_PAGE, TOOL_NOT_FOUND, TOOL_TIMEOUT, INVALID_ARGUMENTS, TOOL_FAILED,
+        NO_PAGE, PAGE_CLOSED, TOOL_NOT_FOUND, TOOL_TIMEOUT, INVALID_ARGUMENTS, TOOL_FAILED,
     }
 
-    /** A command that cannot proceed; [message] is localized and meant to be spoken. */
-    class Failure(val reason: Reason, message: String) : Exception(message)
+    /**
+     * A command that cannot proceed; [message] is localized and meant to be spoken. [pageUrl] is the
+     * companion page to open first ([Reason.PAGE_CLOSED]); see [openIntent].
+     */
+    class Failure(val reason: Reason, message: String, val pageUrl: String? = null) : Exception(message)
 
     private val _showsTerminalRequest = MutableStateFlow(false)
     /** Set when a command selected a TV; the activity shows the TV screen and clears it. */
@@ -62,6 +68,30 @@ class AssistantCommands(
     fun consumeWebRequest() { _webRequest.value = null }
 
     private val resources get() = context.resources
+
+    /** Whether an activity of the app is visible; only then may it open pages or navigate itself. */
+    private val appVisible: Boolean
+        get() = ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+
+    /**
+     * Opens the app on the TV screen, and on [pageUrl] when given. Android does not let a background
+     * app start activities, so commands hand this to the assistant, which may launch it.
+     */
+    fun openIntent(pageUrl: String? = null): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java)
+            .setAction(ACTION_SHOW)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        pageUrl?.let { intent.putExtra(EXTRA_PAGE_URL, it) }
+        return PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+    }
+
+    /** Handles an [openIntent] launch: shows the TV screen and opens the requested page. */
+    fun onLaunch(intent: Intent?) {
+        if (intent?.action != ACTION_SHOW) return
+        if (session.state.value.terminal != null) _showsTerminalRequest.value = true
+        intent.getStringExtra(EXTRA_PAGE_URL)?.let { _webRequest.value = it }
+        diagnostics.log("assistant", "launch", "page" to intent.hasExtra(EXTRA_PAGE_URL))
+    }
 
     /** The open TV, which commands without an explicit TV apply to. */
     val currentTvId: String? get() = session.state.value.terminal?.device?.id
@@ -152,15 +182,16 @@ class AssistantCommands(
 
     /**
      * Tools the open companion page declared (PRD-015-R07). With no page open, opens the page the
-     * content offers and waits for its declaration; empty when the TV offers no page.
+     * content offers and waits for its declaration; empty when the TV offers no page. A page cannot
+     * be opened from the background: then it fails with [Reason.PAGE_CLOSED] and the page to open.
      */
     suspend fun companionTools(): List<CompanionTool> {
         val state = session.state.value
         if (state.companionTools.isNotEmpty()) return state.companionTools
         if (!state.pageAttached) {
             val page = state.openWebPage ?: state.webPages.firstOrNull() ?: throw failure(Reason.NO_PAGE)
+            if (!appVisible) throw Failure(Reason.PAGE_CLOSED, message(Reason.PAGE_CLOSED), page.url)
             _webRequest.value = page.url
-            showApp()
             diagnostics.log("assistant", "open-page")
         }
         return waitFor(PAGE_WAIT_MS, session.state) { it.companionTools.isNotEmpty() }?.companionTools.orEmpty()
@@ -201,6 +232,7 @@ class AssistantCommands(
         Reason.NO_SYNC -> R.string.native_discovery_noSyncSupport
         Reason.NO_MODES -> R.string.native_terminal_noModes
         Reason.NO_PAGE -> R.string.native_assistant_errors_noPage
+        Reason.PAGE_CLOSED -> R.string.native_assistant_errors_openApp
         Reason.TOOL_NOT_FOUND -> R.string.native_assistant_tools_none
         Reason.TOOL_TIMEOUT -> R.string.native_assistant_errors_toolTimeout
         Reason.INVALID_ARGUMENTS -> R.string.native_assistant_errors_invalidArguments
@@ -224,21 +256,10 @@ class AssistantCommands(
         if (!terminal.supportsMediaSync) throw failure(Reason.NO_SYNC)
         if (session.state.value.terminal?.device?.id != terminal.device.id) session.select(terminal)
         mode?.let(session::setPreferredMode)
+        // A visible app shows the TV screen itself; otherwise the assistant gets [openIntent].
         _showsTerminalRequest.value = true
-        showApp()
         diagnostics.log("assistant", "open", "mode" to (mode?.name ?: "preferred"))
         return terminal
-    }
-
-    /**
-     * Brings the app to the front: playback needs its foreground service, which Android only lets
-     * a visible app start. The system may refuse a launch from the background; the session still
-     * runs and the service starts once the user opens the app (see `SessionController.onAppForeground`).
-     */
-    private fun showApp() {
-        val intent = Intent(context, MainActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        runCatching { context.startActivity(intent) }.onFailure { diagnostics.log("assistant", "launch-denied") }
     }
 
     /** The open TV or a discovered one; waits for a scan when the TV is not known yet. */
@@ -282,5 +303,7 @@ class AssistantCommands(
         const val PAGE_WAIT_MS = 10_000L
         /** Upper bound for a page tool to answer; page tools may ask a remote assistant. */
         const val TOOL_WAIT_MS = 45_000L
+        const val ACTION_SHOW = "mediasync.app.action.ASSISTANT_SHOW"
+        const val EXTRA_PAGE_URL = "mediasync.app.extra.PAGE_URL"
     }
 }

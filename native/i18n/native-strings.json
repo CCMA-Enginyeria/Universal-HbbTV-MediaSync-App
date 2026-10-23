@@ -131,7 +131,8 @@
         "noPage": "The TV is not offering a companion page right now.",
         "toolNotFound": "The companion page does not offer “{{name}}”.",
         "toolTimeout": "The companion page did not answer in time.",
-        "invalidArguments": "The arguments must be a JSON object."
+        "invalidArguments": "The arguments must be a JSON object.",
+        "openApp": "Open the app to use the companion page of the TV programme, then ask again."
       },
       "tools": {
         "listTitle": "Companion page tools",
@@ -285,7 +286,8 @@
         "noPage": "Ara mateix el televisor no ofereix cap pàgina complementària.",
         "toolNotFound": "La pàgina complementària no ofereix «{{name}}».",
         "toolTimeout": "La pàgina complementària no ha respost a temps.",
-        "invalidArguments": "Els arguments han de ser un objecte JSON."
+        "invalidArguments": "Els arguments han de ser un objecte JSON.",
+        "openApp": "Obre l'aplicació per fer servir la pàgina complementària del programa i torna-ho a demanar."
       },
       "tools": {
         "listTitle": "Eines de la pàgina complementària",
@@ -439,7 +441,8 @@
         "noPage": "Ahora mismo el televisor no ofrece ninguna página complementaria.",
         "toolNotFound": "La página complementaria no ofrece «{{name}}».",
         "toolTimeout": "La página complementaria no ha respondido a tiempo.",
-        "invalidArguments": "Los argumentos deben ser un objeto JSON."
+        "invalidArguments": "Los argumentos deben ser un objeto JSON.",
+        "openApp": "Abre la aplicación para usar la página complementaria del programa y vuelve a pedirlo."
       },
       "tools": {
         "listTitle": "Herramientas de la página complementaria",
@@ -593,7 +596,8 @@
         "noPage": "Telebistak ez du orri osagarririk eskaintzen une honetan.",
         "toolNotFound": "Orri osagarriak ez du «{{name}}» eskaintzen.",
         "toolTimeout": "Orri osagarriak ez du garaiz erantzun.",
-        "invalidArguments": "Argumentuek JSON objektu bat izan behar dute."
+        "invalidArguments": "Argumentuek JSON objektu bat izan behar dute.",
+        "openApp": "Ireki aplikazioa programaren orri osagarria erabiltzeko, eta eskatu berriro."
       },
       "tools": {
         "listTitle": "Orri osagarriaren tresnak",
@@ -747,7 +751,8 @@
         "noPage": "Der Fernseher bietet gerade keine Begleitseite an.",
         "toolNotFound": "Die Begleitseite bietet „{{name}}“ nicht an.",
         "toolTimeout": "Die Begleitseite hat nicht rechtzeitig geantwortet.",
-        "invalidArguments": "Die Argumente müssen ein JSON-Objekt sein."
+        "invalidArguments": "Die Argumente müssen ein JSON-Objekt sein.",
+        "openApp": "Öffne die App, um die Begleitseite der Sendung zu verwenden, und frage dann noch einmal."
       },
       "tools": {
         "listTitle": "Werkzeuge der Begleitseite",
@@ -901,7 +906,8 @@
         "noPage": "Al momento il televisore non offre nessuna pagina complementare.",
         "toolNotFound": "La pagina complementare non offre «{{name}}».",
         "toolTimeout": "La pagina complementare non ha risposto in tempo.",
-        "invalidArguments": "Gli argomenti devono essere un oggetto JSON."
+        "invalidArguments": "Gli argomenti devono essere un oggetto JSON.",
+        "openApp": "Apri l'app per usare la pagina complementare del programma, poi chiedi di nuovo."
       },
       "tools": {
         "listTitle": "Strumenti della pagina complementare",
@@ -1055,7 +1061,8 @@
         "noPage": "Le téléviseur ne propose aucune page complémentaire pour le moment.",
         "toolNotFound": "La page complémentaire ne propose pas « {{name}} ».",
         "toolTimeout": "La page complémentaire n'a pas répondu à temps.",
-        "invalidArguments": "Les arguments doivent être un objet JSON."
+        "invalidArguments": "Les arguments doivent être un objet JSON.",
+        "openApp": "Ouvrez l'application pour utiliser la page complémentaire du programme, puis redemandez."
       },
       "tools": {
         "listTitle": "Outils de la page complémentaire",
