@@ -3,6 +3,7 @@ package mediasync.app.session
 import android.content.Context
 import android.os.Handler
 import android.os.SystemClock
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -11,6 +12,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.JsonObject
 import mediasync.app.brand.BrandConfig
 import mediasync.app.content.ContentLoader
 import mediasync.app.data.Preferences
@@ -28,6 +31,7 @@ import mediasync.core.App2AppChannel
 import mediasync.core.Availability
 import mediasync.core.CompanionFeedThrottle
 import mediasync.core.CompanionProtocol
+import mediasync.core.CompanionTool
 import mediasync.core.ContentClassifier
 import mediasync.core.ContentKind
 import mediasync.core.DialDiscoveryScan
@@ -102,6 +106,10 @@ class SessionController(
         val volume: Float = 1f,
         /** Companion page the user opened last; see [openWebPage]. */
         val webUrl: String? = null,
+        /** Tools the open companion page declared for assistants (PRD-015-R07); see [callCompanionTool]. */
+        val companionTools: List<CompanionTool> = emptyList(),
+        /** A companion page transport is connected (WebView, Custom Tab or loopback). */
+        val pageAttached: Boolean = false,
     ) {
         val availableModes: List<SyncMode> get() = ModeSelection.available(availability)
         val probing: Boolean get() = availability.values.any { it == Availability.CHECKING }
@@ -153,6 +161,9 @@ class SessionController(
     /** Companions that also mirror the cues of the selected subtitle track (XR subtitles). */
     private val subtitleSinks = linkedSetOf<CompanionSink>()
     private var sentCueRevision: Long? = null
+    /** Tool calls waiting for the page's answer, by call id; completed with null when the page goes away. */
+    private val pendingTools = mutableMapOf<String, CompletableDeferred<CompanionProtocol.Inbound.ToolResult?>>()
+    private var toolCalls = 0L
     private val feed = CompanionFeedThrottle()
     private var lastPositionEnvelope: String? = null
     /** Service type the session needs (null: none) and the one actually running. */
@@ -234,6 +245,7 @@ class SessionController(
         subtitles.select(null, null)
         companions.clear()
         subtitleSinks.clear()
+        releaseToolCalls()
         sentCueRevision = null
         stopTicking()
         stopService()
@@ -293,6 +305,7 @@ class SessionController(
 
     fun attachCompanion(sink: CompanionSink) {
         companions.add(sink)
+        update { copy(pageAttached = pages().isNotEmpty()) }
         feed.reset()
         if (owner?.isActive != true) startService(media = false)
         startTicking()
@@ -300,7 +313,39 @@ class SessionController(
 
     fun detachCompanion(sink: CompanionSink) {
         companions.remove(sink)
+        if (pages().isEmpty()) {
+            releaseToolCalls()
+            update { copy(companionTools = emptyList(), pageAttached = false) }
+        }
         if (companions.isEmpty() && owner?.isActive != true) stopService()
+    }
+
+    /** Companion pages proper; subtitle sinks (XR) only mirror positions and cues. */
+    private fun pages() = companions.filterNot(subtitleSinks::contains)
+
+    private fun releaseToolCalls() {
+        pendingTools.values.forEach { it.complete(null) }
+        pendingTools.clear()
+    }
+
+    /**
+     * Runs a tool the open companion page declared and waits for its answer: null when no page is
+     * open, the page went away or did not answer within [timeoutMs].
+     */
+    suspend fun callCompanionTool(name: String, arguments: JsonObject, timeoutMs: Long): CompanionProtocol.Inbound.ToolResult? {
+        val pages = pages()
+        if (pages.isEmpty()) return null
+        val id = "call-${++toolCalls}"
+        val answer = CompletableDeferred<CompanionProtocol.Inbound.ToolResult?>()
+        pendingTools[id] = answer
+        val envelope = CompanionProtocol.toolCall(id, name, arguments)
+        pages.forEach { it.deliver(envelope) }
+        diagnostics.log("companion", "tool-call")
+        return try {
+            withTimeoutOrNull(timeoutMs) { answer.await() }
+        } finally {
+            pendingTools.remove(id)
+        }
     }
 
     /** Attaches a page that renders the subtitles itself; it gets positions and the cue list. */
@@ -336,6 +381,11 @@ class SessionController(
         when (inbound) {
             is CompanionProtocol.Inbound.AppMessage -> session?.sendAppMessage(inbound.type, inbound.payload, inbound.id)
             is CompanionProtocol.Inbound.SyncAck -> diagnostics.log("companion", "sync-ack")
+            is CompanionProtocol.Inbound.Tools -> {
+                diagnostics.log("companion", "tools", "count" to inbound.tools.size)
+                update { copy(companionTools = inbound.tools) }
+            }
+            is CompanionProtocol.Inbound.ToolResult -> pendingTools.remove(inbound.id)?.complete(inbound)
         }
     }
 

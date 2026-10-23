@@ -30,9 +30,9 @@ replaced connections are ignored. Events are delivered on the owner's context
 
 ## Build and test
 
-From the repository root with Node.js 22, a JDK 17 or 21 to run Gradle 8.14 (newer JDKs
-such as Android Studio's bundled 25 are not supported; the build uses a Java 17 toolchain)
-and the Android SDK (36). On macOS/Linux use `./gradlew` instead of `.\gradlew.bat`:
+From the repository root with Node.js 22, a JDK 17 or 21 to run Gradle 9.3 with the Android
+Gradle plugin 9.1 (built-in Kotlin; the build uses a Java 17 toolchain) and the Android SDK
+(compileSdk 37, required by `androidx.appfunctions`; targetSdk stays 36). On macOS/Linux use `./gradlew` instead of `.\gradlew.bat`:
 
 ```powershell
 node native/tools/sync-vectors.cjs --check

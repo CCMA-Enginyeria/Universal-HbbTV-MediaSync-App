@@ -1,12 +1,21 @@
 import SwiftUI
 import UIKit
 
-/// Process-scoped owners; views only observe them, so recreation never duplicates workers.
+/**
+ * Process-scoped owners; views only observe them, so recreation never duplicates workers.
+ * A single instance, because App Intents (Siri, Shortcuts) can run before or without a scene.
+ */
 final class AppModel: ObservableObject {
+    static let shared = AppModel()
+
     let diagnostics = Diagnostics()
     lazy var transport = AppleTransport(diagnostics: diagnostics)
     lazy var discovery = DiscoveryModel(diagnostics: diagnostics)
     lazy var session = SessionModel(transport: transport, loader: ContentLoader(), diagnostics: diagnostics)
+    /// Set by an assistant command that selected a TV; the root view shows that TV and clears it.
+    @Published var showsTerminalRequest = false
+
+    private init() {}
 }
 
 final class AppDelegate: NSObject, UIApplicationDelegate {
@@ -22,7 +31,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 @main
 struct MediaSyncApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @StateObject private var model = AppModel()
+    @StateObject private var model = AppModel.shared
 
     var body: some Scene {
         WindowGroup {
@@ -44,6 +53,7 @@ enum Overlay: String, Identifiable, Equatable {
 }
 
 struct RootView: View {
+    @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var session: SessionModel
     @State private var showTerminal = false
     @State private var showHelp = false
@@ -73,6 +83,12 @@ struct RootView: View {
                 showTerminal = false
                 overlay = nil
             }
+        }
+        // A published value replays on subscription, so a request made before this view existed is kept.
+        .onReceive(model.$showsTerminalRequest) { requested in
+            guard requested else { return }
+            model.showsTerminalRequest = false
+            if session.terminal != nil { showTerminal = true }
         }
         .onChange(of: overlay) { value in
             AppDelegate.allowsLandscape = value != nil

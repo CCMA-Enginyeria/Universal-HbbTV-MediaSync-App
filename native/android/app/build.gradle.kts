@@ -2,8 +2,8 @@ import groovy.json.JsonSlurper
 
 plugins {
     id("com.android.application")
-    kotlin("android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.google.devtools.ksp")
 }
 
 val repositoryRoot = rootProject.projectDir.resolve("../..").canonicalFile
@@ -37,7 +37,7 @@ val generateBrandResources by tasks.registering(Exec::class) {
 
 android {
     namespace = "mediasync.app"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = brand["androidPackage"] as String
@@ -106,9 +106,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    // Generated before every build (preBuild depends on generateBrandResources).
     sourceSets["main"].apply {
-        res.srcDir(generatedBrand.map { it.dir("res") })
-        java.srcDir(generatedBrand.map { it.dir("kotlin") })
+        res.directories += generatedBrand.get().dir("res").asFile.path
+        kotlin.directories += generatedBrand.get().dir("kotlin").asFile.path
     }
 
     packaging {
@@ -123,7 +124,8 @@ androidComponents {
     // apps created since March 2026, targetSdk 34; the Play build keeps 24/36.
     beforeVariants(selector().withBuildType("quest")) { variant ->
         variant.minSdk = 29
-        variant.targetSdk = 34
+        // AGP 9 declares targetSdk on both VariantBuilder and GeneratesApkBuilder; the latter is the APK's.
+        (variant as com.android.build.api.variant.GeneratesApkBuilder).targetSdk = 34
     }
 }
 
@@ -163,6 +165,10 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.browser:browser:1.9.0")
     implementation("androidx.webkit:webkit:1.14.0")
+
+    // Gemini and other agents call the assistant commands through App Functions (Android 16+, PRD-015).
+    implementation("androidx.appfunctions:appfunctions:1.0.0-alpha13")
+    ksp("androidx.appfunctions:appfunctions-compiler:1.0.0-alpha13")
 
     testImplementation(kotlin("test-junit"))
 }

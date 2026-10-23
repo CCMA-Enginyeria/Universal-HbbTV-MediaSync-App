@@ -137,6 +137,36 @@ data class PlaybackIntent(val kind: TrackKind, val language: String?, val role: 
     }
 }
 
+/**
+ * The audio an assistant plays when the user only asks to listen: anything before audio
+ * description, then the first of the user's languages the content offers, then main audio,
+ * then manifest order. Broadcasters tag ISO 639-1 or 639-2 codes; both are compared.
+ */
+object AudioPreference {
+    private val ISO_639_2 = mapOf(
+        "cat" to "ca", "spa" to "es", "eus" to "eu", "baq" to "eu", "eng" to "en",
+        "deu" to "de", "ger" to "de", "ita" to "it", "fra" to "fr", "fre" to "fr", "por" to "pt",
+    )
+
+    /** Base language of a BCP 47 tag or ISO 639 code, as ISO 639-1 when known. */
+    fun language(code: String?): String? {
+        val base = code?.lowercase()?.substringBefore('-')?.substringBefore('_')?.takeIf { it.isNotEmpty() } ?: return null
+        return ISO_639_2[base] ?: base
+    }
+
+    fun pick(tracks: List<MediaTrack>, languages: List<String>): MediaTrack? {
+        val preferred = languages.mapNotNull(::language)
+        return tracks.filter { it.kind == TrackKind.AUDIO && !it.protected }
+            .withIndex()
+            .minWithOrNull(compareBy<IndexedValue<MediaTrack>>(
+                { if (it.value.audioDescription || it.value.role == "description") 1 else 0 },
+                { language(it.value.language)?.let(preferred::indexOf)?.takeIf { index -> index >= 0 } ?: preferred.size },
+                { if (it.value.role == null || it.value.role == "main") 0 else 1 },
+                { it.index },
+            ))?.value
+    }
+}
+
 object MpdParser {
     const val MAX_BYTES = 4 * 1_048_576
     /** EventStream scheme of [WebApplication] announcements; `value` is the format version. */
