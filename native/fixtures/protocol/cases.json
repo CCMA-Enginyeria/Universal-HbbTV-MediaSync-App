@@ -262,6 +262,14 @@
     { "name": "protected and video are skipped", "languages": ["ca"], "tracks": [
       { "id": "v", "kind": "VIDEO", "language": "ca", "role": "main" },
       { "id": "p", "kind": "AUDIO", "language": "ca", "role": "main", "protected": true }
+    ], "expect": null },
+    { "name": "described picks audio description in the user's language", "languages": ["es", "ca"], "described": true, "tracks": [
+      { "id": "main", "kind": "AUDIO", "language": "es", "role": "main" },
+      { "id": "ad-ca", "kind": "AUDIO", "language": "ca", "role": "description" },
+      { "id": "ad-es", "kind": "AUDIO", "language": "es", "role": "main", "audioDescription": true }
+    ], "expect": "ad-es" },
+    { "name": "described without audio description", "languages": ["ca"], "described": true, "tracks": [
+      { "id": "main", "kind": "AUDIO", "language": "ca", "role": "main" }
     ], "expect": null }
   ],
   "companionTools": {

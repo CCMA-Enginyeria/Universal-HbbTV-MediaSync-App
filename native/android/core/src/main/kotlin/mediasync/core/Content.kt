@@ -154,12 +154,17 @@ object AudioPreference {
         return ISO_639_2[base] ?: base
     }
 
-    fun pick(tracks: List<MediaTrack>, languages: List<String>): MediaTrack? {
+    /**
+     * The audio track that best matches [languages]. Audio description is a last resort, unless
+     * [described] asks for it: then only audio description tracks qualify (null when there is none).
+     */
+    fun pick(tracks: List<MediaTrack>, languages: List<String>, described: Boolean = false): MediaTrack? {
         val preferred = languages.mapNotNull(::language)
-        return tracks.filter { it.kind == TrackKind.AUDIO && !it.protected }
+        fun isDescription(track: MediaTrack) = track.audioDescription || track.role == "description"
+        return tracks.filter { it.kind == TrackKind.AUDIO && !it.protected && (!described || isDescription(it)) }
             .withIndex()
             .minWithOrNull(compareBy<IndexedValue<MediaTrack>>(
-                { if (it.value.audioDescription || it.value.role == "description") 1 else 0 },
+                { if (isDescription(it.value)) 1 else 0 },
                 { language(it.value.language)?.let(preferred::indexOf)?.takeIf { index -> index >= 0 } ?: preferred.size },
                 { if (it.value.role == null || it.value.role == "main") 0 else 1 },
                 { it.index },

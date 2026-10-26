@@ -373,7 +373,8 @@ final class ProtocolFixturesTests: XCTestCase {
                 value.isProtected = track["protected"] as? Bool ?? false
                 return value
             }
-            XCTAssertEqual(AudioPreference.pick(tracks, languages: item["languages"] as! [String])?.id, str(item["expect"]),
+            XCTAssertEqual(AudioPreference.pick(tracks, languages: item["languages"] as! [String],
+                                                 described: item["described"] as? Bool ?? false)?.id, str(item["expect"]),
                            str(item["name"]) ?? "")
         }
     }

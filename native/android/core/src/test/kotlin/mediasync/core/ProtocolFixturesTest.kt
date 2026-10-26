@@ -385,7 +385,7 @@ class ProtocolFixturesTest {
                     audioDescription = track.str("audioDescription") == "true", protected = track.str("protected") == "true")
             }
             val languages = case.getValue("languages").jsonArray.map { it.jsonPrimitive.content }
-            assertEquals(case.str("expect"), AudioPreference.pick(tracks, languages)?.id, case.str("name"))
+            assertEquals(case.str("expect"), AudioPreference.pick(tracks, languages, case.str("described") == "true")?.id, case.str("name"))
         }
     }
 }

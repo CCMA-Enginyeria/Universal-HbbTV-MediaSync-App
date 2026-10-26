@@ -122,28 +122,120 @@ final class AssistantCommands {
         return settled ? L10n.t("native.assistant.status.connected", name) : L10n.t("native.assistant.connect.pending", name)
     }
 
-    /// Opens the TV and checks the audio track that best matches the user's languages.
-    func listen(_ id: String) async throws -> String {
-        let terminal = try await open(id, mode: nil)
-        _ = await waitUntil(Self.connectWaitS + Self.contentWaitS) { self.contentSettled || self.session.noModes }
-        if session.noModes { throw Failure.noModes }
-        let name = Self.name(session.terminal ?? terminal)
+    /// Something to look at: a video track of the programme or a page it offers.
+    struct Visual: Equatable {
+        let id: String
+        let title: String
+    }
+
+    /// Opens the TV and waits for its content; the audio tracks this device can play, in manifest order.
+    func audioTracks(_ id: String) async throws -> [MediaTrack] {
+        _ = try await openContent(id)
+        return playableAudio
+    }
+
+    /// Opens the TV and waits for its content; what there is to watch.
+    func visuals(_ id: String) async throws -> [Visual] {
+        _ = try await openContent(id)
+        return visuals
+    }
+
+    /// Video tracks this device can play, then the pages the content offers.
+    var visuals: [Visual] {
+        var items: [Visual] = []
+        if case .media(let manifest, _) = session.content {
+            items += manifest.tracks.filter { $0.kind == .video && !$0.isProtected }.map { Visual(id: "video:\($0.id)", title: Labels.title($0)) }
+        }
+        return items + session.webPages.map { Visual(id: "page:\($0.url)", title: Self.title($0)) }
+    }
+
+    /// Spoken question that lists what there is to watch.
+    func visualChoice(_ items: [Visual]) -> String {
+        L10n.t("native.assistant.watch.choose", ListFormatter.localizedString(byJoining: items.map(\.title)))
+    }
+
+    /// Opens the TV and tells which audio, video, subtitles and pages its programme offers.
+    func contentSummary(_ id: String) async throws -> String {
+        let name = try await openContent(id)
+        var groups: [String] = []
+        if case .media(let manifest, _) = session.content {
+            let playable = manifest.tracks.filter { !$0.isProtected }
+            for (kind, key) in [(TrackKind.audio, "audio"), (.video, "video"), (.text, "subtitles")] {
+                let titles = playable.filter { $0.kind == kind }.map(Labels.title)
+                if !titles.isEmpty {
+                    groups.append(L10n.t("native.assistant.content.\(key)", ListFormatter.localizedString(byJoining: titles)))
+                }
+            }
+        }
+        groups += session.webPages.map { L10n.t("native.assistant.content.page", Self.title($0)) }
+        if !groups.isEmpty { return L10n.t("native.assistant.content.available", name, groups.joined(separator: "; ")) }
+        return contentSettled ? L10n.t("native.assistant.content.none", name) : pending(name)
+    }
+
+    /// Opens the TV and shows `visualId`, or else the first video or page.
+    func watch(_ id: String, visualId: String? = nil) async throws -> String {
+        let name = try await openContent(id)
+        let items = visuals
+        guard let item = visualId.flatMap({ wanted in items.first { $0.id == wanted } }) ?? items.first else {
+            return contentSettled ? L10n.t("native.assistant.watch.none", name) : pending(name)
+        }
+        if item.id.hasPrefix("page:") {
+            model.webPageRequest = String(item.id.dropFirst("page:".count))
+        } else if case .media(let manifest, _) = session.content,
+                  let track = manifest.tracks.first(where: { "video:\($0.id)" == item.id }), session.video != track {
+            session.toggle(track)
+        }
+        model.diagnostics.log("assistant", "watch", ["page": item.id.hasPrefix("page:")])
+        return L10n.t("native.assistant.watch.showing", item.title)
+    }
+
+    /// Audio tracks of the open content that this device can play.
+    var playableAudio: [MediaTrack] {
+        guard case .media(let manifest, _) = session.content else { return [] }
+        return manifest.tracks.filter { $0.kind == .audio && !$0.isProtected }
+    }
+
+    /// Spoken question that lists the audio tracks to choose from.
+    func audioChoice(_ tracks: [MediaTrack]) -> String {
+        L10n.t("native.assistant.listen.choose", ListFormatter.localizedString(byJoining: tracks.map(Labels.title)))
+    }
+
+    /**
+     * Opens the TV and checks `trackId`, or else the audio track that best matches the user's
+     * languages. With `described` it switches to audio description, and leaves playback alone
+     * when there is none.
+     */
+    func listen(_ id: String, described: Bool = false, trackId: String? = nil) async throws -> String {
+        let name = try await openContent(id)
         switch session.content {
         case .media(let manifest, _):
-            let track = session.audio ?? AudioPreference.pick(manifest.tracks, languages: Locale.preferredLanguages)
-            guard let audio = track else { return L10n.t("native.assistant.listen.noAudio") }
+            let chosen = trackId.flatMap { id in playableAudio.first { $0.id == id } }
+            let current = session.audio.flatMap { !described || $0.audioDescription || $0.role == "description" ? $0 : nil }
+            let track = chosen ?? current ?? AudioPreference.pick(manifest.tracks, languages: Locale.preferredLanguages, described: described)
+            guard let audio = track else {
+                return described ? L10n.t("native.assistant.audioDescription.none", name) : L10n.t("native.assistant.listen.noAudio")
+            }
             if session.audio != audio { session.toggle(audio) }
-            model.diagnostics.log("assistant", "listen", ["playing": true])
+            model.diagnostics.log("assistant", "listen", ["playing": true, "described": described])
             return L10n.t("native.assistant.listen.playing", name, Labels.title(audio))
         case .failed:
             return L10n.t("native.assistant.listen.noAudio")
         case .web(let page):
-            return L10n.t("native.assistant.status.webPage", page.title ?? L10n.t("discovery.webAvailableTitle"))
+            return L10n.t("native.assistant.status.webPage", Self.title(page))
         case .none, .loading:
-            return isConnected ? L10n.t("native.assistant.listen.noContent", name) : L10n.t("native.assistant.connect.pending", name)
+            return pending(name)
         }
     }
 
+    /// Unchecks the audio track; a checked video keeps playing.
+    func stopAudio() -> String {
+        guard let audio = session.audio else { return L10n.t("native.assistant.stopAudio.idle") }
+        session.toggle(audio)
+        model.diagnostics.log("assistant", "stop-audio")
+        return L10n.t("native.assistant.stopAudio.done")
+    }
+
+    /// Stops everything playing and disconnects from the TV.
     func stop() -> String {
         session.stop()
         model.diagnostics.log("assistant", "stop")
@@ -162,6 +254,23 @@ final class AssistantCommands {
         case .media, .web, .failed: return true
         case .none, .loading: return false
         }
+    }
+
+    /// Opens the TV and waits for its content to settle; the TV's name.
+    private func openContent(_ id: String) async throws -> String {
+        let terminal = try await open(id, mode: nil)
+        _ = await waitUntil(Self.connectWaitS + Self.contentWaitS) { self.contentSettled || self.session.noModes }
+        if session.noModes { throw Failure.noModes }
+        return Self.name(session.terminal ?? terminal)
+    }
+
+    /// Reply while the TV has no content yet: connected and waiting, or still connecting.
+    private func pending(_ name: String) -> String {
+        isConnected ? L10n.t("native.assistant.listen.noContent", name) : L10n.t("native.assistant.connect.pending", name)
+    }
+
+    private static func title(_ page: SessionModel.WebPage) -> String {
+        page.title ?? L10n.t("discovery.webAvailableTitle")
     }
 
     private func open(_ id: String, mode: SyncMode?) async throws -> DialTerminal {

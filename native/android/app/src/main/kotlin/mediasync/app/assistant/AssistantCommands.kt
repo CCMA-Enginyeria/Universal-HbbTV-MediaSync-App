@@ -157,8 +157,11 @@ class AssistantCommands(
         return resources.getString(if (settled != null) R.string.native_assistant_status_connected else R.string.native_assistant_connect_pending, name)
     }
 
-    /** Opens the TV and checks the audio track that best matches the user's languages. */
-    suspend fun listen(id: String): String {
+    /**
+     * Opens the TV and checks the audio track that best matches the user's languages. With
+     * [described] it switches to audio description, and leaves playback alone when there is none.
+     */
+    suspend fun listen(id: String, described: Boolean = false): String {
         val terminal = open(id, null)
         waitFor(CONNECT_WAIT_MS + CONTENT_WAIT_MS, session.state) { contentSettled(it) || it.noModes }
         val state = session.state.value
@@ -166,10 +169,12 @@ class AssistantCommands(
         val name = name(state.terminal ?: terminal)
         return when (val content = state.content) {
             is SessionController.Content.Media -> {
-                val audio = state.audio ?: AudioPreference.pick(content.manifest.tracks, userLanguages())
-                    ?: return resources.getString(R.string.native_assistant_listen_noAudio)
+                val current = state.audio?.takeIf { !described || it.audioDescription || it.role == "description" }
+                val audio = current ?: AudioPreference.pick(content.manifest.tracks, userLanguages(), described)
+                    ?: return if (described) resources.getString(R.string.native_assistant_audioDescription_none, name)
+                    else resources.getString(R.string.native_assistant_listen_noAudio)
                 if (state.audio != audio) session.toggle(audio)
-                diagnostics.log("assistant", "listen", "playing" to true)
+                diagnostics.log("assistant", "listen", "playing" to true, "described" to described)
                 resources.getString(R.string.native_assistant_listen_playing, name, Labels.trackTitle(resources, audio))
             }
             is SessionController.Content.Failed -> resources.getString(R.string.native_assistant_listen_noAudio)

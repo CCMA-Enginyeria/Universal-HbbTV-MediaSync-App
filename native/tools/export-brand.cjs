@@ -139,12 +139,17 @@ function brandSummary({ brand, theme }) {
   for (const [key, pattern] of [['androidPackage', /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/], ['bundleIdentifier', /^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/], ['scheme', /^[a-z][a-z0-9+.-]*$/]]) {
     if (!pattern.test(brand[key] || '')) fail(`brand.${key} is invalid: ${brand[key]}`);
   }
+  const spokenNames = brand.spokenNames ?? [];
+  if (!Array.isArray(spokenNames) || spokenNames.length > 3 || spokenNames.some((name) => typeof name !== 'string' || !name.trim())) {
+    fail('brand.spokenNames must be a list of up to 3 names');
+  }
   for (const key of ['syncWebPlayerUrl', 'supportUrl', 'defaultContentUrl']) {
     if (brand[key] != null && !/^https?:\/\//.test(brand[key])) fail(`brand.${key} must be an http(s) URL`);
   }
   return {
     appName: brand.appName,
     shortName: brand.shortName,
+    spokenNames,
     version: brand.version,
     versionCode,
     scheme: brand.scheme,
@@ -466,6 +471,8 @@ function exportIos(outDir, inputs, strings, summary) {
     CFBundlePackageType: 'APPL',
     CFBundleShortVersionString: '$(MARKETING_VERSION)',
     CFBundleVersion: '$(CURRENT_PROJECT_VERSION)',
+    // Siri accepts these in place of the display name, also in App Shortcut phrases.
+    ...(summary.spokenNames.length ? { INAlternativeAppNames: summary.spokenNames.map((name) => ({ INAlternativeAppName: name })) } : {}),
     CFBundleURLTypes: [{ CFBundleURLName: summary.bundleIdentifier, CFBundleURLSchemes: [summary.scheme] }],
     ITSAppUsesNonExemptEncryption: false,
     LSRequiresIPhoneOS: true,

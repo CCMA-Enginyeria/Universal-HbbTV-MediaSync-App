@@ -98,9 +98,12 @@ struct CompanionWebView: UIViewRepresentable {
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, CompanionSink {
         let session: SessionModel
+        let pageUrl: String
         weak var webView: WKWebView?
         private let gate: CompanionBridgeGate
         private var ready = false
+        /// Set by `silence()`: the page is gone for good and only the blank document may load.
+        private var silenced = false
         private var failed: Binding<Bool>
         private let onRedirect: (String) -> Bool
         /// Generation of the committed document; messages from a page being replaced are dropped.
@@ -108,6 +111,7 @@ struct CompanionWebView: UIViewRepresentable {
 
         init(url: String, session: SessionModel, failed: Binding<Bool>, onRedirect: @escaping (String) -> Bool) {
             gate = CompanionBridgeGate(pageUrl: url)
+            pageUrl = url
             self.session = session
             self.failed = failed
             self.onRedirect = onRedirect
@@ -116,6 +120,40 @@ struct CompanionWebView: UIViewRepresentable {
         func deliver(_ envelope: String) {
             guard ready else { return }
             webView?.evaluateJavaScript(CompanionProtocol.webViewInjection(envelope), completionHandler: nil)
+        }
+
+        /// Stops every media element inside the page and keeps it from playing again (a sync script would).
+        private static let stopMediaScript = """
+            (function () {
+              HTMLMediaElement.prototype.play = function () { return Promise.reject(new Error('stopped')); };
+              document.querySelectorAll('audio,video').forEach(function (media) {
+                try { media.pause(); media.removeAttribute('src'); media.srcObject = null; media.load(); } catch (e) {}
+              });
+            })();
+            """
+
+        /**
+         * Stops the page's media, then unloads it. A Siri command wakes the app only briefly while
+         * WebKit keeps playing in its own process, so the app stays awake until the page confirms;
+         * the script acts inside the page, because the unload also needs a reply from the app.
+         */
+        func silence() {
+            ready = false
+            silenced = true
+            guard let webView = webView else { return }
+            var task = UIBackgroundTaskIdentifier.invalid
+            let finish = {
+                guard task != .invalid else { return }
+                UIApplication.shared.endBackgroundTask(task)
+                task = .invalid
+            }
+            task = UIApplication.shared.beginBackgroundTask(withName: "mediasync.silence", expirationHandler: finish)
+            webView.evaluateJavaScript(Self.stopMediaScript) { _, _ in
+                webView.pauseAllMediaPlayback {
+                    webView.loadHTMLString("", baseURL: nil)
+                    finish()
+                }
+            }
         }
 
         private func origin(_ security: WKSecurityOrigin) -> String {
@@ -159,6 +197,7 @@ struct CompanionWebView: UIViewRepresentable {
 
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
             guard let target = action.request.url else { return decisionHandler(.cancel) }
+            if silenced { return decisionHandler(target.absoluteString == "about:blank" ? .allow : .cancel) }
             if action.targetFrame?.isMainFrame != true {
                 let scheme = target.scheme?.lowercased()
                 return decisionHandler(scheme == "http" || scheme == "https" || scheme == "about" ? .allow : .cancel)

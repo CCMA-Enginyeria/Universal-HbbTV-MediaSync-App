@@ -4,7 +4,12 @@ import UIKit
 
 /// A companion page transport (WKWebView) that receives protocol envelopes.
 protocol CompanionSink: AnyObject {
+    /// The page the transport was opened on.
+    var pageUrl: String { get }
     func deliver(_ envelope: String)
+    /// Stops the page's media now. SwiftUI only removes a web view when the app renders, which a
+    /// command run in the background (Siri) does not wait for, so the page would keep playing.
+    func silence()
 }
 
 /**
@@ -51,6 +56,8 @@ final class SessionModel: ObservableObject {
     /// Companion page the user opened last; see `openWebPage`.
     @Published private(set) var webUrl: String?
     @Published private(set) var webPlayerUrl: String?
+    /// Changes whenever the web player stops, so the next one gets a new web view and not the silenced one.
+    @Published private(set) var webPlayerRun = 0
     @Published private(set) var volume: Float = 1
 
     var availableModes: [SyncMode] { ModeSelection.available(availability) }
@@ -292,6 +299,8 @@ final class SessionModel: ObservableObject {
         stopPlayback()
         lastPositionEnvelope = nil
         selectSubtitle(nil)
+        if !companions.isEmpty { diagnostics.log("companion", "silence", ["count": companions.count]) }
+        companions.values.forEach { $0.silence() }
         companions.removeAll()
         stopTicker()
         terminal = nil
@@ -408,6 +417,9 @@ final class SessionModel: ObservableObject {
         switch inbound {
         case .appMessage(let type, let id, let payload): session?.sendAppMessage(type: type, payload: payload, id: id)
         case .syncAck: diagnostics.log("companion", "sync-ack")
+        // The iOS assistant does not offer companion tools yet, so declarations and answers are only logged.
+        case .tools(let tools): diagnostics.log("companion", "tools", ["count": tools.count])
+        case .toolResult: diagnostics.log("companion", "tool-result")
         }
     }
 
@@ -539,12 +551,12 @@ final class SessionModel: ObservableObject {
                 return manifest.tracks.filter { $0.kind == track.kind }.firstIndex(of: track) ?? -1
             }
             // Video without a checked audio track plays muted, as in the native player.
-            webPlayerUrl = CompanionProtocol.webPlayerUrl(base: base, mpdUrl: manifest.url, audio: video == nil, track: primary,
+            setWebPlayer(CompanionProtocol.webPlayerUrl(base: base, mpdUrl: manifest.url, audio: video == nil, track: primary,
                 trackIndex: index(primary), volume: audio == nil ? 0 : Double(volume), isLive: manifest.isLive, tuning: tuning, telemetry: false,
-                audioTrack: video == nil ? nil : audio, audioTrackIndex: index(audio))
+                audioTrack: video == nil ? nil : audio, audioTrackIndex: index(audio)))
             diagnostics.log("player", "web", ["audio": audio != nil, "video": video != nil])
         } else {
-            webPlayerUrl = nil
+            setWebPlayer(nil)
             playerOwner.play(url: manifest.url, audio: audio, video: video, startPositionS: session?.position()?.seconds,
                              isLive: manifest.isLive, volume: volume)
             if restart { playerOwner.selectSubtitle(subtitle) }
@@ -597,10 +609,22 @@ final class SessionModel: ObservableObject {
         corrector.reset()
         audio = nil
         video = nil
-        webPlayerUrl = nil
+        setWebPlayer(nil)
         status = .waiting
         rate = 1
         playerRetrying = false
+    }
+
+    /// Swaps the web player page. The old page is silenced at once: a command run in the background
+    /// (Siri) would otherwise leave it playing until SwiftUI removes its view.
+    private func setWebPlayer(_ url: String?) {
+        if let old = webPlayerUrl, old != url {
+            let players = companions.values.filter { $0.pageUrl == old }
+            diagnostics.log("player", "silence", ["count": players.count])
+            players.forEach { $0.silence() }
+            webPlayerRun += 1
+        }
+        webPlayerUrl = url
     }
 
     private func beginGapHold() {

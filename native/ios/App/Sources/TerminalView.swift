@@ -160,10 +160,10 @@ struct PlayerDock: View {
         VStack(alignment: .leading, spacing: Theme.spacing("sm")) {
             if let url = session.webPlayerUrl {
                 if session.video != nil {
-                    CompanionScreen(url: url) { session.stopAll() }
+                    CompanionScreen(url: url) { session.stopAll() }.id(session.webPlayerRun)
                         .aspectRatio(16 / 9, contentMode: .fit).frame(maxWidth: .infinity, maxHeight: 280)
                 } else {
-                    CompanionScreen(url: url) { session.stopAll() }.frame(height: 120)
+                    CompanionScreen(url: url) { session.stopAll() }.id(session.webPlayerRun).frame(height: 120)
                 }
             }
             if session.video != nil && session.webPlayerUrl == nil {
