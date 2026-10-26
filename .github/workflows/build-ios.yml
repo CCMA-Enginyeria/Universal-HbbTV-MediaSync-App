@@ -6,7 +6,8 @@ name: Build iOS release
 # native-core.yml ("Native apps").
 #
 # Secrets:
-#   IOS_DIST_CERT_P12_BASE64      Apple Distribution certificate + private key (.p12), base64
+#   IOS_DIST_CERT_P12_BASE64      distribution certificate + private key (.p12), base64: "Apple Distribution"
+#                                 or the older "iPhone Distribution" type, both valid for the App Store
 #   IOS_DIST_CERT_PASSWORD        password of the .p12
 #   IOS_PROVISIONING_PROFILE_BASE64  App Store profile of the store bundle id, with the
 #                                 multicast entitlement (com.apple.developer.networking.multicast), base64
@@ -81,14 +82,21 @@ jobs:
           security set-keychain-settings -lut 21600 "$KEYCHAIN"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           if ! security import "$RUNNER_TEMP/dist.p12" -P "$IOS_DIST_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"; then
-            echo "::error::Could not import IOS_DIST_CERT_P12_BASE64 with IOS_DIST_CERT_PASSWORD. Export the Apple Distribution certificate with its private key as .p12."
+            echo "::error::Could not import IOS_DIST_CERT_P12_BASE64 with IOS_DIST_CERT_PASSWORD. Export the distribution certificate with its private key as .p12."
             exit 1
           fi
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
           security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
           rm -f "$RUNNER_TEMP/dist.p12"
-          security find-identity -v -p codesigning "$KEYCHAIN" | grep -q 'Apple Distribution' \
-            || { echo "::error::The .p12 does not contain an Apple Distribution identity."; exit 1; }
+          # Older distribution certificates are named "iPhone Distribution" instead of "Apple Distribution";
+          # Xcode resolves either generic name to the identity in the keychain.
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" | grep -oE '"(Apple|iPhone) Distribution: [^"]+"' | head -1 | tr -d '"')
+          if [ -z "$IDENTITY" ]; then
+            echo "::error::The .p12 does not contain an Apple Distribution or iPhone Distribution identity."
+            exit 1
+          fi
+          echo "Signing identity: $IDENTITY"
+          echo "SIGNING_CERTIFICATE=${IDENTITY%%:*}" >> "$GITHUB_ENV"
 
       - name: Install the provisioning profile
         env:
@@ -125,7 +133,7 @@ jobs:
           cat > native/ios/App/Config/Signing.xcconfig <<EOF
           CODE_SIGN_STYLE = Manual
           DEVELOPMENT_TEAM = $TEAM
-          MEDIASYNC_CODE_SIGN_IDENTITY = Apple Distribution
+          MEDIASYNC_CODE_SIGN_IDENTITY = $SIGNING_CERTIFICATE
           PROVISIONING_PROFILE_SPECIFIER = $NAME
           EOF
           echo "TEAM_ID=$TEAM" >> "$GITHUB_ENV"
@@ -154,7 +162,7 @@ jobs:
             <key>destination</key><string>export</string>
             <key>teamID</key><string>$TEAM_ID</string>
             <key>signingStyle</key><string>manual</string>
-            <key>signingCertificate</key><string>Apple Distribution</string>
+            <key>signingCertificate</key><string>$SIGNING_CERTIFICATE</string>
             <key>provisioningProfiles</key>
             <dict><key>$BUNDLE_ID</key><string>$PROFILE_NAME</string></dict>
             <key>uploadSymbols</key><true/>
