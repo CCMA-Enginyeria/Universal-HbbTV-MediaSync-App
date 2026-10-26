@@ -17,7 +17,7 @@ const brand = {
   spokenNames: ['Universal Media Sync', 'Media Sync'],
   slug: 'universal-mediasync',
   scheme: 'universalmediasync',
-  version: '1.7.1',
+  version: '1.8.0',
 
   // Native identifiers (must be unique per published fork)
   bundleIdentifier: 'cat.ccma.lab.universalmediasync', // iOS
