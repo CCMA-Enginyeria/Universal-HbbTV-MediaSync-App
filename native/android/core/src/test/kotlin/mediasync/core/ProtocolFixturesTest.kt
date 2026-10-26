@@ -330,6 +330,7 @@ class ProtocolFixturesTest {
                     assertEquals(case.str("id"), parsed.id)
                     assertEquals(Json.parseToJsonElement(case.str("payload")!!), parsed.payload)
                 }
+                is CompanionProtocol.Inbound.Tools, is CompanionProtocol.Inbound.ToolResult -> error("Unexpected tool envelope ${case.str("text")}")
                 null -> error("Rejected valid envelope ${case.str("text")}")
             }
         }
@@ -351,6 +352,40 @@ class ProtocolFixturesTest {
                 SyncMode.COMPAT to Availability.valueOf(case.str("compat")!!),
             )
             assertEquals(case.str("expect")?.let(SyncMode::valueOf), ModeSelection.effective(SyncMode.valueOf(case.str("preferred")!!), availability), case.toString())
+        }
+    }
+
+    @Test fun companionTools() {
+        val tools = cases.getValue("companionTools").jsonObject
+        for (case in tools.getValue("declarations").jsonArray.map { it.jsonObject }) {
+            val parsed = CompanionProtocol.parse(case.str("text")!!) as? CompanionProtocol.Inbound.Tools
+            assertEquals(case.getValue("expect").jsonArray.map { it.jsonPrimitive.content }, parsed?.tools?.map(CompanionTool::name), case.str("name"))
+        }
+        val plain = CompanionProtocol.parse(tools.getValue("declarations").jsonArray[2].jsonObject.str("text")!!) as CompanionProtocol.Inbound.Tools
+        assertEquals("object", plain.tools.single().inputSchema.str("type"))
+        tools.getValue("invalid").jsonArray.forEach { assertNull(CompanionProtocol.parse(it.jsonPrimitive.content), it.toString()) }
+        for (case in tools.getValue("results").jsonArray.map { it.jsonObject }) {
+            assertEquals(CompanionProtocol.Inbound.ToolResult(case.str("id")!!, case.str("result"), case.str("error")),
+                CompanionProtocol.parse(case.str("text")!!), case.str("text"))
+        }
+        val call = tools.getValue("toolCall").jsonObject
+        val envelope = Json.parseToJsonElement(CompanionProtocol.toolCall(call.str("id")!!, call.str("name")!!, call.getValue("arguments").jsonObject)).jsonObject
+        assertEquals("tool-call", envelope.str("type"))
+        assertEquals(1, envelope.str("version")?.toInt())
+        assertEquals(call.str("id"), envelope.str("id"))
+        assertEquals(call.str("name"), envelope.str("name"))
+        assertEquals(call.getValue("arguments"), envelope.getValue("arguments"))
+    }
+
+    @Test fun audioPreference() {
+        for (case in list("audioPreference")) {
+            val tracks = case.getValue("tracks").jsonArray.map { it.jsonObject }.map { track ->
+                MediaTrack(id = track.str("id")!!, kind = TrackKind.valueOf(track.str("kind")!!), language = track.str("language"),
+                    role = track.str("role"), label = null, codecs = null, mimeType = null, bandwidth = 0, width = null, height = null,
+                    audioDescription = track.str("audioDescription") == "true", protected = track.str("protected") == "true")
+            }
+            val languages = case.getValue("languages").jsonArray.map { it.jsonPrimitive.content }
+            assertEquals(case.str("expect"), AudioPreference.pick(tracks, languages)?.id, case.str("name"))
         }
     }
 }

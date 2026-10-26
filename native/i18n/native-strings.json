@@ -82,6 +82,76 @@
       "placeholder": "Subtitles appear here",
       "hintHead": "Point at the subtitles to change their position or size.",
       "hintWorld": "Point and hold the trigger or pinch to move the subtitles. While holding, push the thumbstick to bring them closer or farther."
+    },
+    "assistant": {
+      "tv": {
+        "type": "TV",
+        "parameter": "TV"
+      },
+      "mode": {
+        "parameter": "Synchronization mode"
+      },
+      "listTvs": {
+        "title": "Find TVs",
+        "description": "Searches the local network for TVs this app can synchronize with."
+      },
+      "status": {
+        "title": "Get TV status",
+        "description": "Tells which TV is connected, its synchronization state and what is playing.",
+        "idle": "Not connected to any TV.",
+        "connected": "Connected to {{tv}}.",
+        "listening": "Playing: {{track}}.",
+        "webPage": "The TV offers a companion page: {{title}}."
+      },
+      "connect": {
+        "title": "Connect to a TV",
+        "description": "Connects to a TV and starts synchronizing with it.",
+        "pending": "Connecting to {{tv}}..."
+      },
+      "listen": {
+        "title": "Listen to the TV",
+        "description": "Connects to the TV and plays its audio on this device.",
+        "playing": "Listening to {{tv}}: {{track}}.",
+        "noAudio": "The TV content has no audio this device can play.",
+        "noContent": "Connected to {{tv}}, but the TV is not offering content to synchronize right now."
+      },
+      "stop": {
+        "title": "Stop synchronization",
+        "description": "Disconnects from the TV and stops playback on this device.",
+        "done": "Synchronization stopped."
+      },
+      "tvs": {
+        "found": "TVs found: {{names}}.",
+        "none": "No TVs found. Check that this device is on the same Wi-Fi network as the TV.",
+        "noneCompatible": "Devices were found, but none of them support synchronization.",
+        "choose": "Which TV?"
+      },
+      "errors": {
+        "tvNotFound": "That TV is no longer available. Search again.",
+        "noPage": "The TV is not offering a companion page right now.",
+        "toolNotFound": "The companion page does not offer “{{name}}”.",
+        "toolTimeout": "The companion page did not answer in time.",
+        "invalidArguments": "The arguments must be a JSON object.",
+        "openApp": "Open the app to use the companion page of the TV programme, then ask again."
+      },
+      "tools": {
+        "listTitle": "Companion page tools",
+        "listDescription": "Lists what the companion web page of the TV programme can do, such as answering questions about the programme.",
+        "runTitle": "Use a companion page tool",
+        "runDescription": "Asks the companion web page of the TV programme to run one of its tools.",
+        "toolParameter": "Tool",
+        "argumentsParameter": "Arguments (JSON)",
+        "found": "The companion page offers: {{names}}.",
+        "none": "The companion page offers no tools.",
+        "done": "Done."
+      },
+      "phrases": {
+        "listTvs": "Find TVs with ${applicationName}",
+        "status": "${applicationName} status",
+        "connect": "Connect ${applicationName} to a TV",
+        "listen": "Listen to the TV with ${applicationName}",
+        "stop": "Stop ${applicationName}"
+      }
     }
   },
   "ca": {
@@ -167,6 +237,76 @@
       "placeholder": "Aquí apareixen els subtítols",
       "hintHead": "Apunta als subtítols per canviar-ne la posició o la mida.",
       "hintWorld": "Apunta i mantén premut el gallet o pessiga per moure els subtítols. Mentre el mantens, mou el joystick per apropar-los o allunyar-los."
+    },
+    "assistant": {
+      "tv": {
+        "type": "Televisor",
+        "parameter": "Televisor"
+      },
+      "mode": {
+        "parameter": "Mode de sincronització"
+      },
+      "listTvs": {
+        "title": "Cerca televisors",
+        "description": "Cerca a la xarxa local televisors amb què aquesta aplicació es pot sincronitzar."
+      },
+      "status": {
+        "title": "Estat del televisor",
+        "description": "Indica a quin televisor estàs connectat, l'estat de la sincronització i què s'està reproduint.",
+        "idle": "No estàs connectat a cap televisor.",
+        "connected": "Connectat a {{tv}}.",
+        "listening": "Reproduint: {{track}}.",
+        "webPage": "El televisor ofereix una pàgina complementària: {{title}}."
+      },
+      "connect": {
+        "title": "Connecta't a un televisor",
+        "description": "Es connecta a un televisor i comença a sincronitzar-s'hi.",
+        "pending": "Connectant amb {{tv}}..."
+      },
+      "listen": {
+        "title": "Escolta el televisor",
+        "description": "Es connecta al televisor i en reprodueix el so en aquest dispositiu.",
+        "playing": "Escoltant {{tv}}: {{track}}.",
+        "noAudio": "El contingut del televisor no té cap àudio que es pugui reproduir en aquest dispositiu.",
+        "noContent": "Connectat a {{tv}}, però ara mateix el televisor no ofereix cap contingut per sincronitzar."
+      },
+      "stop": {
+        "title": "Atura la sincronització",
+        "description": "Es desconnecta del televisor i atura la reproducció en aquest dispositiu.",
+        "done": "S'ha aturat la sincronització."
+      },
+      "tvs": {
+        "found": "Televisors trobats: {{names}}.",
+        "none": "No s'ha trobat cap televisor. Comprova que aquest dispositiu sigui a la mateixa xarxa Wi-Fi que el televisor.",
+        "noneCompatible": "S'han trobat dispositius, però cap no admet la sincronització.",
+        "choose": "Quin televisor?"
+      },
+      "errors": {
+        "tvNotFound": "Aquest televisor ja no està disponible. Torna a cercar.",
+        "noPage": "Ara mateix el televisor no ofereix cap pàgina complementària.",
+        "toolNotFound": "La pàgina complementària no ofereix «{{name}}».",
+        "toolTimeout": "La pàgina complementària no ha respost a temps.",
+        "invalidArguments": "Els arguments han de ser un objecte JSON.",
+        "openApp": "Obre l'aplicació per fer servir la pàgina complementària del programa i torna-ho a demanar."
+      },
+      "tools": {
+        "listTitle": "Eines de la pàgina complementària",
+        "listDescription": "Mostra què pot fer la pàgina web complementària del programa, com ara respondre preguntes sobre el programa.",
+        "runTitle": "Fes servir una eina de la pàgina complementària",
+        "runDescription": "Demana a la pàgina web complementària del programa que executi una de les seves eines.",
+        "toolParameter": "Eina",
+        "argumentsParameter": "Arguments (JSON)",
+        "found": "La pàgina complementària ofereix: {{names}}.",
+        "none": "La pàgina complementària no ofereix cap eina.",
+        "done": "Fet."
+      },
+      "phrases": {
+        "listTvs": "Cerca televisors amb ${applicationName}",
+        "status": "Estat de ${applicationName}",
+        "connect": "Connecta ${applicationName} a un televisor",
+        "listen": "Escolta la tele amb ${applicationName}",
+        "stop": "Atura ${applicationName}"
+      }
     }
   },
   "es": {
@@ -252,6 +392,76 @@
       "placeholder": "Aquí aparecen los subtítulos",
       "hintHead": "Apunta a los subtítulos para cambiar su posición o tamaño.",
       "hintWorld": "Apunta y mantén pulsado el gatillo o pellizca para mover los subtítulos. Mientras lo mantienes, mueve el joystick para acercarlos o alejarlos."
+    },
+    "assistant": {
+      "tv": {
+        "type": "Televisor",
+        "parameter": "Televisor"
+      },
+      "mode": {
+        "parameter": "Modo de sincronización"
+      },
+      "listTvs": {
+        "title": "Buscar televisores",
+        "description": "Busca en la red local televisores con los que esta aplicación puede sincronizarse."
+      },
+      "status": {
+        "title": "Estado del televisor",
+        "description": "Indica a qué televisor estás conectado, el estado de la sincronización y qué se está reproduciendo.",
+        "idle": "No estás conectado a ningún televisor.",
+        "connected": "Conectado a {{tv}}.",
+        "listening": "Reproduciendo: {{track}}.",
+        "webPage": "El televisor ofrece una página complementaria: {{title}}."
+      },
+      "connect": {
+        "title": "Conectar a un televisor",
+        "description": "Se conecta a un televisor y empieza a sincronizarse con él.",
+        "pending": "Conectando con {{tv}}..."
+      },
+      "listen": {
+        "title": "Escuchar el televisor",
+        "description": "Se conecta al televisor y reproduce su sonido en este dispositivo.",
+        "playing": "Escuchando {{tv}}: {{track}}.",
+        "noAudio": "El contenido del televisor no tiene ningún audio que se pueda reproducir en este dispositivo.",
+        "noContent": "Conectado a {{tv}}, pero ahora mismo el televisor no ofrece contenido para sincronizar."
+      },
+      "stop": {
+        "title": "Detener la sincronización",
+        "description": "Se desconecta del televisor y detiene la reproducción en este dispositivo.",
+        "done": "Se ha detenido la sincronización."
+      },
+      "tvs": {
+        "found": "Televisores encontrados: {{names}}.",
+        "none": "No se ha encontrado ningún televisor. Comprueba que este dispositivo esté en la misma red Wi-Fi que el televisor.",
+        "noneCompatible": "Se han encontrado dispositivos, pero ninguno admite la sincronización.",
+        "choose": "¿Qué televisor?"
+      },
+      "errors": {
+        "tvNotFound": "Ese televisor ya no está disponible. Vuelve a buscar.",
+        "noPage": "Ahora mismo el televisor no ofrece ninguna página complementaria.",
+        "toolNotFound": "La página complementaria no ofrece «{{name}}».",
+        "toolTimeout": "La página complementaria no ha respondido a tiempo.",
+        "invalidArguments": "Los argumentos deben ser un objeto JSON.",
+        "openApp": "Abre la aplicación para usar la página complementaria del programa y vuelve a pedirlo."
+      },
+      "tools": {
+        "listTitle": "Herramientas de la página complementaria",
+        "listDescription": "Muestra lo que puede hacer la página web complementaria del programa, como responder preguntas sobre el programa.",
+        "runTitle": "Usar una herramienta de la página complementaria",
+        "runDescription": "Pide a la página web complementaria del programa que ejecute una de sus herramientas.",
+        "toolParameter": "Herramienta",
+        "argumentsParameter": "Argumentos (JSON)",
+        "found": "La página complementaria ofrece: {{names}}.",
+        "none": "La página complementaria no ofrece ninguna herramienta.",
+        "done": "Hecho."
+      },
+      "phrases": {
+        "listTvs": "Busca televisores con ${applicationName}",
+        "status": "Estado de ${applicationName}",
+        "connect": "Conecta ${applicationName} a un televisor",
+        "listen": "Escucha la tele con ${applicationName}",
+        "stop": "Detén ${applicationName}"
+      }
     }
   },
   "eu": {
@@ -337,6 +547,76 @@
       "placeholder": "Azpitituluak hemen agertzen dira",
       "hintHead": "Seinalatu azpitituluak haien kokapena edo tamaina aldatzeko.",
       "hintWorld": "Seinalatu eta eutsi katua sakatuta edo atximurtu azpitituluak mugitzeko. Eusten duzun bitartean, mugitu joystick-a hurbiltzeko edo urruntzeko."
+    },
+    "assistant": {
+      "tv": {
+        "type": "Telebista",
+        "parameter": "Telebista"
+      },
+      "mode": {
+        "parameter": "Sinkronizazio modua"
+      },
+      "listTvs": {
+        "title": "Bilatu telebistak",
+        "description": "Aplikazio honek sinkroniza ditzakeen telebistak bilatzen ditu sare lokalean."
+      },
+      "status": {
+        "title": "Telebistaren egoera",
+        "description": "Zein telebistatara zauden konektatuta, sinkronizazioaren egoera eta zer erreproduzitzen ari den adierazten du.",
+        "idle": "Ez zaude inongo telebistara konektatuta.",
+        "connected": "{{tv}} telebistara konektatuta.",
+        "listening": "Erreproduzitzen: {{track}}.",
+        "webPage": "Telebistak orri osagarri bat eskaintzen du: {{title}}."
+      },
+      "connect": {
+        "title": "Konektatu telebista batera",
+        "description": "Telebista batera konektatzen da eta harekin sinkronizatzen hasten da.",
+        "pending": "{{tv}} telebistara konektatzen..."
+      },
+      "listen": {
+        "title": "Entzun telebista",
+        "description": "Telebistara konektatzen da eta haren soinua gailu honetan erreproduzitzen du.",
+        "playing": "{{tv}} entzuten: {{track}}.",
+        "noAudio": "Telebistako edukiak ez du gailu honetan erreproduzi daitekeen audiorik.",
+        "noContent": "{{tv}} telebistara konektatuta, baina telebistak ez du sinkronizatzeko edukirik eskaintzen une honetan."
+      },
+      "stop": {
+        "title": "Gelditu sinkronizazioa",
+        "description": "Telebistatik deskonektatzen da eta gailu honetako erreprodukzioa gelditzen du.",
+        "done": "Sinkronizazioa gelditu da."
+      },
+      "tvs": {
+        "found": "Aurkitutako telebistak: {{names}}.",
+        "none": "Ez da telebistarik aurkitu. Egiaztatu gailu hau eta telebista Wi-Fi sare berean daudela.",
+        "noneCompatible": "Gailuak aurkitu dira, baina horietako batek ere ez du sinkronizazioa onartzen.",
+        "choose": "Zein telebista?"
+      },
+      "errors": {
+        "tvNotFound": "Telebista hori ez dago erabilgarri jada. Bilatu berriro.",
+        "noPage": "Telebistak ez du orri osagarririk eskaintzen une honetan.",
+        "toolNotFound": "Orri osagarriak ez du «{{name}}» eskaintzen.",
+        "toolTimeout": "Orri osagarriak ez du garaiz erantzun.",
+        "invalidArguments": "Argumentuek JSON objektu bat izan behar dute.",
+        "openApp": "Ireki aplikazioa programaren orri osagarria erabiltzeko, eta eskatu berriro."
+      },
+      "tools": {
+        "listTitle": "Orri osagarriaren tresnak",
+        "listDescription": "Programaren web orri osagarriak zer egin dezakeen erakusten du, adibidez programari buruzko galderei erantzun.",
+        "runTitle": "Erabili orri osagarriaren tresna bat",
+        "runDescription": "Programaren web orri osagarriari bere tresnetako bat exekutatzeko eskatzen dio.",
+        "toolParameter": "Tresna",
+        "argumentsParameter": "Argumentuak (JSON)",
+        "found": "Orri osagarriak hau eskaintzen du: {{names}}.",
+        "none": "Orri osagarriak ez du tresnarik eskaintzen.",
+        "done": "Eginda."
+      },
+      "phrases": {
+        "listTvs": "Bilatu telebistak ${applicationName} erabiliz",
+        "status": "${applicationName} egoera",
+        "connect": "Konektatu ${applicationName} telebista batera",
+        "listen": "Entzun telebista ${applicationName} erabiliz",
+        "stop": "Gelditu ${applicationName}"
+      }
     }
   },
   "de": {
@@ -422,6 +702,76 @@
       "placeholder": "Hier erscheinen die Untertitel",
       "hintHead": "Zeige auf die Untertitel, um Position oder Größe zu ändern.",
       "hintWorld": "Zeige und halte den Trigger oder führe Daumen und Zeigefinger zusammen, um die Untertitel zu verschieben. Bewege dabei den Thumbstick, um sie näher oder weiter weg zu rücken."
+    },
+    "assistant": {
+      "tv": {
+        "type": "Fernseher",
+        "parameter": "Fernseher"
+      },
+      "mode": {
+        "parameter": "Synchronisierungsmodus"
+      },
+      "listTvs": {
+        "title": "Fernseher suchen",
+        "description": "Sucht im lokalen Netzwerk nach Fernsehern, mit denen sich diese App synchronisieren kann."
+      },
+      "status": {
+        "title": "Fernseherstatus abfragen",
+        "description": "Gibt an, mit welchem Fernseher du verbunden bist, wie der Synchronisierungsstatus ist und was gerade läuft.",
+        "idle": "Mit keinem Fernseher verbunden.",
+        "connected": "Verbunden mit {{tv}}.",
+        "listening": "Wiedergabe: {{track}}.",
+        "webPage": "Der Fernseher bietet eine Begleitseite an: {{title}}."
+      },
+      "connect": {
+        "title": "Mit einem Fernseher verbinden",
+        "description": "Verbindet sich mit einem Fernseher und startet die Synchronisierung.",
+        "pending": "Verbindung mit {{tv}} wird hergestellt..."
+      },
+      "listen": {
+        "title": "Fernseher anhören",
+        "description": "Verbindet sich mit dem Fernseher und gibt seinen Ton auf diesem Gerät wieder.",
+        "playing": "Du hörst {{tv}}: {{track}}.",
+        "noAudio": "Der Inhalt des Fernsehers hat keinen Ton, der auf diesem Gerät abgespielt werden kann.",
+        "noContent": "Verbunden mit {{tv}}, aber der Fernseher bietet gerade keinen Inhalt zum Synchronisieren an."
+      },
+      "stop": {
+        "title": "Synchronisierung beenden",
+        "description": "Trennt die Verbindung zum Fernseher und beendet die Wiedergabe auf diesem Gerät.",
+        "done": "Synchronisierung beendet."
+      },
+      "tvs": {
+        "found": "Gefundene Fernseher: {{names}}.",
+        "none": "Kein Fernseher gefunden. Prüfe, ob dieses Gerät im selben WLAN wie der Fernseher ist.",
+        "noneCompatible": "Es wurden Geräte gefunden, aber keines unterstützt die Synchronisierung.",
+        "choose": "Welcher Fernseher?"
+      },
+      "errors": {
+        "tvNotFound": "Dieser Fernseher ist nicht mehr verfügbar. Suche erneut.",
+        "noPage": "Der Fernseher bietet gerade keine Begleitseite an.",
+        "toolNotFound": "Die Begleitseite bietet „{{name}}“ nicht an.",
+        "toolTimeout": "Die Begleitseite hat nicht rechtzeitig geantwortet.",
+        "invalidArguments": "Die Argumente müssen ein JSON-Objekt sein.",
+        "openApp": "Öffne die App, um die Begleitseite der Sendung zu verwenden, und frage dann noch einmal."
+      },
+      "tools": {
+        "listTitle": "Werkzeuge der Begleitseite",
+        "listDescription": "Zeigt, was die Begleitseite der Sendung kann, zum Beispiel Fragen zur Sendung beantworten.",
+        "runTitle": "Werkzeug der Begleitseite verwenden",
+        "runDescription": "Bittet die Begleitseite der Sendung, eines ihrer Werkzeuge auszuführen.",
+        "toolParameter": "Werkzeug",
+        "argumentsParameter": "Argumente (JSON)",
+        "found": "Die Begleitseite bietet: {{names}}.",
+        "none": "Die Begleitseite bietet keine Werkzeuge an.",
+        "done": "Erledigt."
+      },
+      "phrases": {
+        "listTvs": "Fernseher mit ${applicationName} suchen",
+        "status": "${applicationName} Status",
+        "connect": "${applicationName} mit einem Fernseher verbinden",
+        "listen": "Fernseher mit ${applicationName} anhören",
+        "stop": "${applicationName} stoppen"
+      }
     }
   },
   "it": {
@@ -507,6 +857,76 @@
       "placeholder": "Qui appaiono i sottotitoli",
       "hintHead": "Punta ai sottotitoli per cambiarne posizione o dimensione.",
       "hintWorld": "Punta e tieni premuto il grilletto o avvicina pollice e indice per spostare i sottotitoli. Tenendo premuto, muovi la levetta per avvicinarli o allontanarli."
+    },
+    "assistant": {
+      "tv": {
+        "type": "Televisore",
+        "parameter": "Televisore"
+      },
+      "mode": {
+        "parameter": "Modalità di sincronizzazione"
+      },
+      "listTvs": {
+        "title": "Cerca televisori",
+        "description": "Cerca nella rete locale i televisori con cui questa app può sincronizzarsi."
+      },
+      "status": {
+        "title": "Stato del televisore",
+        "description": "Indica a quale televisore sei connesso, lo stato della sincronizzazione e cosa è in riproduzione.",
+        "idle": "Non sei connesso a nessun televisore.",
+        "connected": "Connesso a {{tv}}.",
+        "listening": "In riproduzione: {{track}}.",
+        "webPage": "Il televisore offre una pagina complementare: {{title}}."
+      },
+      "connect": {
+        "title": "Connetti a un televisore",
+        "description": "Si connette a un televisore e avvia la sincronizzazione.",
+        "pending": "Connessione a {{tv}} in corso..."
+      },
+      "listen": {
+        "title": "Ascolta il televisore",
+        "description": "Si connette al televisore e ne riproduce l'audio su questo dispositivo.",
+        "playing": "Stai ascoltando {{tv}}: {{track}}.",
+        "noAudio": "Il contenuto del televisore non ha audio riproducibile su questo dispositivo.",
+        "noContent": "Connesso a {{tv}}, ma al momento il televisore non offre contenuti da sincronizzare."
+      },
+      "stop": {
+        "title": "Interrompi la sincronizzazione",
+        "description": "Si disconnette dal televisore e interrompe la riproduzione su questo dispositivo.",
+        "done": "Sincronizzazione interrotta."
+      },
+      "tvs": {
+        "found": "Televisori trovati: {{names}}.",
+        "none": "Nessun televisore trovato. Verifica che questo dispositivo sia sulla stessa rete Wi-Fi del televisore.",
+        "noneCompatible": "Sono stati trovati dei dispositivi, ma nessuno supporta la sincronizzazione.",
+        "choose": "Quale televisore?"
+      },
+      "errors": {
+        "tvNotFound": "Questo televisore non è più disponibile. Cerca di nuovo.",
+        "noPage": "Al momento il televisore non offre nessuna pagina complementare.",
+        "toolNotFound": "La pagina complementare non offre «{{name}}».",
+        "toolTimeout": "La pagina complementare non ha risposto in tempo.",
+        "invalidArguments": "Gli argomenti devono essere un oggetto JSON.",
+        "openApp": "Apri l'app per usare la pagina complementare del programma, poi chiedi di nuovo."
+      },
+      "tools": {
+        "listTitle": "Strumenti della pagina complementare",
+        "listDescription": "Mostra cosa può fare la pagina web complementare del programma, ad esempio rispondere a domande sul programma.",
+        "runTitle": "Usa uno strumento della pagina complementare",
+        "runDescription": "Chiede alla pagina web complementare del programma di eseguire uno dei suoi strumenti.",
+        "toolParameter": "Strumento",
+        "argumentsParameter": "Argomenti (JSON)",
+        "found": "La pagina complementare offre: {{names}}.",
+        "none": "La pagina complementare non offre strumenti.",
+        "done": "Fatto."
+      },
+      "phrases": {
+        "listTvs": "Cerca televisori con ${applicationName}",
+        "status": "Stato di ${applicationName}",
+        "connect": "Connetti ${applicationName} a un televisore",
+        "listen": "Ascolta la TV con ${applicationName}",
+        "stop": "Ferma ${applicationName}"
+      }
     }
   },
   "fr": {
@@ -592,6 +1012,76 @@
       "placeholder": "Les sous-titres apparaissent ici",
       "hintHead": "Pointez les sous-titres pour changer leur position ou leur taille.",
       "hintWorld": "Pointez et maintenez la gâchette ou pincez pour déplacer les sous-titres. En maintenant, poussez le joystick pour les rapprocher ou les éloigner."
+    },
+    "assistant": {
+      "tv": {
+        "type": "Téléviseur",
+        "parameter": "Téléviseur"
+      },
+      "mode": {
+        "parameter": "Mode de synchronisation"
+      },
+      "listTvs": {
+        "title": "Rechercher des téléviseurs",
+        "description": "Recherche sur le réseau local les téléviseurs avec lesquels cette app peut se synchroniser."
+      },
+      "status": {
+        "title": "État du téléviseur",
+        "description": "Indique à quel téléviseur vous êtes connecté, l'état de la synchronisation et ce qui est en lecture.",
+        "idle": "Vous n'êtes connecté à aucun téléviseur.",
+        "connected": "Connecté à {{tv}}.",
+        "listening": "Lecture : {{track}}.",
+        "webPage": "Le téléviseur propose une page complémentaire : {{title}}."
+      },
+      "connect": {
+        "title": "Se connecter à un téléviseur",
+        "description": "Se connecte à un téléviseur et commence à se synchroniser avec lui.",
+        "pending": "Connexion à {{tv}}..."
+      },
+      "listen": {
+        "title": "Écouter le téléviseur",
+        "description": "Se connecte au téléviseur et diffuse son son sur cet appareil.",
+        "playing": "Vous écoutez {{tv}} : {{track}}.",
+        "noAudio": "Le contenu du téléviseur n'a aucun son lisible sur cet appareil.",
+        "noContent": "Connecté à {{tv}}, mais le téléviseur ne propose pour l'instant aucun contenu à synchroniser."
+      },
+      "stop": {
+        "title": "Arrêter la synchronisation",
+        "description": "Se déconnecte du téléviseur et arrête la lecture sur cet appareil.",
+        "done": "Synchronisation arrêtée."
+      },
+      "tvs": {
+        "found": "Téléviseurs trouvés : {{names}}.",
+        "none": "Aucun téléviseur trouvé. Vérifiez que cet appareil est sur le même réseau Wi-Fi que le téléviseur.",
+        "noneCompatible": "Des appareils ont été trouvés, mais aucun ne prend en charge la synchronisation.",
+        "choose": "Quel téléviseur ?"
+      },
+      "errors": {
+        "tvNotFound": "Ce téléviseur n'est plus disponible. Relancez la recherche.",
+        "noPage": "Le téléviseur ne propose aucune page complémentaire pour le moment.",
+        "toolNotFound": "La page complémentaire ne propose pas « {{name}} ».",
+        "toolTimeout": "La page complémentaire n'a pas répondu à temps.",
+        "invalidArguments": "Les arguments doivent être un objet JSON.",
+        "openApp": "Ouvrez l'application pour utiliser la page complémentaire du programme, puis redemandez."
+      },
+      "tools": {
+        "listTitle": "Outils de la page complémentaire",
+        "listDescription": "Indique ce que la page web complémentaire du programme peut faire, comme répondre à des questions sur le programme.",
+        "runTitle": "Utiliser un outil de la page complémentaire",
+        "runDescription": "Demande à la page web complémentaire du programme d'exécuter l'un de ses outils.",
+        "toolParameter": "Outil",
+        "argumentsParameter": "Arguments (JSON)",
+        "found": "La page complémentaire propose : {{names}}.",
+        "none": "La page complémentaire ne propose aucun outil.",
+        "done": "C'est fait."
+      },
+      "phrases": {
+        "listTvs": "Rechercher des téléviseurs avec ${applicationName}",
+        "status": "État de ${applicationName}",
+        "connect": "Connecter ${applicationName} à un téléviseur",
+        "listen": "Écouter la télé avec ${applicationName}",
+        "stop": "Arrêter ${applicationName}"
+      }
     }
   }
 }

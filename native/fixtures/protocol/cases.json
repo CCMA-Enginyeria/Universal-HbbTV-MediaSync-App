@@ -231,5 +231,110 @@
     { "manufacturer": " LG  Electronics ", "modelName": "OLED55*C1", "location": null, "expect": "@universal-mediasync/mode/v1/model/lg%20electronics/oled55*c1" },
     { "manufacturer": null, "modelName": null, "location": "http://10.0.0.2:8008/dd.xml", "expect": "@universal-mediasync/mode/v1/device/http%3A%2F%2F10.0.0.2%3A8008%2Fdd.xml" },
     { "manufacturer": null, "modelName": null, "location": null, "expect": "@universal-mediasync/mode/v1/device/unknown" }
-  ]
+  ],
+  "audioPreference": [
+    { "name": "languages", "languages": ["es-ES", "en"], "tracks": [
+      { "id": "ca", "kind": "AUDIO", "language": "ca", "role": "main" },
+      { "id": "es", "kind": "AUDIO", "language": "es", "role": "main" },
+      { "id": "en", "kind": "AUDIO", "language": "en", "role": "main" }
+    ], "expect": "es" },
+    { "name": "no match keeps manifest order", "languages": ["fr"], "tracks": [
+      { "id": "ca", "kind": "AUDIO", "language": "ca", "role": "main" },
+      { "id": "es", "kind": "AUDIO", "language": "es", "role": "main" }
+    ], "expect": "ca" },
+    { "name": "audio description last", "languages": ["ca"], "tracks": [
+      { "id": "ad", "kind": "AUDIO", "language": "ca", "role": "main", "audioDescription": true },
+      { "id": "ad2", "kind": "AUDIO", "language": "ca", "role": "description" },
+      { "id": "main", "kind": "AUDIO", "language": "ca", "role": "main" }
+    ], "expect": "main" },
+    { "name": "ISO 639-2 codes", "languages": ["ca-ES"], "tracks": [
+      { "id": "spa", "kind": "AUDIO", "language": "spa", "role": "main" },
+      { "id": "cat", "kind": "AUDIO", "language": "cat", "role": "main" }
+    ], "expect": "cat" },
+    { "name": "language before role", "languages": ["es"], "tracks": [
+      { "id": "ca", "kind": "AUDIO", "language": "ca", "role": "main" },
+      { "id": "es", "kind": "AUDIO", "language": "es", "role": "dub" }
+    ], "expect": "es" },
+    { "name": "main before other roles", "languages": ["en"], "tracks": [
+      { "id": "commentary", "kind": "AUDIO", "language": "en", "role": "commentary" },
+      { "id": "main", "kind": "AUDIO", "language": "en", "role": null }
+    ], "expect": "main" },
+    { "name": "protected and video are skipped", "languages": ["ca"], "tracks": [
+      { "id": "v", "kind": "VIDEO", "language": "ca", "role": "main" },
+      { "id": "p", "kind": "AUDIO", "language": "ca", "role": "main", "protected": true }
+    ], "expect": null }
+  ],
+  "companionTools": {
+    "declarations": [
+      {
+        "name": "valid tools",
+        "text": "{\"version\":1,\"type\":\"tools\",\"tools\":[{\"name\":\"ask_tv\",\"description\":\"Asks the TV assistant a question.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\"}},\"required\":[\"text\"]}},{\"name\":\"get_preferences\",\"description\":\"Tool get_preferences\",\"inputSchema\":{\"type\":\"object\"}}]}",
+        "expect": [
+          "ask_tv",
+          "get_preferences"
+        ]
+      },
+      {
+        "name": "invalid entries are dropped",
+        "text": "{\"version\":1,\"type\":\"tools\",\"tools\":[{\"name\":\"1bad\",\"description\":\"Tool 1bad\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"has space\",\"description\":\"Tool has space\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"no_description\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"blank\",\"description\":\"  \",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"array_schema\",\"description\":\"Tool array_schema\",\"inputSchema\":[]},{\"name\":\"ok\",\"description\":\"Tool ok\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"ok\",\"description\":\"Duplicate\",\"inputSchema\":{\"type\":\"object\"}},\"not an object\"]}",
+        "expect": [
+          "ok"
+        ]
+      },
+      {
+        "name": "missing schema means no arguments",
+        "text": "{\"version\":1,\"type\":\"tools\",\"tools\":[{\"name\":\"plain\",\"description\":\"No arguments.\"}]}",
+        "expect": [
+          "plain"
+        ]
+      },
+      {
+        "name": "empty list clears the tools",
+        "text": "{\"version\":1,\"type\":\"tools\",\"tools\":[]}",
+        "expect": []
+      }
+    ],
+    "invalid": [
+      "{\"version\":1,\"type\":\"tools\"}",
+      "{\"version\":1,\"type\":\"tools\",\"tools\":{}}",
+      "{\"version\":1,\"type\":\"tools\",\"tools\":[{\"name\":\"t0\",\"description\":\"Tool t0\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"t1\",\"description\":\"Tool t1\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"t2\",\"description\":\"Tool t2\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"t3\",\"description\":\"Tool t3\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"t4\",\"description\":\"Tool t4\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"t5\",\"description\":\"Tool t5\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"t6\",\"description\":\"Tool t6\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"t7\",\"description\":\"Tool t7\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"t8\",\"description\":\"Tool t8\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"t9\",\"description\":\"Tool t9\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"t10\",\"description\":\"Tool t10\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"t11\",\"description\":\"Tool t11\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"t12\",\"description\":\"Tool t12\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"t13\",\"description\":\"Tool t13\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"t14\",\"description\":\"Tool t14\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"t15\",\"description\":\"Tool t15\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"t16\",\"description\":\"Tool t16\",\"inputSchema\":{\"type\":\"object\"}}]}",
+      "{\"version\":2,\"type\":\"tools\",\"tools\":[]}",
+      "{\"version\":1,\"type\":\"tool-result\",\"result\":\"no id\"}",
+      "{\"version\":1,\"type\":\"tool-result\",\"id\":\"\",\"result\":\"empty id\"}",
+      "{\"version\":1,\"type\":\"tool-result\",\"id\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"result\":\"long id\"}"
+    ],
+    "results": [
+      {
+        "text": "{\"version\":1,\"type\":\"tool-result\",\"id\":\"c1\",\"result\":\"Ara fan el Telenotícies.\"}",
+        "id": "c1",
+        "result": "Ara fan el Telenotícies.",
+        "error": null
+      },
+      {
+        "text": "{\"version\":1,\"type\":\"tool-result\",\"id\":\"c2\",\"result\":{\"channel\":\"TV3\"}}",
+        "id": "c2",
+        "result": "{\"channel\":\"TV3\"}",
+        "error": null
+      },
+      {
+        "text": "{\"version\":1,\"type\":\"tool-result\",\"id\":\"c3\",\"error\":\"Unknown tool\"}",
+        "id": "c3",
+        "result": null,
+        "error": "Unknown tool"
+      },
+      {
+        "text": "{\"version\":1,\"type\":\"tool-result\",\"id\":\"c4\"}",
+        "id": "c4",
+        "result": null,
+        "error": null
+      }
+    ],
+    "toolCall": {
+      "id": "c1",
+      "name": "ask_tv",
+      "arguments": {
+        "text": "Què fan ara?"
+      }
+    }
+  }
 }

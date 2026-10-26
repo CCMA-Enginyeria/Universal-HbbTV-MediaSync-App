@@ -1,14 +1,22 @@
 package mediasync.app.ui
 
+import android.content.res.Resources
+import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.res.stringResource
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import mediasync.app.R
 import mediasync.core.MediaSyncSession
 import mediasync.core.MediaTrack
 import mediasync.core.PlaybackCorrector
 import mediasync.core.TrackKind
 
-/** Localized labels derived from core models; the core never returns display text. */
+/**
+ * Localized labels derived from core models; the core never returns display text. Each label
+ * takes [Resources], so the assistant can use it outside composition; the composable overloads
+ * read the current resources and recompose on configuration changes, like `stringResource`.
+ */
 object Labels {
     private val languages = mapOf(
         "ca" to R.string.discovery_media_languages_ca, "es" to R.string.discovery_media_languages_es,
@@ -18,22 +26,31 @@ object Labels {
     )
 
     @Composable
-    fun language(code: String?, kind: TrackKind): String {
-        if (code.isNullOrBlank()) return stringResource(when (kind) {
+    @ReadOnlyComposable
+    private fun resources(): Resources {
+        LocalConfiguration.current
+        return LocalContext.current.resources
+    }
+
+    fun language(resources: Resources, code: String?, kind: TrackKind): String {
+        if (code.isNullOrBlank()) return resources.getString(when (kind) {
             TrackKind.AUDIO -> R.string.discovery_media_audioGeneric
             TrackKind.VIDEO -> R.string.discovery_media_videoGeneric
             TrackKind.TEXT -> R.string.discovery_media_subtitleGeneric
         })
         val normalized = code.lowercase().substringBefore('-')
         return when {
-            Regex("^q[a-t][a-z]$").matches(normalized) || normalized == "mis" -> stringResource(R.string.discovery_media_otherLang)
-            normalized == "und" -> stringResource(R.string.discovery_media_undefinedLang)
-            else -> languages[normalized]?.let { stringResource(it) } ?: code.uppercase()
+            Regex("^q[a-t][a-z]$").matches(normalized) || normalized == "mis" -> resources.getString(R.string.discovery_media_otherLang)
+            normalized == "und" -> resources.getString(R.string.discovery_media_undefinedLang)
+            else -> languages[normalized]?.let(resources::getString) ?: code.uppercase()
         }
     }
 
     @Composable
-    fun audioRole(track: MediaTrack): String = stringResource(when {
+    fun language(code: String?, kind: TrackKind): String = language(resources(), code, kind)
+
+    @Composable
+    fun audioRole(track: MediaTrack): String = resources().getString(when {
         track.audioDescription || track.role == "description" -> R.string.discovery_audioDescription
         track.role == null || track.role == "main" -> R.string.discovery_audioMain
         track.label?.contains("original", ignoreCase = true) == true || track.role == "dub" -> R.string.discovery_audioOriginal
@@ -50,14 +67,13 @@ object Labels {
         }
     }
 
-    @Composable
-    fun trackTitle(track: MediaTrack): String {
+    fun trackTitle(resources: Resources, track: MediaTrack): String {
         val base = track.label ?: when {
-            track.kind == TrackKind.VIDEO && track.signLanguage -> stringResource(R.string.discovery_media_signLanguage)
-            track.kind == TrackKind.AUDIO && track.audioDescription -> stringResource(R.string.discovery_media_audioDescription)
+            track.kind == TrackKind.VIDEO && track.signLanguage -> resources.getString(R.string.discovery_media_signLanguage)
+            track.kind == TrackKind.AUDIO && track.audioDescription -> resources.getString(R.string.discovery_media_audioDescription)
             track.kind == TrackKind.VIDEO && track.role != null && track.role != "main" ->
-                "${stringResource(R.string.discovery_media_videoGeneric)} (${track.role})"
-            else -> language(track.language, track.kind)
+                "${resources.getString(R.string.discovery_media_videoGeneric)} (${track.role})"
+            else -> language(resources, track.language, track.kind)
         }
         val extras = listOfNotNull(
             codec(track)?.takeIf { track.kind == TrackKind.AUDIO && !base.contains(it) },
@@ -67,16 +83,19 @@ object Labels {
     }
 
     @Composable
-    fun syncStatus(status: PlaybackCorrector.Status, rate: Double): String = when (status) {
-        PlaybackCorrector.Status.LOCKED -> stringResource(R.string.discovery_syncLocked)
-        PlaybackCorrector.Status.ADJUSTING -> stringResource(R.string.discovery_syncAdjusting, String.format(java.util.Locale.ROOT, "%.3f", rate))
-        PlaybackCorrector.Status.SEEKING -> stringResource(R.string.discovery_syncSeeking)
-        PlaybackCorrector.Status.PAUSED -> stringResource(R.string.native_player_pausedOnTv)
-        PlaybackCorrector.Status.WAITING -> stringResource(R.string.discovery_syncWaiting)
-    }
+    fun trackTitle(track: MediaTrack): String = trackTitle(resources(), track)
 
     @Composable
-    fun session(snapshot: MediaSyncSession.Snapshot?): String? {
+    fun syncStatus(status: PlaybackCorrector.Status, rate: Double): String = when (status) {
+        PlaybackCorrector.Status.LOCKED -> resources().getString(R.string.discovery_syncLocked)
+        PlaybackCorrector.Status.ADJUSTING -> resources().getString(R.string.discovery_syncAdjusting, String.format(java.util.Locale.ROOT, "%.3f", rate))
+        PlaybackCorrector.Status.SEEKING -> resources().getString(R.string.discovery_syncSeeking)
+        PlaybackCorrector.Status.PAUSED -> resources().getString(R.string.native_player_pausedOnTv)
+        PlaybackCorrector.Status.WAITING -> resources().getString(R.string.discovery_syncWaiting)
+    }
+
+    @StringRes
+    fun session(snapshot: MediaSyncSession.Snapshot?): Int? {
         snapshot ?: return null
         val issue = when (snapshot.issue) {
             MediaSyncSession.Issue.NONE -> null
@@ -90,16 +109,16 @@ object Labels {
             MediaSyncSession.Issue.TIMELINE_UNAVAILABLE -> R.string.native_terminal_timelineUnavailable
             MediaSyncSession.Issue.WALL_CLOCK_UNSYNCHRONISED -> R.string.native_terminal_wallClock
         }
-        if (issue != null) return stringResource(issue)
+        if (issue != null) return issue
         return when (snapshot.state) {
             MediaSyncSession.State.DISCONNECTED -> null
-            MediaSyncSession.State.CONNECTING -> stringResource(R.string.native_terminal_connecting)
-            MediaSyncSession.State.WAITING_CONTENT -> stringResource(R.string.discovery_waitingForContent)
-            MediaSyncSession.State.SYNCHRONISING -> stringResource(R.string.native_terminal_synchronising)
-            MediaSyncSession.State.SYNCHRONISED -> stringResource(
-                if (snapshot.mode == mediasync.core.SyncMode.COMPAT) R.string.discovery_statusConnectedCompat else R.string.discovery_statusConnected)
-            MediaSyncSession.State.RECOVERING -> stringResource(R.string.discovery_retryingConnection)
-            MediaSyncSession.State.ERROR -> stringResource(R.string.discovery_connectionError)
+            MediaSyncSession.State.CONNECTING -> R.string.native_terminal_connecting
+            MediaSyncSession.State.WAITING_CONTENT -> R.string.discovery_waitingForContent
+            MediaSyncSession.State.SYNCHRONISING -> R.string.native_terminal_synchronising
+            MediaSyncSession.State.SYNCHRONISED ->
+                if (snapshot.mode == mediasync.core.SyncMode.COMPAT) R.string.discovery_statusConnectedCompat else R.string.discovery_statusConnected
+            MediaSyncSession.State.RECOVERING -> R.string.discovery_retryingConnection
+            MediaSyncSession.State.ERROR -> R.string.discovery_connectionError
         }
     }
 }

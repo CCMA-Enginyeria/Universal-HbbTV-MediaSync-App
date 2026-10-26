@@ -2,6 +2,7 @@ package mediasync.core
 
 import java.net.URI
 import java.util.Locale
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -30,7 +31,18 @@ object CompanionProtocol {
     sealed interface Inbound {
         data class SyncAck(val raw: JsonObject) : Inbound
         data class AppMessage(val type: String, val id: String?, val payload: JsonElement?) : Inbound
+        /** The page's complete tool set; replaces any earlier declaration (PRD-015-R07). */
+        data class Tools(val tools: List<CompanionTool>) : Inbound
+        /** Answer to a [toolCall]: [result] is text (objects arrive serialized), [error] a failure message. */
+        data class ToolResult(val id: String, val result: String?, val error: String?) : Inbound
     }
+
+    /** Tools a page may declare, and limits that keep a declaration small enough for an assistant. */
+    const val MAX_TOOLS = 16
+    const val MAX_TOOL_DESCRIPTION_CHARS = 1_024
+    const val MAX_TOOL_SCHEMA_CHARS = 8_192
+    const val MAX_TOOL_RESULT_CHARS = 16_384
+    private val TOOL_NAME = Regex("^[A-Za-z][A-Za-z0-9_.-]{0,63}$")
 
     fun init(contentId: String?): String = buildJsonObject {
         put("version", VERSION)
@@ -58,6 +70,18 @@ object CompanionProtocol {
         put("message", message)
     }.toString()
 
+    /** Asks the page to run one of its declared tools; the page answers with a `tool-result` of the same [id]. */
+    fun toolCall(id: String, name: String, arguments: JsonObject): String = buildJsonObject {
+        put("version", VERSION)
+        put("type", "tool-call")
+        put("id", id)
+        put("name", name)
+        put("arguments", arguments)
+    }.toString()
+
+    /** Tool arguments as a bounded JSON object, or null when [text] is not one. */
+    fun toolArguments(text: String): JsonObject? = JsonInput.parseObject(text, MAX_INBOUND_CHARS)
+
     /** Returns null for anything that is not a valid envelope of this protocol. */
     fun parse(raw: String): Inbound? {
         val envelope = JsonInput.parseObject(raw, MAX_INBOUND_CHARS) ?: return null
@@ -69,8 +93,32 @@ object CompanionProtocol {
                 val type = JsonInput.string(message["type"])?.takeIf { it.isNotEmpty() && it.length <= 128 } ?: return null
                 Inbound.AppMessage(type, JsonInput.string(message["id"]), message["payload"]?.takeUnless { it is JsonNull })
             }
+            "tools" -> {
+                val tools = envelope["tools"] as? JsonArray ?: return null
+                if (tools.size > MAX_TOOLS) return null
+                Inbound.Tools(tools.mapNotNull(::tool).distinctBy(CompanionTool::name))
+            }
+            "tool-result" -> {
+                val id = JsonInput.string(envelope["id"])?.takeIf { it.isNotEmpty() && it.length <= 128 } ?: return null
+                val result = envelope["result"]?.takeUnless { it is JsonNull }?.let { JsonInput.string(it) ?: it.toString() }
+                Inbound.ToolResult(id, result?.take(MAX_TOOL_RESULT_CHARS), JsonInput.string(envelope["error"])?.take(MAX_TOOL_RESULT_CHARS))
+            }
             else -> null
         }
+    }
+
+    /** A declared tool, or null when it breaks a rule; a missing schema means no arguments. */
+    private fun tool(element: JsonElement): CompanionTool? {
+        val tool = element as? JsonObject ?: return null
+        val name = JsonInput.string(tool["name"])?.takeIf(TOOL_NAME::matches) ?: return null
+        val description = JsonInput.string(tool["description"])?.trim()
+            ?.takeIf { it.isNotEmpty() && it.length <= MAX_TOOL_DESCRIPTION_CHARS } ?: return null
+        val schema = when (val value = tool["inputSchema"]) {
+            null, JsonNull -> buildJsonObject { put("type", "object") }
+            is JsonObject -> value.takeIf { it.toString().length <= MAX_TOOL_SCHEMA_CHARS } ?: return null
+            else -> return null
+        }
+        return CompanionTool(name, description, schema)
     }
 
     /**
@@ -134,6 +182,12 @@ object CompanionProtocol {
         return base + (if (base.contains('?')) "&" else "?") + query
     }
 }
+
+/**
+ * A tool a companion page offers to assistants (PRD-015-R07), in the shape of WebMCP tools:
+ * [inputSchema] is the JSON Schema of the arguments object.
+ */
+data class CompanionTool(val name: String, val description: String, val inputSchema: JsonObject)
 
 /** Sends position corrections at a bounded cadence, immediately on play/speed changes. */
 class CompanionFeedThrottle(private val intervalMs: Long = 1_000) {

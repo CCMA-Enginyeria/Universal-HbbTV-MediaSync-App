@@ -300,6 +300,7 @@ final class ProtocolFixturesTests: XCTestCase {
                 XCTAssertEqual(id, item["id"] as? String)
                 let expected = try JSONSerialization.jsonObject(with: Data((item["payload"] as! String).utf8)) as! NSDictionary
                 XCTAssertEqual(payload as? NSDictionary, expected)
+            case .tools?, .toolResult?: XCTFail("Unexpected tool envelope \(item["text"] ?? "")")
             case nil: XCTFail("Rejected valid envelope \(item["text"] ?? "")")
             }
         }
@@ -327,6 +328,54 @@ final class ProtocolFixturesTests: XCTestCase {
         XCTAssertTrue(url(audioMode: false, track: video, with: audio).hasSuffix("&aiso=ca&arole=main&atrack=1"))
         XCTAssertFalse(url(audioMode: true, track: audio, with: audio).contains("aiso="))
         XCTAssertFalse(url(audioMode: false, track: video, with: nil).contains("aiso="))
+    }
+
+    func testCompanionTools() throws {
+        let tools = cases["companionTools"] as! [String: Any]
+        let declarations = tools["declarations"] as! [[String: Any]]
+        for item in declarations {
+            guard case .tools(let parsed)? = CompanionProtocol.parse(item["text"] as! String) else {
+                XCTFail("Rejected \(item["name"] ?? "")")
+                continue
+            }
+            XCTAssertEqual(parsed.map(\.name), item["expect"] as! [String], str(item["name"]) ?? "")
+        }
+        guard case .tools(let plain)? = CompanionProtocol.parse(declarations[2]["text"] as! String) else { return XCTFail("plain") }
+        XCTAssertEqual(plain.first?.inputSchema, "{\"type\":\"object\"}")
+        for invalid in tools["invalid"] as! [String] { XCTAssertNil(CompanionProtocol.parse(invalid), invalid) }
+        for item in tools["results"] as! [[String: Any]] {
+            guard case .toolResult(let id, let result, let error)? = CompanionProtocol.parse(item["text"] as! String) else {
+                XCTFail("Rejected \(item["text"] ?? "")")
+                continue
+            }
+            XCTAssertEqual(id, item["id"] as? String)
+            XCTAssertEqual(result, str(item["result"]))
+            XCTAssertEqual(error, str(item["error"]))
+        }
+        let call = tools["toolCall"] as! [String: Any]
+        let arguments = String(decoding: try JSONSerialization.data(withJSONObject: call["arguments"]!), as: UTF8.self)
+        let text = CompanionProtocol.toolCall(id: call["id"] as! String, name: call["name"] as! String, rawArguments: arguments)
+        let envelope = try XCTUnwrap(JsonInput.parseObject(text))
+        XCTAssertEqual(envelope["type"] as? String, "tool-call")
+        XCTAssertEqual(envelope["version"] as? Int, 1)
+        XCTAssertEqual(envelope["id"] as? String, call["id"] as? String)
+        XCTAssertEqual(envelope["name"] as? String, call["name"] as? String)
+        XCTAssertEqual(envelope["arguments"] as? NSDictionary, call["arguments"] as? NSDictionary)
+    }
+
+    func testAudioPreference() {
+        for item in list("audioPreference") {
+            let tracks = (item["tracks"] as! [[String: Any]]).map { track -> MediaTrack in
+                var value = MediaTrack(id: track["id"] as! String, kind: TrackKind(rawValue: track["kind"] as! String)!,
+                                       language: str(track["language"]), role: str(track["role"]), label: nil, codecs: nil,
+                                       mimeType: nil, bandwidth: 0, width: nil, height: nil)
+                value.audioDescription = track["audioDescription"] as? Bool ?? false
+                value.isProtected = track["protected"] as? Bool ?? false
+                return value
+            }
+            XCTAssertEqual(AudioPreference.pick(tracks, languages: item["languages"] as! [String])?.id, str(item["expect"]),
+                           str(item["name"]) ?? "")
+        }
     }
 
     func testModeSelectionMatrix() {

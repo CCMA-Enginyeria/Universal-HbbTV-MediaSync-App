@@ -220,6 +220,39 @@ public struct PlaybackIntent: Equatable {
     }
 }
 
+/**
+ * The audio an assistant plays when the user only asks to listen: anything before audio
+ * description, then the first of the user's languages the content offers, then main audio,
+ * then manifest order. Broadcasters tag ISO 639-1 or 639-2 codes; both are compared.
+ */
+public enum AudioPreference {
+    private static let iso6392 = [
+        "cat": "ca", "spa": "es", "eus": "eu", "baq": "eu", "eng": "en",
+        "deu": "de", "ger": "de", "ita": "it", "fra": "fr", "fre": "fr", "por": "pt",
+    ]
+
+    /// Base language of a BCP 47 tag or ISO 639 code, as ISO 639-1 when known.
+    public static func language(_ code: String?) -> String? {
+        guard let code = code else { return nil }
+        let base = code.lowercased().split(whereSeparator: { $0 == "-" || $0 == "_" }).first.map(String.init) ?? ""
+        return base.isEmpty ? nil : iso6392[base] ?? base
+    }
+
+    public static func pick(_ tracks: [MediaTrack], languages: [String]) -> MediaTrack? {
+        let preferred = languages.compactMap(language)
+        func rank(_ track: MediaTrack) -> (Int, Int, Int) {
+            let described = track.audioDescription || track.role == "description"
+            let position = language(track.language).flatMap { preferred.firstIndex(of: $0) } ?? preferred.count
+            return (described ? 1 : 0, position, track.role == nil || track.role == "main" ? 0 : 1)
+        }
+        let candidates = tracks.filter { $0.kind == .audio && !$0.isProtected }.enumerated()
+        return candidates.min { left, right in
+            let a = rank(left.element), b = rank(right.element)
+            return a != b ? a < b : left.offset < right.offset
+        }?.element
+    }
+}
+
 public enum MpdParser {
     public static let maxBytes = 4 * 1_048_576
     /// EventStream scheme of `WebApplication` announcements; `value` is the format version.

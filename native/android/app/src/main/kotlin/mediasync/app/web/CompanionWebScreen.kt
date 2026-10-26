@@ -10,6 +10,7 @@ import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
+import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -136,6 +137,9 @@ private fun CompanionWebView(url: String, controller: SessionController, onClose
     AndroidView(modifier = Modifier.fillMaxSize(), factory = { viewContext ->
         WebView(viewContext).apply {
             holder[0] = this
+            // With the WRAP_CONTENT params AndroidView assigns by default, WebView sizes its layout
+            // viewport to zero, so pages that use 100vh or fixed 100% heights collapse.
+            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.mediaPlaybackRequiresUserGesture = false

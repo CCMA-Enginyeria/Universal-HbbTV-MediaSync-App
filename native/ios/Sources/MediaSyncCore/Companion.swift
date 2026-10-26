@@ -25,7 +25,17 @@ public enum CompanionProtocol {
     public enum Inbound {
         case syncAck
         case appMessage(type: String, id: String?, payload: Any?)
+        /// The page's complete tool set; replaces any earlier declaration (PRD-015-R07).
+        case tools([CompanionTool])
+        /// Answer to a `toolCall`: `result` is text (objects arrive serialized), `error` a failure message.
+        case toolResult(id: String, result: String?, error: String?)
     }
+
+    /// Tools a page may declare, and limits that keep a declaration small enough for an assistant.
+    public static let maxTools = 16
+    public static let maxToolDescriptionChars = 1_024
+    public static let maxToolSchemaChars = 8_192
+    public static let maxToolResultChars = 16_384
 
     public static func initMessage(contentId: String?) -> String {
         "{\"version\":\(version),\"type\":\"init\",\"contentId\":\(contentId.map(JsonInput.escape) ?? "null")}"
@@ -49,6 +59,11 @@ public enum CompanionProtocol {
         "{\"version\":\(version),\"type\":\"app-message\",\"message\":\(rawMessage)}"
     }
 
+    /// Asks the page to run one of its declared tools; `rawArguments` is a JSON object text, sent verbatim.
+    public static func toolCall(id: String, name: String, rawArguments: String) -> String {
+        "{\"version\":\(version),\"type\":\"tool-call\",\"id\":\(JsonInput.escape(id)),\"name\":\(JsonInput.escape(name)),\"arguments\":\(rawArguments)}"
+    }
+
     public static func parse(_ raw: String) -> Inbound? {
         guard let envelope = JsonInput.parseObject(raw, maxChars: maxInboundChars),
               let versionNumber = envelope["version"] as? NSNumber, !(envelope["version"] is String),
@@ -60,8 +75,48 @@ public enum CompanionProtocol {
                   !type.isEmpty, type.count <= 128 else { return nil }
             let payload = message["payload"]
             return .appMessage(type: type, id: JsonInput.string(message["id"]), payload: payload is NSNull ? nil : payload)
+        case "tools":
+            guard let list = envelope["tools"] as? [Any], list.count <= maxTools else { return nil }
+            var tools: [CompanionTool] = []
+            for item in list {
+                if let tool = tool(item), !tools.contains(where: { $0.name == tool.name }) { tools.append(tool) }
+            }
+            return .tools(tools)
+        case "tool-result":
+            guard let id = JsonInput.string(envelope["id"]), !id.isEmpty, id.utf16.count <= 128 else { return nil }
+            var result: String?
+            if let value = envelope["result"], !(value is NSNull) { result = JsonInput.string(value) ?? serialize(value) }
+            return .toolResult(id: id, result: result.map { truncate($0, maxToolResultChars) },
+                               error: JsonInput.string(envelope["error"]).map { truncate($0, maxToolResultChars) })
         default: return nil
         }
+    }
+
+    /// A declared tool, or nil when it breaks a rule; a missing schema means no arguments.
+    private static func tool(_ item: Any) -> CompanionTool? {
+        guard let tool = item as? [String: Any], let name = JsonInput.string(tool["name"]),
+              name.range(of: "^[A-Za-z][A-Za-z0-9_.-]{0,63}$", options: .regularExpression) != nil,
+              let description = JsonInput.string(tool["description"])?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !description.isEmpty, description.utf16.count <= maxToolDescriptionChars else { return nil }
+        let schema: String
+        switch tool["inputSchema"] {
+        case nil, is NSNull: schema = "{\"type\":\"object\"}"
+        case let object as [String: Any]:
+            guard let text = serialize(object), text.utf16.count <= maxToolSchemaChars else { return nil }
+            schema = text
+        default: return nil
+        }
+        return CompanionTool(name: name, description: description, inputSchema: schema)
+    }
+
+    private static func serialize(_ value: Any) -> String? {
+        let options: JSONSerialization.WritingOptions = [.sortedKeys, .withoutEscapingSlashes, .fragmentsAllowed]
+        guard let data = try? JSONSerialization.data(withJSONObject: value, options: options) else { return nil }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    private static func truncate(_ text: String, _ maxUnits: Int) -> String {
+        text.utf16.count <= maxUnits ? text : String(decoding: Array(text.utf16.prefix(maxUnits)), as: UTF16.self)
     }
 
     /// Script that delivers an envelope as an escaped string literal, never as code.
@@ -208,4 +263,12 @@ public struct WebMetadata: Equatable {
         .replacingOccurrences(of: "&amp;", with: "&", options: .caseInsensitive)
         .trimmingCharacters(in: .whitespacesAndNewlines)
     }
+}
+
+/// A tool a companion page offers to assistants (PRD-015-R07), in the shape of WebMCP tools:
+/// `inputSchema` is the JSON Schema of the arguments object, as compact JSON text.
+public struct CompanionTool: Equatable {
+    public let name: String
+    public let description: String
+    public let inputSchema: String
 }

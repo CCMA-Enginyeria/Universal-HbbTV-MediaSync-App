@@ -66,5 +66,19 @@
         <receiver
             android:name=".playback.StopReceiver"
             android:exported="false" />
+
+        <!-- App Functions (Android 16+): generated from assistant/AssistantFunctionService.kt by the KSP compiler. -->
+        <service
+            android:name=".assistant.MediaSyncAppFunctionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_APP_FUNCTION_SERVICE"
+            tools:targetApi="36">
+            <property
+                android:name="android.app.appfunctions.v2"
+                android:value="mediasync_app_functions.xml" />
+            <intent-filter>
+                <action android:name="android.app.appfunctions.AppFunctionService" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

@@ -8,6 +8,7 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import java.util.concurrent.TimeUnit
+import mediasync.app.assistant.AssistantCommands
 import mediasync.app.content.ContentLoader
 import mediasync.app.data.Preferences
 import mediasync.app.diagnostics.Diagnostics
@@ -58,6 +59,7 @@ class AppGraph(val application: Application) {
     val customTabs = CustomTabsCompanion(application, session, mainHandler)
     val loopback = LoopbackCompanion(application, session, mainHandler, diagnostics)
     val xrSubtitles = XrSubtitlesCompanion(application, session, mainHandler, diagnostics)
+    val assistant = AssistantCommands(application, discovery, session, network, diagnostics)
 }
 
 val Context.graph: AppGraph get() = (applicationContext as MediaSyncApplication).graph

@@ -101,7 +101,7 @@ fun TerminalScreen(onBack: () -> Unit, onHelp: () -> Unit, onOpenWeb: (String) -
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = Tokens.spacing("containerPadding"))
             .padding(bottom = Tokens.spacing("md"))) {
-            val sessionText = Labels.session(state.snapshot)
+            val sessionText = Labels.session(state.snapshot)?.let { stringResource(it) }
             when {
                 !terminal.supportsMediaSync -> Message(stringResource(R.string.native_discovery_noSyncSupport))
                 state.noModes -> {

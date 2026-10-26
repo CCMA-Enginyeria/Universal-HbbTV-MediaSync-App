@@ -1,5 +1,6 @@
 package mediasync.app
 
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -55,6 +56,8 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // An assistant may launch the app to show the TV screen or a companion page (AssistantCommands.openIntent).
+        if (savedInstanceState == null) graph.assistant.onLaunch(intent)
         setContent {
             MediaSyncTheme {
                 val navigation = rememberNavController()
@@ -64,6 +67,36 @@ class MainActivity : ComponentActivity() {
                 val route = navigation.currentBackStackEntryFlow.collectAsStateWithLifecycle(null).value?.destination?.route
                 LaunchedEffect(fullscreen, route) { applyOrientation(fullscreen || route == WEB) }
                 LaunchedEffect(session.video == null) { if (session.video == null) fullscreen = false }
+                val openWeb: (String) -> Unit = { url ->
+                    graph.session.openWeb(url)
+                    val inApp = {
+                        if (customTabs.canTry(url)) customTabs.open(this@MainActivity, url) { navigation.navigate(WEB) }
+                        else navigation.navigate(WEB)
+                    }
+                    // Horizon OS: only a regular Quest Browser tab offers WebXR.
+                    if (loopback.canTry(url)) loopback.open(this@MainActivity, url, inApp)
+                    else {
+                        loopback.close()
+                        inApp()
+                    }
+                }
+                // An assistant command selected a TV: show it, like a tap in the list does.
+                val assistantRequest by graph.assistant.showsTerminalRequest.collectAsStateWithLifecycle()
+                LaunchedEffect(assistantRequest, session.terminal) {
+                    if (!assistantRequest || session.terminal == null) return@LaunchedEffect
+                    graph.assistant.consumeTerminalRequest()
+                    if (route != TERMINAL) navigation.navigate(TERMINAL) { launchSingleTop = true }
+                }
+                // An assistant command needs the companion page: open it as the TV screen's button does.
+                val webRequest by graph.assistant.webRequest.collectAsStateWithLifecycle()
+                LaunchedEffect(webRequest) {
+                    val url = webRequest ?: return@LaunchedEffect
+                    graph.assistant.consumeWebRequest()
+                    if (session.webPages.any { it.url == url }) {
+                        if (route != TERMINAL && route != WEB) navigation.navigate(TERMINAL) { launchSingleTop = true }
+                        openWeb(url)
+                    }
+                }
                 LaunchedEffect(session.terminal) {
                     if (session.terminal == null) {
                         loopback.close()
@@ -94,19 +127,7 @@ class MainActivity : ComponentActivity() {
                                         navigation.popBackStack()
                                     },
                                     onHelp = { navigation.navigate(HELP) },
-                                    onOpenWeb = { url ->
-                                        graph.session.openWeb(url)
-                                        val inApp = {
-                                            if (customTabs.canTry(url)) customTabs.open(this@MainActivity, url) { navigation.navigate(WEB) }
-                                            else navigation.navigate(WEB)
-                                        }
-                                        // Horizon OS: only a regular Quest Browser tab offers WebXR.
-                                        if (loopback.canTry(url)) loopback.open(this@MainActivity, url, inApp)
-                                        else {
-                                            loopback.close()
-                                            inApp()
-                                        }
-                                    },
+                                    onOpenWeb = openWeb,
                                     onOpenXr = if (xrAvailable) ({ xrSubtitles.open(this@MainActivity) }) else null,
                                 )
                             }
@@ -121,6 +142,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        graph.assistant.onLaunch(intent)
     }
 
     override fun onResume() {

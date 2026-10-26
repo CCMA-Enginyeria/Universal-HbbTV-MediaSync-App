@@ -36,6 +36,7 @@ DRM nuevo. Una necesidad adicional debe incorporarse mediante una decision de al
 | [012](012-security-permissions.md) | Seguridad, privacidad y permisos | 001 | Controles parciales en core |
 | [013](013-validation-observability.md) | Pruebas, diagnostico y rendimiento | Todos los PRD funcionales | Pruebas JVM y CI iniciales |
 | [014](014-release-cutover.md) | CI, distribucion y retirada RN | 001-013 | Pendiente |
+| [015](015-assistant-integration.md) | Siri/App Intents y Gemini/App Functions | 003, 004, 007, 011, 012 | Fases 1-3; Android validado |
 
 Las dependencias son de integracion/aceptacion, no impiden trabajar en paralelo
 con contratos y dobles de prueba. PRD-012 es transversal desde el primer incremento;
