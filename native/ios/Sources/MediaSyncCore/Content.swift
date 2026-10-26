@@ -238,14 +238,18 @@ public enum AudioPreference {
         return base.isEmpty ? nil : iso6392[base] ?? base
     }
 
-    public static func pick(_ tracks: [MediaTrack], languages: [String]) -> MediaTrack? {
+    /**
+     * The audio track that best matches `languages`. Audio description is a last resort, unless
+     * `described` asks for it: then only audio description tracks qualify (nil when there is none).
+     */
+    public static func pick(_ tracks: [MediaTrack], languages: [String], described: Bool = false) -> MediaTrack? {
         let preferred = languages.compactMap(language)
+        func isDescription(_ track: MediaTrack) -> Bool { track.audioDescription || track.role == "description" }
         func rank(_ track: MediaTrack) -> (Int, Int, Int) {
-            let described = track.audioDescription || track.role == "description"
             let position = language(track.language).flatMap { preferred.firstIndex(of: $0) } ?? preferred.count
-            return (described ? 1 : 0, position, track.role == nil || track.role == "main" ? 0 : 1)
+            return (isDescription(track) ? 1 : 0, position, track.role == nil || track.role == "main" ? 0 : 1)
         }
-        let candidates = tracks.filter { $0.kind == .audio && !$0.isProtected }.enumerated()
+        let candidates = tracks.filter { $0.kind == .audio && !$0.isProtected && (!described || isDescription($0)) }.enumerated()
         return candidates.min { left, right in
             let a = rank(left.element), b = rank(right.element)
             return a != b ? a < b : left.offset < right.offset

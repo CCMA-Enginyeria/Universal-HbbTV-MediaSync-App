@@ -88,6 +88,14 @@
         "type": "TV",
         "parameter": "TV"
       },
+      "audio": {
+        "type": "Audio",
+        "parameter": "Audio"
+      },
+      "visual": {
+        "type": "Content",
+        "parameter": "Content"
+      },
       "mode": {
         "parameter": "Synchronization mode"
       },
@@ -109,16 +117,45 @@
         "pending": "Connecting to {{tv}}..."
       },
       "listen": {
-        "title": "Listen to the TV",
-        "description": "Connects to the TV and plays its audio on this device.",
+        "title": "Turn on audio",
+        "description": "Connects to the TV and plays its audio on this device; asks which one when there are several.",
         "playing": "Listening to {{tv}}: {{track}}.",
         "noAudio": "The TV content has no audio this device can play.",
-        "noContent": "Connected to {{tv}}, but the TV is not offering content to synchronize right now."
+        "noContent": "Connected to {{tv}}, but the TV is not offering content to synchronize right now.",
+        "choose": "Available audio: {{tracks}}. Which one do you want to listen to?"
+      },
+      "audioDescription": {
+        "title": "Turn on audio description",
+        "description": "Connects to the TV and plays its audio description on this device.",
+        "none": "The programme on {{tv}} has no audio description."
+      },
+      "content": {
+        "title": "Available content",
+        "description": "Tells which audio, video, subtitles and pages the TV programme offers.",
+        "available": "{{tv}} offers: {{items}}.",
+        "audio": "audio: {{tracks}}",
+        "video": "video: {{tracks}}",
+        "subtitles": "subtitles: {{tracks}}",
+        "page": "web page: {{title}}",
+        "none": "{{tv}} offers no content this device can play."
+      },
+      "watch": {
+        "title": "Watch content",
+        "description": "Shows the programme's video or companion page on this device.",
+        "choose": "Available: {{items}}. Which one do you want to watch?",
+        "showing": "Showing {{title}}.",
+        "none": "{{tv}} offers no video or page to watch right now."
+      },
+      "stopAudio": {
+        "title": "Stop audio",
+        "description": "Stops the TV audio on this device and keeps the rest playing.",
+        "done": "Audio stopped.",
+        "idle": "No audio is playing."
       },
       "stop": {
-        "title": "Stop synchronization",
-        "description": "Disconnects from the TV and stops playback on this device.",
-        "done": "Synchronization stopped."
+        "title": "Stop content",
+        "description": "Stops everything playing on this device and disconnects from the TV.",
+        "done": "Content stopped."
       },
       "tvs": {
         "found": "TVs found: {{names}}.",
@@ -146,10 +183,18 @@
         "done": "Done."
       },
       "phrases": {
-        "listTvs": "Find TVs with ${applicationName}",
-        "status": "${applicationName} status",
-        "connect": "Connect ${applicationName} to a TV",
-        "listen": "Listen to the TV with ${applicationName}",
+        "listen": "Turn on audio with ${applicationName}",
+        "listenShort": "Turn on ${applicationName} audio",
+        "content": "What content is available on ${applicationName}",
+        "contentShort": "What content is available ${applicationName}",
+        "watch": "Watch content with ${applicationName}",
+        "watchShort": "Watch content ${applicationName}",
+        "stopAudio": "Stop audio on ${applicationName}",
+        "stopAudioShort": "Stop ${applicationName} audio",
+        "stopContent": "Stop content on ${applicationName}",
+        "stopContentShort": "Stop ${applicationName} content",
+        "listenApp": "Listen to ${applicationName}",
+        "audioDescription": "Turn on audio description with ${applicationName}",
         "stop": "Stop ${applicationName}"
       }
     }
@@ -243,6 +288,14 @@
         "type": "Televisor",
         "parameter": "Televisor"
       },
+      "audio": {
+        "type": "Àudio",
+        "parameter": "Àudio"
+      },
+      "visual": {
+        "type": "Contingut",
+        "parameter": "Contingut"
+      },
       "mode": {
         "parameter": "Mode de sincronització"
       },
@@ -264,16 +317,45 @@
         "pending": "Connectant amb {{tv}}..."
       },
       "listen": {
-        "title": "Escolta el televisor",
-        "description": "Es connecta al televisor i en reprodueix el so en aquest dispositiu.",
+        "title": "Activa l'àudio",
+        "description": "Es connecta al televisor i en reprodueix l'àudio en aquest dispositiu; si n'hi ha diversos, pregunta quin.",
         "playing": "Escoltant {{tv}}: {{track}}.",
         "noAudio": "El contingut del televisor no té cap àudio que es pugui reproduir en aquest dispositiu.",
-        "noContent": "Connectat a {{tv}}, però ara mateix el televisor no ofereix cap contingut per sincronitzar."
+        "noContent": "Connectat a {{tv}}, però ara mateix el televisor no ofereix cap contingut per sincronitzar.",
+        "choose": "Àudios disponibles: {{tracks}}. Quin vols escoltar?"
+      },
+      "audioDescription": {
+        "title": "Activa l'audiodescripció",
+        "description": "Es connecta al televisor i en reprodueix l'audiodescripció en aquest dispositiu.",
+        "none": "El programa de {{tv}} no té audiodescripció."
+      },
+      "content": {
+        "title": "Contingut disponible",
+        "description": "Indica quins àudios, vídeos, subtítols i pàgines ofereix el programa del televisor.",
+        "available": "{{tv}} ofereix: {{items}}.",
+        "audio": "àudio: {{tracks}}",
+        "video": "vídeo: {{tracks}}",
+        "subtitles": "subtítols: {{tracks}}",
+        "page": "pàgina web: {{title}}",
+        "none": "{{tv}} no ofereix cap contingut que es pugui reproduir en aquest dispositiu."
+      },
+      "watch": {
+        "title": "Visualitza contingut",
+        "description": "Mostra el vídeo o la pàgina complementària del programa en aquest dispositiu.",
+        "choose": "Disponible: {{items}}. Quin vols veure?",
+        "showing": "Mostrant {{title}}.",
+        "none": "Ara mateix {{tv}} no ofereix cap vídeo ni pàgina per veure."
+      },
+      "stopAudio": {
+        "title": "Atura l'àudio",
+        "description": "Atura l'àudio del televisor en aquest dispositiu i manté la resta.",
+        "done": "S'ha aturat l'àudio.",
+        "idle": "No sona cap àudio."
       },
       "stop": {
-        "title": "Atura la sincronització",
-        "description": "Es desconnecta del televisor i atura la reproducció en aquest dispositiu.",
-        "done": "S'ha aturat la sincronització."
+        "title": "Atura el contingut",
+        "description": "Atura tot el que es reprodueix en aquest dispositiu i es desconnecta del televisor.",
+        "done": "S'ha aturat el contingut."
       },
       "tvs": {
         "found": "Televisors trobats: {{names}}.",
@@ -301,10 +383,18 @@
         "done": "Fet."
       },
       "phrases": {
-        "listTvs": "Cerca televisors amb ${applicationName}",
-        "status": "Estat de ${applicationName}",
-        "connect": "Connecta ${applicationName} a un televisor",
-        "listen": "Escolta la tele amb ${applicationName}",
+        "listen": "Activa l'àudio amb ${applicationName}",
+        "listenShort": "Activa àudio ${applicationName}",
+        "content": "Quin contingut hi ha disponible a ${applicationName}",
+        "contentShort": "Quin contingut hi ha disponible ${applicationName}",
+        "watch": "Visualitza contingut amb ${applicationName}",
+        "watchShort": "Visualitza contingut ${applicationName}",
+        "stopAudio": "Atura l'àudio de ${applicationName}",
+        "stopAudioShort": "Atura àudio ${applicationName}",
+        "stopContent": "Atura el contingut de ${applicationName}",
+        "stopContentShort": "Atura contingut ${applicationName}",
+        "listenApp": "Escolta ${applicationName}",
+        "audioDescription": "Activa l'audiodescripció amb ${applicationName}",
         "stop": "Atura ${applicationName}"
       }
     }
@@ -398,6 +488,14 @@
         "type": "Televisor",
         "parameter": "Televisor"
       },
+      "audio": {
+        "type": "Audio",
+        "parameter": "Audio"
+      },
+      "visual": {
+        "type": "Contenido",
+        "parameter": "Contenido"
+      },
       "mode": {
         "parameter": "Modo de sincronización"
       },
@@ -419,16 +517,45 @@
         "pending": "Conectando con {{tv}}..."
       },
       "listen": {
-        "title": "Escuchar el televisor",
-        "description": "Se conecta al televisor y reproduce su sonido en este dispositivo.",
+        "title": "Activar el audio",
+        "description": "Se conecta al televisor y reproduce su audio en este dispositivo; si hay varios, pregunta cuál.",
         "playing": "Escuchando {{tv}}: {{track}}.",
         "noAudio": "El contenido del televisor no tiene ningún audio que se pueda reproducir en este dispositivo.",
-        "noContent": "Conectado a {{tv}}, pero ahora mismo el televisor no ofrece contenido para sincronizar."
+        "noContent": "Conectado a {{tv}}, pero ahora mismo el televisor no ofrece contenido para sincronizar.",
+        "choose": "Audios disponibles: {{tracks}}. ¿Cuál quieres escuchar?"
+      },
+      "audioDescription": {
+        "title": "Activar la audiodescripción",
+        "description": "Se conecta al televisor y reproduce su audiodescripción en este dispositivo.",
+        "none": "El programa de {{tv}} no tiene audiodescripción."
+      },
+      "content": {
+        "title": "Contenido disponible",
+        "description": "Indica qué audios, vídeos, subtítulos y páginas ofrece el programa del televisor.",
+        "available": "{{tv}} ofrece: {{items}}.",
+        "audio": "audio: {{tracks}}",
+        "video": "vídeo: {{tracks}}",
+        "subtitles": "subtítulos: {{tracks}}",
+        "page": "página web: {{title}}",
+        "none": "{{tv}} no ofrece ningún contenido que se pueda reproducir en este dispositivo."
+      },
+      "watch": {
+        "title": "Visualizar contenido",
+        "description": "Muestra el vídeo o la página complementaria del programa en este dispositivo.",
+        "choose": "Disponible: {{items}}. ¿Cuál quieres ver?",
+        "showing": "Mostrando {{title}}.",
+        "none": "Ahora mismo {{tv}} no ofrece ningún vídeo ni página para ver."
+      },
+      "stopAudio": {
+        "title": "Detener el audio",
+        "description": "Detiene el audio del televisor en este dispositivo y mantiene el resto.",
+        "done": "Se ha detenido el audio.",
+        "idle": "No suena ningún audio."
       },
       "stop": {
-        "title": "Detener la sincronización",
-        "description": "Se desconecta del televisor y detiene la reproducción en este dispositivo.",
-        "done": "Se ha detenido la sincronización."
+        "title": "Detener el contenido",
+        "description": "Detiene todo lo que se reproduce en este dispositivo y se desconecta del televisor.",
+        "done": "Se ha detenido el contenido."
       },
       "tvs": {
         "found": "Televisores encontrados: {{names}}.",
@@ -456,10 +583,18 @@
         "done": "Hecho."
       },
       "phrases": {
-        "listTvs": "Busca televisores con ${applicationName}",
-        "status": "Estado de ${applicationName}",
-        "connect": "Conecta ${applicationName} a un televisor",
-        "listen": "Escucha la tele con ${applicationName}",
+        "listen": "Activa el audio con ${applicationName}",
+        "listenShort": "Activa audio ${applicationName}",
+        "content": "Qué contenido hay disponible en ${applicationName}",
+        "contentShort": "Qué contenido hay disponible ${applicationName}",
+        "watch": "Visualiza contenido con ${applicationName}",
+        "watchShort": "Visualiza contenido ${applicationName}",
+        "stopAudio": "Detén el audio de ${applicationName}",
+        "stopAudioShort": "Detén audio ${applicationName}",
+        "stopContent": "Detén el contenido de ${applicationName}",
+        "stopContentShort": "Detén contenido ${applicationName}",
+        "listenApp": "Escucha ${applicationName}",
+        "audioDescription": "Activa la audiodescripción con ${applicationName}",
         "stop": "Detén ${applicationName}"
       }
     }
@@ -553,6 +688,14 @@
         "type": "Telebista",
         "parameter": "Telebista"
       },
+      "audio": {
+        "type": "Audioa",
+        "parameter": "Audioa"
+      },
+      "visual": {
+        "type": "Edukia",
+        "parameter": "Edukia"
+      },
       "mode": {
         "parameter": "Sinkronizazio modua"
       },
@@ -574,16 +717,45 @@
         "pending": "{{tv}} telebistara konektatzen..."
       },
       "listen": {
-        "title": "Entzun telebista",
-        "description": "Telebistara konektatzen da eta haren soinua gailu honetan erreproduzitzen du.",
+        "title": "Aktibatu audioa",
+        "description": "Telebistara konektatzen da eta haren audioa gailu honetan erreproduzitzen du; hainbat badaude, zein nahi duzun galdetzen du.",
         "playing": "{{tv}} entzuten: {{track}}.",
         "noAudio": "Telebistako edukiak ez du gailu honetan erreproduzi daitekeen audiorik.",
-        "noContent": "{{tv}} telebistara konektatuta, baina telebistak ez du sinkronizatzeko edukirik eskaintzen une honetan."
+        "noContent": "{{tv}} telebistara konektatuta, baina telebistak ez du sinkronizatzeko edukirik eskaintzen une honetan.",
+        "choose": "Audio erabilgarriak: {{tracks}}. Zein entzun nahi duzu?"
+      },
+      "audioDescription": {
+        "title": "Aktibatu audiodeskribapena",
+        "description": "Telebistara konektatzen da eta haren audiodeskribapena gailu honetan erreproduzitzen du.",
+        "none": "{{tv}} telebistako programak ez du audiodeskribapenik."
+      },
+      "content": {
+        "title": "Eduki erabilgarria",
+        "description": "Telebistako programak zer audio, bideo, azpititulu eta orri eskaintzen dituen esaten du.",
+        "available": "{{tv}} telebistak hau eskaintzen du: {{items}}.",
+        "audio": "audioa: {{tracks}}",
+        "video": "bideoa: {{tracks}}",
+        "subtitles": "azpitituluak: {{tracks}}",
+        "page": "web orria: {{title}}",
+        "none": "{{tv}} telebistak ez du gailu honetan erreproduzi daitekeen edukirik eskaintzen."
+      },
+      "watch": {
+        "title": "Ikusi edukia",
+        "description": "Programaren bideoa edo orri osagarria erakusten du gailu honetan.",
+        "choose": "Erabilgarri: {{items}}. Zein ikusi nahi duzu?",
+        "showing": "{{title}} erakusten.",
+        "none": "Une honetan {{tv}} telebistak ez du ikusteko bideorik edo orririk eskaintzen."
+      },
+      "stopAudio": {
+        "title": "Gelditu audioa",
+        "description": "Telebistako audioa gelditzen du gailu honetan, eta gainerakoa mantentzen du.",
+        "done": "Audioa gelditu da.",
+        "idle": "Ez dago audiorik entzuten."
       },
       "stop": {
-        "title": "Gelditu sinkronizazioa",
-        "description": "Telebistatik deskonektatzen da eta gailu honetako erreprodukzioa gelditzen du.",
-        "done": "Sinkronizazioa gelditu da."
+        "title": "Gelditu edukia",
+        "description": "Gailu honetan erreproduzitzen den guztia gelditzen du eta telebistatik deskonektatzen da.",
+        "done": "Edukia gelditu da."
       },
       "tvs": {
         "found": "Aurkitutako telebistak: {{names}}.",
@@ -611,10 +783,18 @@
         "done": "Eginda."
       },
       "phrases": {
-        "listTvs": "Bilatu telebistak ${applicationName} erabiliz",
-        "status": "${applicationName} egoera",
-        "connect": "Konektatu ${applicationName} telebista batera",
-        "listen": "Entzun telebista ${applicationName} erabiliz",
+        "listen": "Aktibatu audioa ${applicationName} erabiliz",
+        "listenShort": "Aktibatu ${applicationName} audioa",
+        "content": "Zer eduki dago erabilgarri ${applicationName} aplikazioan",
+        "contentShort": "Zer eduki dago erabilgarri ${applicationName}",
+        "watch": "Ikusi edukia ${applicationName} erabiliz",
+        "watchShort": "Ikusi edukia ${applicationName}",
+        "stopAudio": "Gelditu ${applicationName} audioa",
+        "stopAudioShort": "Gelditu audioa ${applicationName}",
+        "stopContent": "Gelditu ${applicationName} edukia",
+        "stopContentShort": "Gelditu edukia ${applicationName}",
+        "listenApp": "Entzun ${applicationName}",
+        "audioDescription": "Aktibatu audiodeskribapena ${applicationName} erabiliz",
         "stop": "Gelditu ${applicationName}"
       }
     }
@@ -708,6 +888,14 @@
         "type": "Fernseher",
         "parameter": "Fernseher"
       },
+      "audio": {
+        "type": "Ton",
+        "parameter": "Ton"
+      },
+      "visual": {
+        "type": "Inhalt",
+        "parameter": "Inhalt"
+      },
       "mode": {
         "parameter": "Synchronisierungsmodus"
       },
@@ -729,16 +917,45 @@
         "pending": "Verbindung mit {{tv}} wird hergestellt..."
       },
       "listen": {
-        "title": "Fernseher anhören",
-        "description": "Verbindet sich mit dem Fernseher und gibt seinen Ton auf diesem Gerät wieder.",
+        "title": "Ton einschalten",
+        "description": "Verbindet sich mit dem Fernseher und gibt seinen Ton auf diesem Gerät wieder; fragt bei mehreren Tonspuren nach.",
         "playing": "Du hörst {{tv}}: {{track}}.",
         "noAudio": "Der Inhalt des Fernsehers hat keinen Ton, der auf diesem Gerät abgespielt werden kann.",
-        "noContent": "Verbunden mit {{tv}}, aber der Fernseher bietet gerade keinen Inhalt zum Synchronisieren an."
+        "noContent": "Verbunden mit {{tv}}, aber der Fernseher bietet gerade keinen Inhalt zum Synchronisieren an.",
+        "choose": "Verfügbare Tonspuren: {{tracks}}. Welche möchtest du hören?"
+      },
+      "audioDescription": {
+        "title": "Audiodeskription einschalten",
+        "description": "Verbindet sich mit dem Fernseher und gibt seine Audiodeskription auf diesem Gerät wieder.",
+        "none": "Die Sendung auf {{tv}} hat keine Audiodeskription."
+      },
+      "content": {
+        "title": "Verfügbare Inhalte",
+        "description": "Sagt, welche Tonspuren, Videos, Untertitel und Seiten die Sendung bietet.",
+        "available": "{{tv}} bietet: {{items}}.",
+        "audio": "Ton: {{tracks}}",
+        "video": "Video: {{tracks}}",
+        "subtitles": "Untertitel: {{tracks}}",
+        "page": "Webseite: {{title}}",
+        "none": "{{tv}} bietet keine Inhalte, die auf diesem Gerät abgespielt werden können."
+      },
+      "watch": {
+        "title": "Inhalte ansehen",
+        "description": "Zeigt das Video oder die Begleitseite der Sendung auf diesem Gerät.",
+        "choose": "Verfügbar: {{items}}. Was möchtest du ansehen?",
+        "showing": "{{title}} wird angezeigt.",
+        "none": "{{tv}} bietet gerade kein Video und keine Seite zum Ansehen."
+      },
+      "stopAudio": {
+        "title": "Ton stoppen",
+        "description": "Stoppt den Ton des Fernsehers auf diesem Gerät, der Rest läuft weiter.",
+        "done": "Ton gestoppt.",
+        "idle": "Es wird kein Ton abgespielt."
       },
       "stop": {
-        "title": "Synchronisierung beenden",
-        "description": "Trennt die Verbindung zum Fernseher und beendet die Wiedergabe auf diesem Gerät.",
-        "done": "Synchronisierung beendet."
+        "title": "Inhalte stoppen",
+        "description": "Stoppt alles, was auf diesem Gerät läuft, und trennt die Verbindung zum Fernseher.",
+        "done": "Inhalte gestoppt."
       },
       "tvs": {
         "found": "Gefundene Fernseher: {{names}}.",
@@ -766,10 +983,18 @@
         "done": "Erledigt."
       },
       "phrases": {
-        "listTvs": "Fernseher mit ${applicationName} suchen",
-        "status": "${applicationName} Status",
-        "connect": "${applicationName} mit einem Fernseher verbinden",
-        "listen": "Fernseher mit ${applicationName} anhören",
+        "listen": "Ton mit ${applicationName} einschalten",
+        "listenShort": "${applicationName} Ton einschalten",
+        "content": "Welche Inhalte gibt es in ${applicationName}",
+        "contentShort": "Verfügbare Inhalte ${applicationName}",
+        "watch": "Inhalte mit ${applicationName} ansehen",
+        "watchShort": "Inhalte ansehen ${applicationName}",
+        "stopAudio": "Ton von ${applicationName} stoppen",
+        "stopAudioShort": "Ton stoppen ${applicationName}",
+        "stopContent": "Inhalte von ${applicationName} stoppen",
+        "stopContentShort": "Inhalte stoppen ${applicationName}",
+        "listenApp": "${applicationName} anhören",
+        "audioDescription": "Audiodeskription mit ${applicationName} einschalten",
         "stop": "${applicationName} stoppen"
       }
     }
@@ -863,6 +1088,14 @@
         "type": "Televisore",
         "parameter": "Televisore"
       },
+      "audio": {
+        "type": "Audio",
+        "parameter": "Audio"
+      },
+      "visual": {
+        "type": "Contenuto",
+        "parameter": "Contenuto"
+      },
       "mode": {
         "parameter": "Modalità di sincronizzazione"
       },
@@ -884,16 +1117,45 @@
         "pending": "Connessione a {{tv}} in corso..."
       },
       "listen": {
-        "title": "Ascolta il televisore",
-        "description": "Si connette al televisore e ne riproduce l'audio su questo dispositivo.",
+        "title": "Attiva l'audio",
+        "description": "Si connette al televisore e ne riproduce l'audio su questo dispositivo; se ce ne sono diversi, chiede quale.",
         "playing": "Stai ascoltando {{tv}}: {{track}}.",
         "noAudio": "Il contenuto del televisore non ha audio riproducibile su questo dispositivo.",
-        "noContent": "Connesso a {{tv}}, ma al momento il televisore non offre contenuti da sincronizzare."
+        "noContent": "Connesso a {{tv}}, ma al momento il televisore non offre contenuti da sincronizzare.",
+        "choose": "Audio disponibili: {{tracks}}. Quale vuoi ascoltare?"
+      },
+      "audioDescription": {
+        "title": "Attiva l'audiodescrizione",
+        "description": "Si connette al televisore e ne riproduce l'audiodescrizione su questo dispositivo.",
+        "none": "Il programma su {{tv}} non ha l'audiodescrizione."
+      },
+      "content": {
+        "title": "Contenuti disponibili",
+        "description": "Indica quali audio, video, sottotitoli e pagine offre il programma del televisore.",
+        "available": "{{tv}} offre: {{items}}.",
+        "audio": "audio: {{tracks}}",
+        "video": "video: {{tracks}}",
+        "subtitles": "sottotitoli: {{tracks}}",
+        "page": "pagina web: {{title}}",
+        "none": "{{tv}} non offre contenuti riproducibili su questo dispositivo."
+      },
+      "watch": {
+        "title": "Visualizza contenuti",
+        "description": "Mostra il video o la pagina complementare del programma su questo dispositivo.",
+        "choose": "Disponibili: {{items}}. Quale vuoi vedere?",
+        "showing": "Visualizzazione di {{title}}.",
+        "none": "Al momento {{tv}} non offre video né pagine da vedere."
+      },
+      "stopAudio": {
+        "title": "Ferma l'audio",
+        "description": "Ferma l'audio del televisore su questo dispositivo e mantiene il resto.",
+        "done": "Audio fermato.",
+        "idle": "Nessun audio in riproduzione."
       },
       "stop": {
-        "title": "Interrompi la sincronizzazione",
-        "description": "Si disconnette dal televisore e interrompe la riproduzione su questo dispositivo.",
-        "done": "Sincronizzazione interrotta."
+        "title": "Ferma i contenuti",
+        "description": "Ferma tutto ciò che è in riproduzione su questo dispositivo e si disconnette dal televisore.",
+        "done": "Contenuti fermati."
       },
       "tvs": {
         "found": "Televisori trovati: {{names}}.",
@@ -921,10 +1183,18 @@
         "done": "Fatto."
       },
       "phrases": {
-        "listTvs": "Cerca televisori con ${applicationName}",
-        "status": "Stato di ${applicationName}",
-        "connect": "Connetti ${applicationName} a un televisore",
-        "listen": "Ascolta la TV con ${applicationName}",
+        "listen": "Attiva l'audio con ${applicationName}",
+        "listenShort": "Attiva audio ${applicationName}",
+        "content": "Quali contenuti sono disponibili su ${applicationName}",
+        "contentShort": "Quali contenuti sono disponibili ${applicationName}",
+        "watch": "Visualizza contenuti con ${applicationName}",
+        "watchShort": "Visualizza contenuti ${applicationName}",
+        "stopAudio": "Ferma l'audio di ${applicationName}",
+        "stopAudioShort": "Ferma audio ${applicationName}",
+        "stopContent": "Ferma i contenuti di ${applicationName}",
+        "stopContentShort": "Ferma contenuti ${applicationName}",
+        "listenApp": "Ascolta ${applicationName}",
+        "audioDescription": "Attiva l'audiodescrizione con ${applicationName}",
         "stop": "Ferma ${applicationName}"
       }
     }
@@ -1018,6 +1288,14 @@
         "type": "Téléviseur",
         "parameter": "Téléviseur"
       },
+      "audio": {
+        "type": "Audio",
+        "parameter": "Audio"
+      },
+      "visual": {
+        "type": "Contenu",
+        "parameter": "Contenu"
+      },
       "mode": {
         "parameter": "Mode de synchronisation"
       },
@@ -1039,16 +1317,45 @@
         "pending": "Connexion à {{tv}}..."
       },
       "listen": {
-        "title": "Écouter le téléviseur",
-        "description": "Se connecte au téléviseur et diffuse son son sur cet appareil.",
+        "title": "Activer l'audio",
+        "description": "Se connecte au téléviseur et diffuse son audio sur cet appareil ; s'il y en a plusieurs, demande lequel.",
         "playing": "Vous écoutez {{tv}} : {{track}}.",
         "noAudio": "Le contenu du téléviseur n'a aucun son lisible sur cet appareil.",
-        "noContent": "Connecté à {{tv}}, mais le téléviseur ne propose pour l'instant aucun contenu à synchroniser."
+        "noContent": "Connecté à {{tv}}, mais le téléviseur ne propose pour l'instant aucun contenu à synchroniser.",
+        "choose": "Audios disponibles : {{tracks}}. Lequel voulez-vous écouter ?"
+      },
+      "audioDescription": {
+        "title": "Activer l'audiodescription",
+        "description": "Se connecte au téléviseur et diffuse son audiodescription sur cet appareil.",
+        "none": "Le programme sur {{tv}} n'a pas d'audiodescription."
+      },
+      "content": {
+        "title": "Contenu disponible",
+        "description": "Indique les audios, vidéos, sous-titres et pages que propose le programme du téléviseur.",
+        "available": "{{tv}} propose : {{items}}.",
+        "audio": "audio : {{tracks}}",
+        "video": "vidéo : {{tracks}}",
+        "subtitles": "sous-titres : {{tracks}}",
+        "page": "page web : {{title}}",
+        "none": "{{tv}} ne propose aucun contenu lisible sur cet appareil."
+      },
+      "watch": {
+        "title": "Afficher le contenu",
+        "description": "Affiche la vidéo ou la page complémentaire du programme sur cet appareil.",
+        "choose": "Disponible : {{items}}. Lequel voulez-vous voir ?",
+        "showing": "Affichage de {{title}}.",
+        "none": "{{tv}} ne propose pour l'instant aucune vidéo ni page à voir."
+      },
+      "stopAudio": {
+        "title": "Arrêter l'audio",
+        "description": "Arrête l'audio du téléviseur sur cet appareil et conserve le reste.",
+        "done": "Audio arrêté.",
+        "idle": "Aucun audio en cours de lecture."
       },
       "stop": {
-        "title": "Arrêter la synchronisation",
-        "description": "Se déconnecte du téléviseur et arrête la lecture sur cet appareil.",
-        "done": "Synchronisation arrêtée."
+        "title": "Arrêter le contenu",
+        "description": "Arrête tout ce qui est lu sur cet appareil et se déconnecte du téléviseur.",
+        "done": "Contenu arrêté."
       },
       "tvs": {
         "found": "Téléviseurs trouvés : {{names}}.",
@@ -1076,10 +1383,18 @@
         "done": "C'est fait."
       },
       "phrases": {
-        "listTvs": "Rechercher des téléviseurs avec ${applicationName}",
-        "status": "État de ${applicationName}",
-        "connect": "Connecter ${applicationName} à un téléviseur",
-        "listen": "Écouter la télé avec ${applicationName}",
+        "listen": "Activer l'audio avec ${applicationName}",
+        "listenShort": "Activer audio ${applicationName}",
+        "content": "Quel contenu est disponible sur ${applicationName}",
+        "contentShort": "Quel contenu est disponible ${applicationName}",
+        "watch": "Afficher le contenu avec ${applicationName}",
+        "watchShort": "Afficher contenu ${applicationName}",
+        "stopAudio": "Arrêter l'audio de ${applicationName}",
+        "stopAudioShort": "Arrêter audio ${applicationName}",
+        "stopContent": "Arrêter le contenu de ${applicationName}",
+        "stopContentShort": "Arrêter contenu ${applicationName}",
+        "listenApp": "Écouter ${applicationName}",
+        "audioDescription": "Activer l'audiodescription avec ${applicationName}",
         "stop": "Arrêter ${applicationName}"
       }
     }

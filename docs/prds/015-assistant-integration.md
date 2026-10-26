@@ -39,6 +39,21 @@ votaciones, estadisticas...) lo aporta la web sincronizada, no la app.
 - PRD-015-R05: audio elegido: todo antes que audiodescripcion, luego idiomas del
   usuario (ISO 639-1 o 639-2), luego rol principal, luego orden del manifiesto.
 - PRD-015-R06: diagnostico estructurado sin nombres de televisor, URLs ni payloads.
+- PRD-015-R08 (iOS): solo tienen frase de Siri los comandos que resuelven algo al
+  usuario: activar audio, contenido disponible, visualizar contenido, audiodescripcion,
+  detener audio y detener contenido. Buscar, estado y conectar son pasos intermedios
+  que los demas hacen solos; quedan como acciones de Atajos. Cada comando tiene una
+  forma corta sin articulos y ninguna frase dice "tele"/"televisor", porque Siri las
+  manda a los televisores de Casa (HomeKit).
+- PRD-015-R09: con varios audios, activar audio los enumera y el usuario elige; con
+  uno lo reproduce. Visualizar contenido hace lo mismo con los videos y las paginas.
+  La audiodescripcion elige solo pistas descritas (`AudioPreference.pick(described:)`)
+  y, si no hay, lo dice sin tocar lo que suena.
+- PRD-015-R10: detener audio desmarca solo el audio; detener contenido para todo y
+  desconecta. Un comando en segundo plano no espera a que SwiftUI quite la vista: la
+  sesion silencia y descarga la pagina del reproductor web al momento.
+- PRD-015-R11: la marca declara como se pronuncia su nombre (`spokenNames`, hasta 3,
+  iOS `INAlternativeAppNames`): el dictado escribe "MediaSync" como "Media Sync".
 - PRD-015-R07 (fase 3): la web sincronizada declara herramientas (forma WebMCP:
   nombre, descripcion, JSON Schema) por el puente companion; la app las expone con
   una accion generica. Solo origenes permitidos por la marca, sin acceso a comandos
@@ -79,8 +94,9 @@ votaciones, estadisticas...) lo aporta la web sincronizada, no la app.
 
 ## Aceptacion
 
-- PRD-015-A01: en iPhone, "Escucha la tele con <app>" con un unico televisor
+- PRD-015-A01: en iPhone, "Activa el audio con <app>" con un unico televisor
   compatible abre la app, conecta y reproduce el audio del idioma del sistema.
 - PRD-015-A02: con dos televisores Siri pregunta cual; con ninguno responde por que.
 - PRD-015-A03: el estado describe televisor, sincronizacion, pista y paginas web.
 - PRD-015-A04: fixtures `audioPreference` pasan en Kotlin y Swift.
+- PRD-015-A05: con la app en segundo plano, "Atura contingut <app>" deja de sonar.

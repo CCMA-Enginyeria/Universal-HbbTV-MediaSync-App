@@ -34,6 +34,10 @@ npm install      # once — fetches the "ws" dependency
 npm start        # or: node index.js
 ```
 
+For unattended demos, `npm run supervise` runs the emulator under a watchdog
+that restarts it when it exits, stops answering HTTP or SSDP, or when the LAN
+address changes (a DHCP renewal otherwise leaves it advertising the old IP).
+
 Open the **TV screen URL** printed in the banner, choose a programme and select
 the transport mode. Then open the mobile app and scan for TVs. An entry named
 **"Emulated HbbTV TV (MediaSync)"** should appear; connect to it and the app will

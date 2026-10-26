@@ -14,6 +14,8 @@ final class AppModel: ObservableObject {
     lazy var session = SessionModel(transport: transport, loader: ContentLoader(), diagnostics: diagnostics)
     /// Set by an assistant command that selected a TV; the root view shows that TV and clears it.
     @Published var showsTerminalRequest = false
+    /// Set by an assistant command that shows a companion page; the root view opens it and clears it.
+    @Published var webPageRequest: String?
 
     private init() {}
 }
@@ -89,6 +91,12 @@ struct RootView: View {
             guard requested else { return }
             model.showsTerminalRequest = false
             if session.terminal != nil { showTerminal = true }
+        }
+        .onReceive(model.$webPageRequest) { requested in
+            guard let url = requested else { return }
+            model.webPageRequest = nil
+            session.openWeb(url)
+            overlay = .web
         }
         .onChange(of: overlay) { value in
             AppDelegate.allowsLandscape = value != nil

@@ -132,15 +132,17 @@ abstract class AssistantFunctionService : AppFunctionService() {
      *
      * @param tvId identifier of the TV, as returned by findTvs; omit it to use the connected TV or
      *   the only TV that offers synchronization.
+     * @param audioDescription true to play the programme's audio description (narration of the
+     *   images for blind or partially sighted users), for example when the user asks to turn it on.
      * @return a localized sentence with the result and an intent that shows the TV screen.
      */
     @AppFunctionDeclaration(isDescribedByKDoc = true)
-    suspend fun listenToTv(tvId: String? = null): AssistantReply = call {
+    suspend fun listenToTv(tvId: String? = null, audioDescription: Boolean? = null): AssistantReply = call {
         val id = tvId ?: commands.currentTvId ?: commands.compatibleTvs().let { capable ->
             capable.singleOrNull()?.id ?: throw AppFunctionInvalidArgumentException(
                 applicationContext.getString(R.string.native_assistant_tvs_choose) + " " + capable.joinToString { "${it.name} (${it.id})" })
         }
-        AssistantReply(commands.listen(id), commands.openIntent())
+        AssistantReply(commands.listen(id, audioDescription == true), commands.openIntent())
     }
 
     /**

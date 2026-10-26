@@ -12,9 +12,12 @@ const brand = {
   // ---- Identity -----------------------------------------------------------
   appName: 'Universal MediaSync',
   shortName: 'MediaSync',
+  // How users say the app name to Siri when it differs from appName (iOS INAlternativeAppNames, up to 3):
+  // dictation writes "MediaSync" as two words, so phrases with the written name would not match.
+  spokenNames: ['Universal Media Sync', 'Media Sync'],
   slug: 'universal-mediasync',
   scheme: 'universalmediasync',
-  version: '1.7.1',
+  version: '1.8.0',
 
   // Native identifiers (must be unique per published fork)
   bundleIdentifier: 'cat.ccma.lab.universalmediasync', // iOS

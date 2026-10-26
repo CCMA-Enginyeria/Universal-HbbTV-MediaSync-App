@@ -7,6 +7,7 @@
   "type": "commonjs",
   "scripts": {
     "start": "node index.js",
+    "supervise": "node supervise.js",
     "smoke": "node smoke.js",
     "test": "node --test test/*.node.js"
   },
