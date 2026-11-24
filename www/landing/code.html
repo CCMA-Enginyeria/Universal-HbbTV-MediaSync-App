@@ -155,13 +155,15 @@
 <body class="bg-background text-on-background font-body-md">
     <!-- Header Navigation -->
     <nav class="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-md border-b border-outline-variant">
-        <div class="flex justify-between items-center px-margin-desktop max-w-[1200px] mx-auto h-20">
-            <div class="flex items-center gap-xs">
+        <div class="flex justify-between items-center gap-lg px-margin-desktop max-w-[1200px] mx-auto h-20">
+            <div class="flex items-center gap-xs shrink-0">
                 <img alt="Universal MediaSync Logo" class="h-10 w-auto" src="favicon.png" />
                 <span class="font-headline-lg text-2xl font-bold tracking-tight text-on-surface">Universal <span
                         class="text-gradient-brand">MediaSync</span></span>
             </div>
-            <div class="hidden md:flex gap-md items-center">
+            <div class="hidden md:flex gap-sm xl:gap-md items-center whitespace-nowrap text-sm xl:text-base">
+                <a class="text-on-surface-variant hover:text-primary transition-colors cursor-pointer"
+                    href="#awards">Awards</a>
                 <a class="text-on-surface-variant hover:text-primary transition-colors cursor-pointer"
                     href="#demos">Demos</a>
                 <a class="text-on-surface-variant hover:text-primary transition-colors cursor-pointer"
@@ -193,10 +195,33 @@
                     class="font-display-lg text-display-lg-mobile md:text-display-lg text-on-surface mb-md leading-tight">
                     Universal HbbTV <span class="text-gradient-brand">MediaSync App</span>
                 </h1>
-                <p class="font-body-lg text-body-lg text-on-surface-variant mb-xl max-w-[650px] mx-auto">
+                <p class="font-body-lg text-body-lg text-on-surface-variant mb-lg max-w-[650px] mx-auto">
                     The single, open-source companion app for all broadcasters to enable perfectly synchronized
                     second-screen experiences.
                 </p>
+                <!-- Award badges -->
+                <div class="mb-xl flex flex-col sm:flex-row gap-sm justify-center items-stretch">
+                    <a href="#awards"
+                        class="group flex items-center gap-sm rounded-xl border border-tertiary/60 bg-surface-container/80 px-md py-sm text-left transition-all hover:border-tertiary hover:shadow-[0_0_20px_rgba(255,182,143,0.3)]">
+                        <span aria-hidden="true" class="material-symbols-outlined text-tertiary text-3xl"
+                            style="font-variation-settings: 'FILL' 1;">trophy</span>
+                        <span>
+                            <span class="block text-[10px] uppercase tracking-widest text-tertiary font-bold">Winner
+                                &middot; HbbTV Awards 2026</span>
+                            <span class="block font-bold text-on-surface">Enabling Technology Award</span>
+                        </span>
+                    </a>
+                    <a href="#awards"
+                        class="group flex items-center gap-sm rounded-xl border border-tertiary/60 bg-surface-container/80 px-md py-sm text-left transition-all hover:border-tertiary hover:shadow-[0_0_20px_rgba(255,182,143,0.3)]">
+                        <span aria-hidden="true" class="material-symbols-outlined text-tertiary text-3xl"
+                            style="font-variation-settings: 'FILL' 1;">trophy</span>
+                        <span>
+                            <span class="block text-[10px] uppercase tracking-widest text-tertiary font-bold">Winner
+                                &middot; GRAUSTIC Awards 2026</span>
+                            <span class="block font-bold text-on-surface">Innovation through Mobile Technologies</span>
+                        </span>
+                    </a>
+                </div>
                 <div class="flex flex-col md:flex-row gap-md justify-center">
                     <a href="https://github.com/CCMA-Enginyeria/Universal-HbbTV-MediaSync-App"
                         class="bg-gradient-brand text-white px-xl py-md rounded-lg font-bold flex items-center justify-center gap-sm hover:shadow-[0_0_20px_rgba(46,125,255,0.4)] transition-all"
@@ -261,20 +286,113 @@
                 </div>
             </div>
         </section>
+        <!-- Awards Section -->
+        <section class="py-xl md:py-32 bg-surface-container-lowest border-y border-outline-variant" id="awards">
+            <div class="max-w-[1100px] mx-auto px-margin-desktop">
+                <div class="text-center mb-xl">
+                    <p class="text-label-sm font-label-sm text-tertiary uppercase tracking-widest mb-sm">Recognition</p>
+                    <h2 class="font-headline-lg text-headline-lg text-on-surface">Award-Winning <span
+                            class="text-gradient-brand">Innovation</span></h2>
+                    <p class="text-on-surface-variant mt-sm max-w-[700px] mx-auto">Universal MediaSync has been
+                        recognized by the HbbTV industry and by the Catalan digital-innovation community.</p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-lg">
+                    <!-- HbbTV Awards -->
+                    <article
+                        class="flex flex-col gap-md rounded-xl border border-tertiary/40 bg-surface-container p-lg shadow-xl transition-colors hover:border-tertiary">
+                        <div class="flex items-center justify-between gap-md">
+                            <div class="flex h-20 w-40 items-center justify-center rounded-lg bg-white p-sm">
+                                <img alt="HbbTV" class="max-h-full w-auto object-contain"
+                                    src="supporters/HbbTVLogo.svg" loading="lazy" />
+                            </div>
+                            <span aria-hidden="true" class="material-symbols-outlined text-tertiary text-5xl"
+                                style="font-variation-settings: 'FILL' 1;">trophy</span>
+                        </div>
+                        <div>
+                            <p class="text-label-sm font-label-sm text-tertiary uppercase tracking-widest mb-xs">Winner
+                                &middot; HbbTV Awards 2026</p>
+                            <h3 class="font-bold text-on-surface text-2xl">Enabling Technology Award</h3>
+                            <p class="text-on-surface-variant text-sm mt-xs">14th HbbTV Symposium and Awards,
+                                Barcelona &middot; 18 November 2026</p>
+                        </div>
+                        <blockquote class="border-l-4 border-tertiary pl-md italic text-on-surface">
+                            &ldquo;Smart idea, innovative technical approach &ndash; well executed.&rdquo;
+                            <span class="block not-italic text-xs text-on-surface-variant mt-xs">&mdash; HbbTV Awards
+                                jury</span>
+                        </blockquote>
+                        <a class="mt-auto inline-flex items-center gap-xs text-primary font-bold hover:underline"
+                            href="https://developer.hbbtv.org/news/winners-of-hbbtv-awards-2026-announced"
+                            target="_blank" rel="noopener noreferrer">
+                            Read the announcement
+                            <span aria-hidden="true" class="material-symbols-outlined text-base">open_in_new</span>
+                        </a>
+                    </article>
+                    <!-- GRAUSTIC Awards -->
+                    <article
+                        class="flex flex-col gap-md rounded-xl border border-tertiary/40 bg-surface-container p-lg shadow-xl transition-colors hover:border-tertiary">
+                        <div class="flex items-center justify-between gap-md">
+                            <div class="flex h-20 w-40 items-center justify-center rounded-lg bg-white p-sm">
+                                <img alt="GRAUSTIC" class="max-h-full w-auto object-contain"
+                                    src="supporters/GrausTic-Logo.svg" loading="lazy" />
+                            </div>
+                            <span aria-hidden="true" class="material-symbols-outlined text-tertiary text-5xl"
+                                style="font-variation-settings: 'FILL' 1;">trophy</span>
+                        </div>
+                        <div>
+                            <p class="text-label-sm font-label-sm text-tertiary uppercase tracking-widest mb-xs">Winner
+                                &middot; GRAUSTIC Awards 2026</p>
+                            <h3 class="font-bold text-on-surface text-2xl">Innovation through Mobile Technologies</h3>
+                            <p class="text-on-surface-variant text-sm mt-xs">Catalonia Digital Innovation Awards,
+                                co-organized with Mobile World Capital &middot; Diada de les TIC, Barcelona, November
+                                2026</p>
+                        </div>
+                        <blockquote class="border-l-4 border-tertiary pl-md italic text-on-surface">
+                            &ldquo;Universal MediaSync: television and personal devices perfectly synchronized.&rdquo;
+                            <span class="block not-italic text-xs text-on-surface-variant mt-xs">&mdash; Awarded
+                                project</span>
+                        </blockquote>
+                        <a class="mt-auto inline-flex items-center gap-xs text-primary font-bold hover:underline"
+                            href="https://en.ara.cat/special-content/catalonia-digital-innovation-awards-2026-all-the-winners-and-the-categories_1_5917312.html"
+                            target="_blank" rel="noopener noreferrer">
+                            See all the winners
+                            <span aria-hidden="true" class="material-symbols-outlined text-base">open_in_new</span>
+                        </a>
+                    </article>
+                </div>
+            </div>
+        </section>
         <!-- Demos Section -->
         <section class="py-xl md:py-32 bg-surface" id="demos">
             <div class="max-w-[1000px] mx-auto px-margin-desktop">
                 <div class="text-center mb-xl">
                     <h2 class="font-headline-lg text-headline-lg text-on-surface">See It in Action</h2>
-                    <p class="text-on-surface-variant mt-sm max-w-[700px] mx-auto">Synchronized, accessible and
-                        immersive multi-device experiences, shown live at IBC 2026.</p>
+                    <p class="text-on-surface-variant mt-sm max-w-[700px] mx-auto">How Universal MediaSync works,
+                        and the synchronized, accessible and immersive multi-device use cases shown live at IBC
+                        2026.</p>
                 </div>
-                <div
-                    class="aspect-video w-full overflow-hidden rounded-xl border border-outline-variant bg-surface-container-high shadow-xl">
-                    <iframe class="h-full w-full" src="https://www.youtube-nocookie.com/embed/m05ojlqogBA"
-                        title="Universal HbbTV MediaSync demonstrations" loading="lazy"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                        referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                <div class="flex flex-col gap-xl">
+                    <div>
+                        <p class="text-label-sm font-label-sm text-primary uppercase tracking-widest mb-sm text-center">
+                            What is Universal MediaSync?</p>
+                        <div
+                            class="aspect-video w-full overflow-hidden rounded-xl border border-outline-variant bg-surface-container-high shadow-xl">
+                            <iframe class="h-full w-full" src="https://www.youtube-nocookie.com/embed/m05ojlqogBA"
+                                title="What is Universal HbbTV MediaSync?" loading="lazy"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                        </div>
+                    </div>
+                    <div>
+                        <p class="text-label-sm font-label-sm text-primary uppercase tracking-widest mb-sm text-center">
+                            Use cases demonstrated at IBC 2026</p>
+                        <div
+                            class="aspect-video w-full overflow-hidden rounded-xl border border-outline-variant bg-surface-container-high shadow-xl">
+                            <iframe class="h-full w-full" src="https://www.youtube-nocookie.com/embed/Xsf0TdKMIKc"
+                                title="Universal HbbTV MediaSync use cases at IBC 2026" loading="lazy"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>
