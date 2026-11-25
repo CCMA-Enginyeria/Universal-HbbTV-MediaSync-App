@@ -17,7 +17,7 @@ const brand = {
   spokenNames: ['Universal Media Sync', 'Media Sync'],
   slug: 'universal-mediasync',
   scheme: 'universalmediasync',
-  version: '1.8.0',
+  version: '1.8.1',
 
   // Native identifiers (must be unique per published fork)
   bundleIdentifier: 'cat.ccma.lab.universalmediasync', // iOS
@@ -67,6 +67,12 @@ const brand = {
   // ignores this. The repo source lives at
   // `www/hbbtv_examples/sync_webplayer/index.html`.
   syncWebPlayerUrl: 'https://ccma-erst-projects.s3.eu-west-1.amazonaws.com/universal-media-sync/hbbtv_examples/sync_webplayer/index.html',
+
+  // Optional plain-HTTP address of the same page. WebKit blocks an HTTPS page
+  // from fetching an `http://` MPD (mixed content), whatever App Transport
+  // Security allows, so iOS opens this one when the MPD is plain HTTP. Leave it
+  // out if the host only serves HTTPS: plain-HTTP MPDs then fail as before.
+  syncWebPlayerHttpUrl: 'http://ccma-erst-projects.s3.eu-west-1.amazonaws.com/universal-media-sync/hbbtv_examples/sync_webplayer/index.html',
 
   // ---- Permissions --------------------------------------------------------
   // Opt-in device permissions. Kept off by default so a fork only declares the

@@ -34,7 +34,7 @@ See `native/README.md` for details, contracts and known gaps.
 - **`native/android/core`** — pure Kotlin/JVM core: DIAL/SSDP discovery, DVB-CSS CII/WC/TS, App2App, session and probe state machines, playback corrector, MPD/HLS/TTML/VTT parsers, companion protocol. No Android APIs, no I/O except through the injected `Transport`.
 - **`native/android/app`** — Compose UI, Media3 player, `SyncService` foreground service, OkHttp/UDP transport bound to the LAN, Custom Tabs/WebView companion.
 - **`native/ios/Sources/MediaSyncCore`** — Swift port of the core (same fixtures, Swift Package).
-- **`native/ios/App`** — SwiftUI app, AVPlayer, WKWebView companion; DASH plays through the brand's sync web player (`syncWebPlayerUrl`).
+- **`native/ios/App`** — SwiftUI app, AVPlayer, WKWebView companion; DASH plays through the brand's sync web player (`syncWebPlayerUrl`, or `syncWebPlayerHttpUrl` for plain-HTTP MPDs, which WebKit would block as mixed content).
 - **Cores are serial state machines**: every socket and timer goes through `Transport` with a unique token, so events from replaced connections are ignored. Call them on the owner's thread (Android main looper, iOS main queue).
 - **Shared inputs** (do not delete): `src/brand/brand.config.js`, `src/i18n/translations.js`, `src/theme.js`, `src/data/*.json`, `assets/` (brand images), `native/i18n/native-strings.json`.
 - **`www/hbbtv_examples/sync_webplayer/SyncController.js`** — behavioral reference for the sync controller; `sync-vectors.cjs` pins the native ports to it.

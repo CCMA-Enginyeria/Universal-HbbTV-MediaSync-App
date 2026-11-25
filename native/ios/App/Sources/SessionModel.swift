@@ -528,6 +528,17 @@ final class SessionModel: ObservableObject {
         }
     }
 
+    /**
+     * The web player page for a DASH manifest. WebKit blocks an HTTPS page from fetching a plain-HTTP MPD and its
+     * segments (mixed content) even with App Transport Security open, so a plain-HTTP MPD gets the brand's
+     * plain-HTTP copy of the page when there is one. Without it the HTTPS page is used and the load fails as before.
+     */
+    static func webPlayerBase(mpdUrl: String, secure: String? = BrandConfig.syncWebPlayerUrl,
+                              plain: String? = BrandConfig.syncWebPlayerHttpUrl) -> String? {
+        let isPlainHttp = URL(string: mpdUrl)?.scheme?.lowercased() == "http"
+        return isPlainHttp ? (plain ?? secure) : (secure ?? plain)
+    }
+
     private func startPlayback(_ manifest: MediaManifest, _ kind: ContentKind, audio: MediaTrack?, video: MediaTrack?) {
         let restart = !playerOwner.isActive
         if restart { corrector.reset() }
@@ -542,7 +553,7 @@ final class SessionModel: ObservableObject {
             guard let primary = video ?? audio else { return }
             playerOwner.stop(keepSession: true)
             playerOwner.activateForWebPlayback(video: video != nil)
-            guard let base = BrandConfig.syncWebPlayerUrl else {
+            guard let base = Self.webPlayerBase(mpdUrl: manifest.url) else {
                 content = .failed(.format)
                 return
             }

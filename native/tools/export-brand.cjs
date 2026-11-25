@@ -146,6 +146,7 @@ function brandSummary({ brand, theme }) {
   for (const key of ['syncWebPlayerUrl', 'supportUrl', 'defaultContentUrl']) {
     if (brand[key] != null && !/^https?:\/\//.test(brand[key])) fail(`brand.${key} must be an http(s) URL`);
   }
+  if (brand.syncWebPlayerHttpUrl != null && !/^http:\/\//.test(brand.syncWebPlayerHttpUrl)) fail('brand.syncWebPlayerHttpUrl must be an http:// URL');
   return {
     appName: brand.appName,
     shortName: brand.shortName,
@@ -160,6 +161,7 @@ function brandSummary({ brand, theme }) {
     app2appChannel: brand.app2appChannel,
     defaultContentUrl: brand.defaultContentUrl ?? null,
     syncWebPlayerUrl: brand.syncWebPlayerUrl ?? null,
+    syncWebPlayerHttpUrl: brand.syncWebPlayerHttpUrl ?? null,
     supportUrl: brand.supportUrl ?? null,
     cameraEnabled: !!brand.permissions?.camera,
     cameraUsageDescription: brand.cameraUsageDescription ?? '',
@@ -520,6 +522,7 @@ function exportIos(outDir, inputs, strings, summary) {
     `    static let app2appChannel = ${swiftString(summary.app2appChannel)}`,
     `    static let defaultContentUrl: String? = ${swiftString(summary.defaultContentUrl)}`,
     `    static let syncWebPlayerUrl: String? = ${swiftString(summary.syncWebPlayerUrl)}`,
+    `    static let syncWebPlayerHttpUrl: String? = ${swiftString(summary.syncWebPlayerHttpUrl)}`,
     `    static let supportUrl: String? = ${swiftString(summary.supportUrl)}`,
     `    static let cameraEnabled = ${summary.cameraEnabled}`,
     `    static let defaultLanguage = ${swiftString(summary.defaultLanguage)}`,
